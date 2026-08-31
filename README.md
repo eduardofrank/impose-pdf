@@ -7,9 +7,11 @@ boxes a print-ready PDF already carries — TrimBox is the finished page,
 BleedBox is the margin that gets trimmed away — and targets a named press whose
 sheet size and imageable area it knows.
 
-> **Status: early.** The foundation is built and tested. The schemas, the
-> renderer, and the command line are not written yet. See
-> [Roadmap](#roadmap) for what exists today.
+> **Status: usable as a library, no command line yet.** All five schemas, the
+> layout engine, marks, and the renderer are built and tested — the library
+> imposes a document and writes a press-ready file. What is missing is PDF/X
+> passthrough, a high-level entry point, and the `impose` command itself. See
+> [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -66,6 +68,107 @@ line, so bleed is shaved to nothing there and the two trims are snapped onto
 one coordinate. Where a file declares no BleedBox, the answer is no bleed — the
 space between TrimBox and CropBox is just as likely to be the supplier's own
 slug and marks, and placing those into a gutter is worse than placing nothing.
+
+## Using it
+
+There is no command line yet, and no single-call entry point, so a job is
+assembled from the pieces. This is a 16-page A6 booklet, saddle stitched, on an
+Indigo 5000:
+
+```python
+import pikepdf
+
+from impose.boxes import read_boxes
+from impose.layout import lay_out
+from impose.marks import MarkStyle, trim_marks
+from impose.press import get
+from impose.render import Renderer
+from impose.schemas import saddle
+
+source = pikepdf.open("book.pdf")
+boxes = read_boxes(source.pages[0])
+press = get("indigo-5000")
+style = MarkStyle()
+
+plan = saddle.impose(len(source.pages))
+plan.validate()
+
+renderer = Renderer(style=style)
+for surface in plan:
+    layout = lay_out(
+        surface,
+        columns=plan.columns,
+        rows=plan.rows,
+        trim=boxes.trim_size,
+        trim_origin=boxes.trim,
+        bleed=boxes.bleed_insets,
+        press=press,
+        mark_allowance=style.reach,
+    )
+    fold = layout.pages[0].trim.x1
+    renderer.add(
+        layout,
+        source,
+        marks=trim_marks(
+            [page.trim for page in layout.pages], style=style, folds=(fold,)
+        ),
+    )
+renderer.save("book-imposed.pdf")
+```
+
+That produces four sheets, 320 × 470 mm, each carrying a 210 × 148 mm spread
+with crop marks, a dashed fold at the spine, and bleed everywhere except the
+spine itself.
+
+It is more ceremony than it should be — wiring the boxes through by hand, and
+picking the fold coordinate out of the layout, are jobs the library should do.
+An `impose.job` entry point is the next thing to be written, and the command
+line after it.
+
+## Schemas
+
+| schema | assembly | ordering |
+|---|---|---|
+| `saddle` | sheets nested, stapled through the fold | page 1 is beside page *n* |
+| `perfect` | sections gathered, spine milled and glued | nested within a section, sequential between |
+| `nup` | read as a stack, not cut | consecutive, reading order |
+| `cutstack` | guillotined into stacks, stacks set on each other | each cell holds a consecutive block |
+| `steprepeat` | cut apart | one artwork, repeated |
+
+The dividing line between them is whether the sheet gets **cut**, because that
+decides whether it matters which page lands physically behind which.
+
+`nup` is what a print driver means by "2 pages per sheet". Both sides are laid
+out in plain reading order and the duplex unit turns the sheet; mirroring the
+back in the PDF would be doing the press's job twice, and would back every page
+against the wrong neighbour with nothing looking wrong until the job is cut.
+
+`cutstack` and `steprepeat` really are cut, so each finished piece takes its
+reverse from the *mirrored* cell of the back surface.
+
+## Marks
+
+Marks sit at the ends of each cut line, out beyond the form, because that is
+how a guillotine is used: the operator lines the blade up on a pair of marks at
+opposite edges of the sheet and cuts the whole way across. A mark in the middle
+of the form would be cut through; one inside the trim would be delivered to the
+customer. A fold, such as a saddle spine, is drawn dashed.
+
+Colour is selectable, and both answers are right somewhere:
+
+```python
+MarkStyle(colour="registration")   # default
+MarkStyle(colour="black")
+```
+
+`registration` is a Separation `/All` colorant at full strength with overprint
+on, so the mark appears on every plate at once. That is what offset work needs:
+a black mark sits on the black plate alone, which gives no colour-to-colour
+reference and gives the cutter nothing at all on a job with no black in it.
+
+`black` is K only. On a digital press there are no plates to register — the
+marks are only guiding the knife and the folder — and 400% coverage in the trim
+zone risks setting off onto the next sheet.
 
 ## Installation
 
@@ -125,8 +228,11 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `schemas.cutstack` — cut into stacks that reassemble in order |
 | ✅ | `marks` — cut and fold marks, registration or K-only |
 | ✅ | `render` — pikepdf output, registration marks with overprint |
+| ⬜ | `job` — one call from source document to imposed file |
 | ⬜ | PDF/X passthrough: OutputIntent, conformance keys |
 | ⬜ | Command line |
+| ⬜ | Registration targets, colour bars, slug line |
+| ⬜ | Creep compensation for thick saddle-stitched work |
 
 ## Development
 
@@ -136,10 +242,19 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-The suite asserts geometry, not pixels, so it needs no renderer and no system
-libraries. An imposition is right or wrong by where the trims land on the
-sheet, measured in millimetres, and expectations are literals from ISO 216 and
-ISO 217 rather than restatements of what the code computes.
+Over 200 tests, no system libraries, under a second. The suite asserts geometry and
+structure rather than pixels: an imposition is right or wrong by where the
+trims land on the sheet, and expectations are literals from ISO 216 and ISO 217
+rather than restatements of what the code computes.
+
+The binding schemas are checked by **assembling the book and reading it**.
+`tests/booklet.py` turns the pages of a nested set of sheets — inward along the
+right-hand pages, then back out along the left — and the tests assert the
+result reads 1, 2, 3. Cut and stack is checked by simulating the guillotine:
+cut the plan into stacks, set them on each other, read the pages. A page-order
+bug is invisible in a rendered sheet and obvious the moment the pages are
+turned, which is why the old codebase's image-comparison tests could not see
+them.
 
 ## Licence
 
