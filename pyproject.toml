@@ -33,9 +33,9 @@ dependencies = [
 dev = ["black", "isort", "pylint"]
 
 [project.urls]
-homepage = "https://github.com/eduardofrank/impose"
-issues = "https://github.com/eduardofrank/impose/issues"
-repository = "https://github.com/eduardofrank/impose.git"
+homepage = "https://github.com/eduardofrank/impose-pdf"
+issues = "https://github.com/eduardofrank/impose-pdf/issues"
+repository = "https://github.com/eduardofrank/impose-pdf.git"
 
 [tool.setuptools.packages.find]
 include = ["impose*"]

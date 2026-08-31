@@ -80,8 +80,8 @@ unrelated imaging project. The import package and the command are both
 From source:
 
 ```bash
-git clone https://github.com/eduardofrank/impose.git
-cd impose
+git clone https://github.com/eduardofrank/impose-pdf.git
+cd impose-pdf
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ```
 
