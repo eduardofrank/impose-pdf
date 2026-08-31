@@ -52,7 +52,7 @@ DEFAULT_MARKS = MarkStyle()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class Result:
+class Result:  # pylint: disable=too-many-instance-attributes
     """What a job produced, for reporting back to whoever asked."""
 
     plan: Plan
@@ -62,14 +62,16 @@ class Result:
     trim_size: Size
     press: str
     turned: bool
+    pdfx: str | None = None
 
     def describe(self) -> str:
         """A summary an operator can check before sending the file."""
         turned = ", form turned to fit" if self.turned else ""
+        claim = f", {self.pdfx}" if self.pdfx else ""
         return (
             f"{self.plan.schema}: {self.plan.pages} pages onto {self.sheets} "
             f"sheet(s) of {format_mm(self.sheet_size)} on {self.press}; "
-            f"finished page {format_mm(self.trim_size)}{turned}"
+            f"finished page {format_mm(self.trim_size)}{turned}{claim}"
         )
 
 
@@ -188,6 +190,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 marks=_marks(layout, plan, style),
                 source_rotation=boxes.rotation,
             )
+        identity = renderer.carry_over(opened)
         renderer.save(output)
 
         return Result(
@@ -198,6 +201,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             trim_size=boxes.trim_size,
             press=machine.name,
             turned=turned,
+            pdfx=identity.version,
         )
     finally:
         if opened is not source:

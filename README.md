@@ -8,8 +8,8 @@ BleedBox is the margin that gets trimmed away — and targets a named press whos
 sheet size and imageable area it knows.
 
 > **Status: usable as a library, no command line yet.** All five schemas, the
-> layout engine, marks, the renderer, and a single-call entry point are built
-> and tested. What is missing is PDF/X passthrough and the `impose` command
+> layout engine, marks, the renderer, PDF/X passthrough, and a single-call
+> entry point are built and tested. What is missing is the `impose` command
 > itself. See [Roadmap](#roadmap).
 
 ## Why this exists
@@ -162,6 +162,29 @@ reference and gives the cutter nothing at all on a job with no black in it.
 marks are only guiding the knife and the folder — and 400% coverage in the trim
 zone risks setting off onto the next sheet.
 
+## PDF/X
+
+A PDF/X file says two things beyond ordinary PDF: it names the printing
+condition it was prepared for — an OutputIntent holding the ICC profile the
+separations assume — and it declares which part of ISO 15930 it claims. Both
+are carried onto the imposed sheets, along with `/Trapped` and a PDF version no
+older than the claim requires.
+
+```python
+result = impose_document("book.pdf", "book-imposed.pdf")
+print(result.pdfx)     # 'PDF/X-4'
+```
+
+An OutputIntent is carried across even when no PDF/X part is claimed, since it
+names what the separations were built for either way.
+
+**This preserves a declaration; it does not create or check one.** Conformance
+is a preflight question — embedded fonts, colour spaces, transparency — and
+answering it is a different program. If the source conformed and the imposition
+adds nothing that breaks it, the output should too, but only preflight can tell
+you it does. `Identity.is_complete` will tell you if the *source* claimed
+PDF/X without an OutputIntent to back it, which the imposed file inherits.
+
 ## Installation
 
 ```bash
@@ -221,7 +244,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `marks` — cut and fold marks, registration or K-only |
 | ✅ | `render` — pikepdf output, registration marks with overprint |
 | ✅ | `job` — one call from source document to imposed file |
-| ⬜ | PDF/X passthrough: OutputIntent, conformance keys |
+| ✅ | `pdfx` — OutputIntent and conformance keys carried through |
 | ⬜ | Command line |
 | ⬜ | Registration targets, colour bars, slug line |
 | ⬜ | Creep compensation for thick saddle-stitched work |

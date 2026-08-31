@@ -90,3 +90,29 @@ def declare_pdfx(pdf: pikepdf.Pdf, version: str = "PDF/X-4") -> pikepdf.Pdf:
     with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
         meta["pdfxid:GTS_PDFXVersion"] = version
     return pdf
+
+
+#: Stands in for an ICC profile. Nothing here validates colour, so the bytes
+#: only need to survive the copy intact and be identifiable afterwards.
+ICC_MARKER = b"IMPOSE-TEST-PROFILE"
+
+
+def add_output_intent(pdf: pikepdf.Pdf, condition: str = "FOGRA39") -> pikepdf.Pdf:
+    """Give *pdf* a GTS_PDFX output intent with an embedded profile."""
+    profile = pikepdf.Stream(pdf, ICC_MARKER + b"\x00" * 64, N=4)
+    intent = pikepdf.Dictionary(
+        Type=pikepdf.Name.OutputIntent,
+        S=pikepdf.Name.GTS_PDFX,
+        OutputConditionIdentifier=condition,
+        RegistryName="http://www.color.org",
+        Info=f"{condition} (test)",
+        DestOutputProfile=profile,
+    )
+    pdf.Root.OutputIntents = pikepdf.Array([pdf.make_indirect(intent)])
+    return pdf
+
+
+def set_trapped(pdf: pikepdf.Pdf, value: str = "/True") -> pikepdf.Pdf:
+    """Set the /Trapped key, which PDF/X requires to be definite."""
+    pdf.docinfo["/Trapped"] = pikepdf.Name(value)
+    return pdf

@@ -21,6 +21,8 @@ from . import __version__
 from .geometry import Rect
 from .layout import PlacedPage, SheetLayout
 from .marks import MarkStyle, Segment
+from .pdfx import Identity, carry_over, minimum_version
+from .pdfx import read as read_identity
 
 
 def _registration_colorspace(pdf: pikepdf.Pdf) -> Array:
@@ -123,6 +125,21 @@ class Renderer:
         self.style = style or MarkStyle()
         self._colorspace: Name | None = None
         self._state: Name | None = None
+        self._min_version = "1.4"
+
+    def carry_over(self, source: pikepdf.Pdf) -> Identity:
+        """Copy *source*'s printing condition and PDF/X claim onto the output.
+
+        Returns what was found, so a caller can report a source that claimed
+        PDF/X without ever carrying an OutputIntent to back it.
+        """
+        identity = read_identity(source)
+        carry_over(self.pdf, source, identity)
+        required = minimum_version(identity.version)
+        for candidate in (str(source.pdf_version), required):
+            if candidate:
+                self._min_version = max(self._min_version, candidate)
+        return identity
 
     def add(
         self,
@@ -175,6 +192,7 @@ class Renderer:
             compress_streams=True,
             object_stream_mode=pikepdf.ObjectStreamMode.generate,
             linearize=linearize,
+            min_version=self._min_version,
         )
 
 
