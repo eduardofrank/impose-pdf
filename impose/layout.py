@@ -174,17 +174,20 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     press: Press,
     sheet: Size | None = None,
     mark_allowance: float = 0.0,
-    trim_origin: Rect | None = None,
+    trim_origin: Rect,
 ) -> SheetLayout:
     """Place one surface on a sheet.
 
-    *trim_origin* is the source page's TrimBox, needed to build the clip in
-    source coordinates; it defaults to a box of *trim* at the origin.
+    *trim_origin* is the source page's TrimBox in its own coordinates, and it
+    is required rather than defaulted. The clip is built by growing it toward
+    the edges that kept bleed, so a TrimBox that does not sit at the origin --
+    which is the normal case, since a supplier's export has bleed and slug
+    around it -- would otherwise be placed offset by however far it sits in.
     """
     sheet = sheet or press.sheet
     imageable = press.imageable_area(sheet)
     cell = _uniform_cell(surface.placements, trim)
-    source_trim = trim_origin or Rect.from_size(trim)
+    source_trim = trim_origin
 
     step_x = cell.width + gutters.horizontal
     step_y = cell.height + gutters.vertical

@@ -123,7 +123,8 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `schemas.nup` — consecutive pages in reading order |
 | ✅ | `schemas.steprepeat` — one item repeated to fill the sheet |
 | ✅ | `schemas.cutstack` — cut into stacks that reassemble in order |
-| ⬜ | `render` — pikepdf output, registration marks with overprint |
+| ✅ | `marks` — cut and fold marks, registration or K-only |
+| ✅ | `render` — pikepdf output, registration marks with overprint |
 | ⬜ | PDF/X passthrough: OutputIntent, conformance keys |
 | ⬜ | Command line |
 

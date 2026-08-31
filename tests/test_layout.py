@@ -7,7 +7,7 @@
 import unittest
 
 from impose import ImposeError
-from impose.geometry import Insets, Size
+from impose.geometry import Insets, Rect, Size
 from impose.layout import Gutters, lay_out
 from impose.plan import Placement, Surface
 from impose.press import INDIGO_5000, custom
@@ -29,6 +29,7 @@ def spread(*, gutters=Gutters(), bleed=BLEED, press=INDIGO_5000, rotation=0, **k
         columns=2,
         rows=1,
         trim=A6,
+        trim_origin=Rect.from_size(A6),
         bleed=bleed,
         gutters=gutters,
         press=press,
@@ -56,7 +57,14 @@ class TestGrid(unittest.TestCase):
     def test_rows_count_downward_as_a_person_reads(self):
         """Row 0 is the top of the sheet, but PDF y grows upward."""
         surface = Surface(0, "front", (Placement(0, 0, 0), Placement(1, 0, 1)))
-        layout = lay_out(surface, columns=1, rows=2, trim=A6, press=INDIGO_5000)
+        layout = lay_out(
+            surface,
+            columns=1,
+            rows=2,
+            trim=A6,
+            trim_origin=Rect.from_size(A6),
+            press=INDIGO_5000,
+        )
         top = next(p for p in layout.pages if p.source == 0)
         bottom = next(p for p in layout.pages if p.source == 1)
         self.assertGreater(top.trim.y0, bottom.trim.y0)
@@ -124,6 +132,7 @@ class TestFit(unittest.TestCase):
             columns=1,
             rows=1,
             trim=Size(150 * MM, 350 * MM),
+            trim_origin=Rect.from_size(Size(150 * MM, 350 * MM)),
             press=press,
         )
         self.assertTrue(layout.turned)
@@ -140,6 +149,7 @@ class TestFit(unittest.TestCase):
                 columns=1,
                 rows=1,
                 trim=A6,
+                trim_origin=Rect.from_size(A6),
                 press=press,
             )
         self.assertIn("does not fit", str(caught.exception))
@@ -152,6 +162,7 @@ class TestFit(unittest.TestCase):
             columns=2,
             rows=1,
             trim=A6,
+            trim_origin=Rect.from_size(A6),
             press=press,
             bleed=Insets(),
         )
@@ -161,6 +172,7 @@ class TestFit(unittest.TestCase):
                 columns=2,
                 rows=1,
                 trim=A6,
+                trim_origin=Rect.from_size(A6),
                 press=press,
                 bleed=Insets(),
                 mark_allowance=5 * MM,
@@ -175,7 +187,14 @@ class TestRotation(unittest.TestCase):
     def test_mixing_turned_and_upright_is_refused(self):
         surface = Surface(0, "front", (Placement(0, 0, 0, 0), Placement(1, 1, 0, 90)))
         with self.assertRaises(ImposeError) as caught:
-            lay_out(surface, columns=2, rows=1, trim=A6, press=INDIGO_5000)
+            lay_out(
+                surface,
+                columns=2,
+                rows=1,
+                trim=A6,
+                trim_origin=Rect.from_size(A6),
+                press=INDIGO_5000,
+            )
         self.assertIn("different sizes", str(caught.exception))
 
     def test_half_turn_keeps_the_cell_size(self):
