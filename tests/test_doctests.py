@@ -15,6 +15,8 @@ def load_tests(_loader, tests, _pattern):
     for _finder, name, _ispkg in pkgutil.walk_packages(
         impose.__path__, prefix="impose."
     ):
+        if name.endswith(".__main__"):
+            continue
         module = importlib.import_module(name)
         if module.__doc__ or vars(module):
             suite = doctest.DocTestSuite(module)

@@ -7,10 +7,10 @@ boxes a print-ready PDF already carries — TrimBox is the finished page,
 BleedBox is the margin that gets trimmed away — and targets a named press whose
 sheet size and imageable area it knows.
 
-> **Status: usable as a library, no command line yet.** All five schemas, the
-> layout engine, marks, the renderer, PDF/X passthrough, and a single-call
-> entry point are built and tested. What is missing is the `impose` command
-> itself. See [Roadmap](#roadmap).
+> **Status: complete for the five schemas it covers.** Library and command line
+> both work end to end. Still to come: registration targets and colour bars,
+> creep compensation, and documents whose pages differ in size. See
+> [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -68,7 +68,39 @@ one coordinate. Where a file declares no BleedBox, the answer is no bleed — th
 space between TrimBox and CropBox is just as likely to be the supplier's own
 slug and marks, and placing those into a gutter is worse than placing nothing.
 
-## Using it
+## Command line
+
+```bash
+impose saddle book.pdf                      # -> book-imposed.pdf
+impose nup report.pdf --up 2x2
+impose steprepeat card.pdf --up 3x4 --copies 250 --marks black
+impose perfect novel.pdf --section-pages 16 --press indigo-7000
+```
+
+Each schema is a subcommand, so options that suit only one of them appear only
+there. `impose presses` lists the profiles; `--dry-run` shows the page order
+and sheet count without writing anything:
+
+```
+$ impose saddle book.pdf --dry-run
+sheet 1 front
+    16    1
+sheet 1 back
+     2   15
+...
+  16 pages, 4 sheet(s), 8 surface(s); finished page 105 × 148 mm
+```
+
+Refusals are sentences, and exit non-zero — 1 when the job cannot be done, 2
+when the arguments do not parse:
+
+```
+$ impose nup report.pdf --up 4x4
+impose: The imposed form is 436 × 608 mm including bleed and marks, and the
+imageable area is 310 × 450 mm. It does not fit either way round.
+```
+
+## Using it as a library
 
 ```python
 from impose.job import impose_document
@@ -245,7 +277,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `render` — pikepdf output, registration marks with overprint |
 | ✅ | `job` — one call from source document to imposed file |
 | ✅ | `pdfx` — OutputIntent and conformance keys carried through |
-| ⬜ | Command line |
+| ✅ | `cli` — the `impose` command |
 | ⬜ | Registration targets, colour bars, slug line |
 | ⬜ | Creep compensation for thick saddle-stitched work |
 

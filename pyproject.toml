@@ -29,6 +29,9 @@ dependencies = [
     "pikepdf>=9",
 ]
 
+[project.scripts]
+impose = "impose.cli:main"
+
 [project.optional-dependencies]
 dev = ["black", "isort", "pylint"]
 

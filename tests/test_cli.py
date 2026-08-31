@@ -1,0 +1,210 @@
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+
+# pylint: disable=missing-class-docstring,missing-function-docstring
+
+"""The `impose` command.
+
+The command is thin, so these check the wiring and the failures: that words
+become the right arguments, and that a person who asks for something impossible
+is told so in a sentence rather than shown a traceback.
+"""
+
+import contextlib
+import io
+import pathlib
+import tempfile
+import unittest
+
+import pikepdf
+
+from impose.cli import _default_output, _grid, main
+from impose.geometry import Size
+from impose.units import MM
+
+from .support import make_pdf
+
+
+@contextlib.contextmanager
+def workspace(pages=16, name="book.pdf", **kwargs):
+    """A directory holding a source document."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = pathlib.Path(folder) / name
+        make_pdf(pages, **kwargs).save(path)
+        yield path
+
+
+def run(*argv):
+    """Run the command, returning (status, stdout, stderr)."""
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            status = main(list(argv))
+        except SystemExit as exit_:  # argparse's own failures
+            status = int(exit_.code or 0)
+    return status, out.getvalue(), err.getvalue()
+
+
+class TestImposing(unittest.TestCase):
+    def test_every_schema_runs(self):
+        cases = {
+            "saddle": (),
+            "perfect": ("--section-pages", "8"),
+            "nup": ("--up", "2x2"),
+            "cutstack": ("--up", "2x2"),
+        }
+        for schema, extra in cases.items():
+            with self.subTest(schema=schema), workspace() as source:
+                output = source.with_name("out.pdf")
+                status, text, _ = run(schema, str(source), "-o", str(output), *extra)
+                self.assertEqual(status, 0)
+                self.assertTrue(output.exists())
+                self.assertIn("sheet(s)", text)
+
+    def test_step_and_repeat_runs_on_a_two_page_source(self):
+        """Business cards, 85 x 55 mm, which is what the schema is for."""
+        with workspace(pages=2, trim=Size(85 * MM, 55 * MM)) as source:
+            output = source.with_name("cards.pdf")
+            status, _, err = run(
+                "steprepeat",
+                str(source),
+                "-o",
+                str(output),
+                "--up",
+                "3x4",
+                "--copies",
+                "24",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())
+
+    def test_output_defaults_beside_the_input(self):
+        with workspace() as source:
+            status, text, _ = run("saddle", str(source))
+            self.assertEqual(status, 0)
+            expected = source.with_name("book-imposed.pdf")
+            self.assertTrue(expected.exists())
+            self.assertIn("book-imposed.pdf", text)
+
+    def test_default_output_naming(self):
+        self.assertEqual(
+            _default_output(pathlib.Path("/x/book.pdf")).name, "book-imposed.pdf"
+        )
+
+    def test_quiet_says_nothing(self):
+        with workspace() as source:
+            status, text, _ = run("saddle", str(source), "-q")
+            self.assertEqual(status, 0)
+            self.assertEqual(text, "")
+
+    def test_marks_can_be_chosen(self):
+        with workspace() as source:
+            for choice in ("registration", "black", "none"):
+                with self.subTest(marks=choice):
+                    output = source.with_name(f"{choice}.pdf")
+                    status, _, _ = run(
+                        "saddle", str(source), "-o", str(output), "--marks", choice
+                    )
+                    self.assertEqual(status, 0)
+                    pdf = pikepdf.open(output)
+                    resources = pdf.pages[0].obj["/Resources"]
+                    self.assertEqual(
+                        "/ColorSpace" in resources, choice == "registration"
+                    )
+                    pdf.close()
+
+    def test_sheet_and_gutters_are_accepted(self):
+        with workspace() as source:
+            status, _, err = run(
+                "nup",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--up",
+                "2x1",
+                "--sheet",
+                "SRA3",
+                "--gutters",
+                "4mm",
+                "--press",
+                "sra3",
+            )
+            self.assertEqual(status, 0, err)
+
+
+class TestDryRun(unittest.TestCase):
+    def test_shows_the_order_and_writes_nothing(self):
+        with workspace() as source:
+            status, text, _ = run("saddle", str(source), "--dry-run")
+            self.assertEqual(status, 0)
+            self.assertIn("sheet 1 front", text)
+            self.assertIn("16 pages", text)
+            self.assertFalse(source.with_name("book-imposed.pdf").exists())
+
+    def test_reports_the_finished_size(self):
+        with workspace() as source:
+            _, text, _ = run("saddle", str(source), "-n")
+            self.assertIn("105 × 148 mm", text)
+
+
+class TestFailures(unittest.TestCase):
+    def test_missing_file(self):
+        status, _, err = run("saddle", "/nowhere/absent.pdf")
+        self.assertEqual(status, 1)
+        self.assertIn("No such file", err)
+
+    def test_unknown_press_lists_the_alternatives(self):
+        with workspace() as source:
+            status, _, err = run("saddle", str(source), "--press", "gutenberg")
+            self.assertEqual(status, 1)
+            self.assertIn("indigo-5000", err)
+
+    def test_a_schema_refusing_the_job_is_a_sentence(self):
+        """Schemas raise ValueError, and that must not reach the terminal raw."""
+        with workspace() as source:
+            status, _, err = run("steprepeat", str(source), "--up", "2x2")
+            self.assertEqual(status, 1)
+            self.assertTrue(err.startswith("impose: "))
+            self.assertNotIn("Traceback", err)
+
+    def test_a_form_too_big_names_both_sizes(self):
+        with workspace() as source:
+            status, _, err = run("nup", str(source), "--up", "4x4")
+            self.assertEqual(status, 1)
+            self.assertIn("does not fit", err)
+
+    def test_bad_grid_is_rejected_by_the_parser(self):
+        with workspace() as source:
+            status, _, err = run("nup", str(source), "--up", "4by2")
+            self.assertEqual(status, 2)
+            self.assertIn("COLUMNSxROWS", err)
+
+    def test_bad_length_names_the_units_we_take(self):
+        with workspace() as source:
+            status, _, err = run("saddle", str(source), "--gutters", "3furlong")
+            self.assertEqual(status, 2)
+            self.assertIn("mm", err)
+
+    def test_grid_parser(self):
+        self.assertEqual(_grid("4x2"), (4, 2))
+        for bad in ("4by2", "0x2", "x", "4x2x1"):
+            with self.subTest(bad=bad), self.assertRaises(Exception):
+                _grid(bad)
+
+
+class TestInformation(unittest.TestCase):
+    def test_presses_are_listed_with_a_caveat(self):
+        status, text, _ = run("presses")
+        self.assertEqual(status, 0)
+        self.assertIn("indigo-5000", text)
+        self.assertIn("gripper", text)
+        self.assertIn("nominal", text)
+
+    def test_no_arguments_shows_help(self):
+        status, text, _ = run()
+        self.assertEqual(status, 2)
+        self.assertIn("SCHEMA", text)
+
+    def test_version(self):
+        status, text, _ = run("--version")
+        self.assertEqual(status, 0)
+        self.assertIn("impose", text)
