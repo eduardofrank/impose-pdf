@@ -98,6 +98,11 @@ class Plan:
     ``pages`` is how many source pages the plan consumes, counting the blanks
     added to fill the last form. A schema pads to a whole number of forms, and
     the count is part of the plan so the renderer knows what it was promised.
+
+    ``fold_columns`` names the column boundaries that are folds rather than
+    cuts: ``(1,)`` means the line between column 0 and column 1 is a crease.
+    Only the schema knows this -- a fold and a butt cut are the same geometry,
+    and telling them apart from the rectangles alone is not possible.
     """
 
     columns: int
@@ -105,6 +110,7 @@ class Plan:
     surfaces: tuple[Surface, ...]
     pages: int
     schema: str = ""
+    fold_columns: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if self.columns < 1 or self.rows < 1:

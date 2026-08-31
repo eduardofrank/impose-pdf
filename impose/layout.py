@@ -45,7 +45,7 @@ class Gutters:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class PlacedPage:
+class PlacedPage:  # pylint: disable=too-many-instance-attributes
     """One source page, positioned on the sheet.
 
     *trim* is the finished page: where the knife goes. *paint* is the area the
@@ -59,6 +59,8 @@ class PlacedPage:
     clip: Rect
     rotation: int = 0
     butts: frozenset[str] = frozenset()
+    column: int = 0
+    row: int = 0
 
     @property
     def is_blank(self) -> bool:
@@ -81,6 +83,21 @@ class SheetLayout:
     def printed(self) -> tuple[PlacedPage, ...]:
         """Pages that actually carry content."""
         return tuple(page for page in self.pages if not page.is_blank)
+
+    def fold_positions(self, fold_columns: tuple[int, ...]) -> tuple[float, ...]:
+        """Where the named column boundaries fall on the sheet.
+
+        A boundary is the right-hand trim edge of the column before it. If the
+        form was turned to fit, those boundaries are now horizontal, and the
+        marks for them are handled as such by the caller.
+        """
+        positions = []
+        for boundary in fold_columns:
+            for page in self.pages:
+                if page.column == boundary - 1:
+                    positions.append(page.trim.y1 if self.turned else page.trim.x1)
+                    break
+        return tuple(positions)
 
 
 def _cell_size(trim: Size, rotation: int) -> Size:
@@ -218,6 +235,8 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
                 clip=_source_clip(source_trim, kept, placement.rotation),
                 rotation=placement.rotation,
                 butts=butts,
+                column=placement.column,
+                row=placement.row,
             )
         )
 

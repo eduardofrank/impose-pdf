@@ -8,10 +8,9 @@ BleedBox is the margin that gets trimmed away — and targets a named press whos
 sheet size and imageable area it knows.
 
 > **Status: usable as a library, no command line yet.** All five schemas, the
-> layout engine, marks, and the renderer are built and tested — the library
-> imposes a document and writes a press-ready file. What is missing is PDF/X
-> passthrough, a high-level entry point, and the `impose` command itself. See
-> [Roadmap](#roadmap).
+> layout engine, marks, the renderer, and a single-call entry point are built
+> and tested. What is missing is PDF/X passthrough and the `impose` command
+> itself. See [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -71,59 +70,52 @@ slug and marks, and placing those into a gutter is worse than placing nothing.
 
 ## Using it
 
-There is no command line yet, and no single-call entry point, so a job is
-assembled from the pieces. This is a 16-page A6 booklet, saddle stitched, on an
-Indigo 5000:
-
 ```python
-import pikepdf
+from impose.job import impose_document
 
-from impose.boxes import read_boxes
-from impose.layout import lay_out
-from impose.marks import MarkStyle, trim_marks
-from impose.press import get
-from impose.render import Renderer
-from impose.schemas import saddle
-
-source = pikepdf.open("book.pdf")
-boxes = read_boxes(source.pages[0])
-press = get("indigo-5000")
-style = MarkStyle()
-
-plan = saddle.impose(len(source.pages))
-plan.validate()
-
-renderer = Renderer(style=style)
-for surface in plan:
-    layout = lay_out(
-        surface,
-        columns=plan.columns,
-        rows=plan.rows,
-        trim=boxes.trim_size,
-        trim_origin=boxes.trim,
-        bleed=boxes.bleed_insets,
-        press=press,
-        mark_allowance=style.reach,
-    )
-    fold = layout.pages[0].trim.x1
-    renderer.add(
-        layout,
-        source,
-        marks=trim_marks(
-            [page.trim for page in layout.pages], style=style, folds=(fold,)
-        ),
-    )
-renderer.save("book-imposed.pdf")
+result = impose_document("book.pdf", "book-imposed.pdf", schema="saddle")
+print(result.describe())
 ```
 
-That produces four sheets, 320 × 470 mm, each carrying a 210 × 148 mm spread
-with crop marks, a dashed fold at the spine, and bleed everywhere except the
-spine itself.
+```
+saddle-stitch: 16 pages onto 4 sheet(s) of 320 × 470 mm on indigo-5000;
+finished page 105 × 148 mm
+```
 
-It is more ceremony than it should be — wiring the boxes through by hand, and
-picking the fold coordinate out of the layout, are jobs the library should do.
-An `impose.job` entry point is the next thing to be written, and the command
-line after it.
+That reads the source's page boxes, checks every page is the same finished
+size, orders the pages for the binding, lays each surface out on the press,
+draws crop marks with the spine dashed, and writes the sheets.
+
+More of a job than the defaults:
+
+```python
+impose_document(
+    "cards.pdf", "cards-imposed.pdf",
+    schema="steprepeat",
+    press="sra3",
+    columns=3, rows=4, copies=250,
+    gutters="4mm",
+    marks=MarkStyle(colour="black"),   # K only, for a digital press
+)
+```
+
+The schema's own options pass straight through: `columns` and `rows` for the
+grid schemas, `section_pages` for perfect binding, `copies` for step and
+repeat. `marks=None` draws none.
+
+Refusals name the problem rather than producing an unusable sheet:
+
+```
+Page 4 has a finished size of 80 × 100 mm, but page 1 is 105 × 148 mm.
+Every page must be the same size to go on one grid.
+
+The imposed form is 436 × 312 mm including bleed and marks, and the
+imageable area is 310 × 450 mm. It does not fit either way round.
+```
+
+The pieces underneath are all public, and `impose_document` is only their
+assembly — read `impose/job.py` if you want to drive `plan`, `layout`,
+`marks`, and `render` yourself.
 
 ## Schemas
 
@@ -228,7 +220,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `schemas.cutstack` — cut into stacks that reassemble in order |
 | ✅ | `marks` — cut and fold marks, registration or K-only |
 | ✅ | `render` — pikepdf output, registration marks with overprint |
-| ⬜ | `job` — one call from source document to imposed file |
+| ✅ | `job` — one call from source document to imposed file |
 | ⬜ | PDF/X passthrough: OutputIntent, conformance keys |
 | ⬜ | Command line |
 | ⬜ | Registration targets, colour bars, slug line |

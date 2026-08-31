@@ -95,6 +95,7 @@ def impose(pages: int, *, section_pages: int = 4) -> Plan:
         rows=1,
         surfaces=tuple(surfaces),
         pages=pages,
+        fold_columns=(1,),
         schema="perfect-bound",
     )
 

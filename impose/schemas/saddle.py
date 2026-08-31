@@ -49,6 +49,7 @@ def impose(pages: int) -> Plan:
         rows=1,
         surfaces=tuple(surfaces),
         pages=pages,
+        fold_columns=(1,),
         schema="saddle-stitch",
     )
 
