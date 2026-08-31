@@ -21,6 +21,11 @@ from typing import Literal
 #: neighbour, and the error is invisible until the job is cut.
 Flip = Literal["long-edge", "short-edge"]
 
+#: Column indices of a two-page spread, named so the binding schemas read as
+#: what they are rather than as arithmetic.
+LEFT = 0
+RIGHT = 1
+
 
 def backing_cell(
     column: int, row: int, columns: int, rows: int, flip: Flip = "long-edge"

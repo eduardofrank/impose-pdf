@@ -118,7 +118,11 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `press` — sheet, asymmetric margins, gripper edge |
 | ✅ | `plan` — page order as integers, with validation |
 | ✅ | `layout` — gutters, bleed shaving, form fitting |
-| ⬜ | Schemas: saddle stitch, perfect bound, n-up, step and repeat, cut and stack |
+| ✅ | `schemas.saddle` — saddle stitch, sheets nested and stapled on the fold |
+| ✅ | `schemas.perfect` — perfect bound, sections gathered and glued |
+| ✅ | `schemas.nup` — consecutive pages in reading order |
+| ✅ | `schemas.steprepeat` — one item repeated to fill the sheet |
+| ✅ | `schemas.cutstack` — cut into stacks that reassemble in order |
 | ⬜ | `render` — pikepdf output, registration marks with overprint |
 | ⬜ | PDF/X passthrough: OutputIntent, conformance keys |
 | ⬜ | Command line |
