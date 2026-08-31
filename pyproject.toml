@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# The import package and the command are both `impose`; the distribution is
+# `impose-pdf` because `impose` on PyPI belongs to an unrelated imaging tool.
+name = "impose-pdf"
+version = "0.1.0"
+description = "Imposition for commercial print: saddle stitch, perfect bound, n-up, step and repeat, cut and stack."
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Eduardo Frank"}]
+keywords = ["pdf", "imposition", "prepress", "print", "indigo", "saddle-stitch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Manufacturing",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Printing",
+]
+dependencies = [
+    # MPL-2.0 over QPDF (Apache-2.0). Deliberately the only dependency, and
+    # deliberately not PyMuPDF, which is AGPL-or-commercial and would make the
+    # MIT licence here misleading to anyone redistributing.
+    "pikepdf>=9",
+]
+
+[project.optional-dependencies]
+dev = ["black", "isort", "pylint"]
+
+[project.urls]
+homepage = "https://github.com/eduardofrank/impose"
+issues = "https://github.com/eduardofrank/impose/issues"
+repository = "https://github.com/eduardofrank/impose.git"
+
+[tool.setuptools.packages.find]
+include = ["impose*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pylint.master]
+load-plugins = ["pylint.extensions.no_self_use"]
+
+[tool.pylint.variables]
+dummy-variables-rgx = "_|dummy"
+good-names = ["i", "j", "x", "y", "dx", "dy"]
+
+[tool.pylint.messages_control]
+disable = ["duplicate-code"]
+
+[tool.pylint.similarities]
+ignore-imports = true
