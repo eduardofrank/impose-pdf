@@ -16,6 +16,14 @@ The waste arithmetic is here because it belongs to imposition, not to pricing.
 A job of 500 cards at 21 up runs 24 sheets and leaves 4 slots empty. Those 4
 are already paid for, so the useful thing to tell someone is that 504 cards
 cost the same as 500.
+
+Density is not the same as cheapness, and choosing on density alone is a
+mistake. A 90 x 50 mm card goes 24 up on an Indigo turned, or 20 up upright.
+For 100 cards both run five sheets -- but 24 up throws away twenty cards to do
+it, and 20 up fills the sheet exactly. Past that the denser grid starts saving
+sheets and becomes the right answer. So where a quantity is known, the
+arrangements are ranked by sheets first and waste second, and density only
+breaks a remaining tie.
 """
 
 from __future__ import annotations
@@ -159,16 +167,35 @@ def arrangements(
     return found
 
 
+def rank(runs: list[Run]) -> list[Run]:
+    """Costed arrangements, cheapest first.
+
+    Fewest sheets wins, because a sheet is the thing being paid for. A tie goes
+    to whichever throws away less, and only then to the denser grid.
+    """
+    return sorted(runs, key=lambda r: (r.sheets, r.waste, -r.arrangement.up))
+
+
 def best(
     trim: Size,
     area: Size | Rect,
     *,
+    quantity: int | None = None,
     gutter: float = DEFAULT_GUTTER,
     allowance: float = 0.0,
 ) -> Arrangement | None:
-    """The densest arrangement, or ``None`` if the size will not fit at all."""
+    """The arrangement to run, or ``None`` if the size will not fit at all.
+
+    With a *quantity*, that means the one costing fewest sheets, then least
+    waste. Without one there is nothing to weigh against density, so the
+    densest is returned.
+    """
     found = arrangements(trim, area, gutter=gutter, allowance=allowance)
-    return found[0] if found else None
+    if not found:
+        return None
+    if quantity is None or quantity < 1:
+        return found[0]
+    return rank([plan_run(a, quantity) for a in found])[0].arrangement
 
 
 def plan_run(arrangement: Arrangement, quantity: int) -> Run:
@@ -195,12 +222,26 @@ def compare(
     gutter: float = DEFAULT_GUTTER,
     allowance: float = 0.0,
 ) -> list[Run]:
-    """Every arrangement costed for a job, densest first.
+    """Every arrangement costed for a job, cheapest first.
 
-    The densest is not always the cheapest for a given order: a slightly
-    sparser grid can divide the quantity more evenly and waste less.
+    The densest is not always the cheapest for a given order: a sparser grid
+    can divide the quantity more evenly and waste less on the same number of
+    sheets.
+
+    >>> from .units import MM
+    >>> from .press import INDIGO_5000
+    >>> card = Size(90 * MM, 50 * MM)
+    >>> area = INDIGO_5000.imageable_area()
+    >>> for run in compare(card, area, 100, gutter=4 * MM):
+    ...     print(run.describe())
+    100 on 5 sheet(s) at 20 up; 20 on the last, 0 wasted
+    100 on 5 sheet(s) at 24 up; 4 on the last, 20 wasted
     """
-    return [
-        plan_run(arrangement, quantity)
-        for arrangement in arrangements(trim, area, gutter=gutter, allowance=allowance)
-    ]
+    return rank(
+        [
+            plan_run(arrangement, quantity)
+            for arrangement in arrangements(
+                trim, area, gutter=gutter, allowance=allowance
+            )
+        ]
+    )

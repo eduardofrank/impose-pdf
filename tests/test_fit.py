@@ -124,12 +124,50 @@ class TestRun(unittest.TestCase):
             plan_run(Arrangement(2, 2, False, CARD, GUTTER), 0)
 
 
+BUSINESS_CARD = Size(90 * MM, 50 * MM)
+
+
 class TestCompare(unittest.TestCase):
-    def test_the_densest_grid_is_not_always_the_least_wasteful(self):
-        """21 up runs 24 sheets and wastes 4; 20 up runs 25 and wastes none."""
-        runs = compare(CARD, AREA, 500, gutter=GUTTER, allowance=ALLOWANCE)
-        self.assertGreater(runs[0].arrangement.up, runs[1].arrangement.up)
-        self.assertGreater(runs[0].waste, runs[1].waste)
+    """Ranked by what a job costs, not by how tightly it packs."""
+
+    def test_a_tie_on_sheets_goes_to_the_tidier_grid(self):
+        """100 cards: both grids run five sheets, but 24 up wastes twenty."""
+        runs = compare(BUSINESS_CARD, AREA, 100, gutter=GUTTER, allowance=ALLOWANCE)
+        self.assertEqual(runs[0].arrangement.up, 20)
+        self.assertEqual(runs[0].sheets, 5)
+        self.assertEqual(runs[0].waste, 0)
+        self.assertEqual(runs[1].arrangement.up, 24)
+        self.assertEqual(runs[1].waste, 20)
+
+    def test_the_denser_grid_wins_once_it_saves_a_sheet(self):
+        runs = compare(BUSINESS_CARD, AREA, 200, gutter=GUTTER, allowance=ALLOWANCE)
+        self.assertEqual(runs[0].arrangement.up, 24)
+        self.assertEqual(runs[0].sheets, 9)
+
+    def test_the_crossover_sits_at_a_hundred(self):
+        for quantity, expected in ((100, 20), (101, 24), (120, 24), (500, 24)):
+            with self.subTest(quantity=quantity):
+                runs = compare(
+                    BUSINESS_CARD, AREA, quantity, gutter=GUTTER, allowance=ALLOWANCE
+                )
+                self.assertEqual(runs[0].arrangement.up, expected)
+
+    def test_best_follows_the_same_rule_when_a_quantity_is_known(self):
+        chosen = best(
+            BUSINESS_CARD, AREA, quantity=100, gutter=GUTTER, allowance=ALLOWANCE
+        )
+        self.assertEqual(chosen.up, 20)
+
+    def test_best_falls_back_to_density_without_a_quantity(self):
+        chosen = best(BUSINESS_CARD, AREA, gutter=GUTTER, allowance=ALLOWANCE)
+        self.assertEqual(chosen.up, 24)
+
+    def test_the_card_grids_are_the_ones_the_shop_runs(self):
+        """24 up is 3 x 8 here and 8 x 3 on a landscape sheet; same layout."""
+        found = arrangements(BUSINESS_CARD, AREA, gutter=GUTTER, allowance=ALLOWANCE)
+        self.assertEqual(
+            {(a.up, a.columns, a.rows) for a in found}, {(24, 3, 8), (20, 5, 4)}
+        )
 
     def test_every_arrangement_is_costed(self):
         runs = compare(A6, AREA, 100, gutter=GUTTER, allowance=ALLOWANCE)

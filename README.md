@@ -162,21 +162,30 @@ Before the page order comes the question a shop asks first: how many pieces of
 this size go on a sheet, and what do the leftovers cost.
 
 ```
-$ impose fit 90mmx55mm -n 500
-90 × 55 mm on indigo-5000, imageable 310 × 450 mm
-  21 up, 3 × 7 upright, form 278 × 409 mm  ->  24 sheet(s), 4 wasted
-  20 up, 5 × 4 turned, form 291 × 372 mm  ->  25 sheet(s), 0 wasted
+$ impose fit 90mmx50mm -n 100
+90 × 50 mm on indigo-5000, imageable 310 × 450 mm
+  20 up, 5 × 4 turned, form 266 × 372 mm   ->  5 sheet(s), 0 wasted   <- run this
+  24 up, 3 × 8 upright, form 278 × 428 mm  ->  5 sheet(s), 20 wasted
 
-  4 slot(s) on the last sheet are printed and discarded. Raising the order to
-  504 costs no more press time.
-  20 up wastes 0 instead of 4, on 25 sheet(s) rather than 24.
+  24 up is denser but costs the same 5 sheet(s) and throws away 20 instead of 0.
 ```
 
-The densest grid is not always the one to run: a slightly sparser layout can
-divide the order more evenly. Both are shown, costed, and the leaner one is
-named.
+**Density is not cheapness.** A 90 × 50 mm business card goes 24 up on an
+Indigo or 20 up the other way round. For 100 cards both run five sheets — but
+24 up throws away twenty cards to do it, and 20 up fills the sheet exactly.
+Past that the denser grid starts saving sheets:
 
-The same arithmetic runs when imposing, so the grid is chosen for you unless
+```
+$ impose fit 90mmx50mm -n 200
+  24 up, 3 × 8 upright, form 278 × 428 mm  ->  9 sheet(s), 16 wasted   <- run this
+  20 up, 5 × 4 turned, form 266 × 372 mm   -> 10 sheet(s), 0 wasted
+```
+
+So arrangements are ranked by sheets first and waste second, and density only
+breaks a remaining tie. With no quantity given there is nothing to weigh
+against, and they are simply listed as they pack.
+
+The same choice is made when imposing, so the grid is picked for you unless
 you pin it with `--up`:
 
 ```

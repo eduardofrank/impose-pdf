@@ -213,7 +213,8 @@ class TestInformation(unittest.TestCase):
 class TestFit(unittest.TestCase):
     """The question a shop asks first: how many to a sheet."""
 
-    def test_lists_arrangements_densest_first(self):
+    def test_without_a_quantity_the_densest_leads(self):
+        """With nothing to weigh against, density is the only measure."""
         status, text, _ = run("fit", "A6", "--gutter", "4mm", "--allowance", "5mm")
         self.assertEqual(status, 0)
         self.assertIn("8 up", text)
@@ -231,10 +232,30 @@ class TestFit(unittest.TestCase):
         self.assertIn("504", text)
         self.assertIn("no more press time", text)
 
-    def test_names_a_leaner_grid_when_one_exists(self):
-        """21 up wastes 4; 20 up wastes none."""
-        _, text, _ = run("fit", "90mmx55mm", "-n", "500")
-        self.assertIn("wastes 0 instead of 4", text)
+    def test_a_tie_on_sheets_goes_to_the_tidier_grid(self):
+        """100 business cards: 20 up and 24 up both run five sheets, but 24
+        up throws away twenty cards to do it."""
+        _, text, _ = run("fit", "90mmx50mm", "-n", "100", "--allowance", "5mm")
+        first = text.strip().splitlines()[1]
+        self.assertIn("20 up", first)
+        self.assertIn("run this", first)
+        self.assertIn("denser but costs the same", text)
+
+    def test_the_denser_grid_wins_once_it_saves_a_sheet(self):
+        """200 of the same card: 24 up runs nine sheets against ten."""
+        _, text, _ = run("fit", "90mmx50mm", "-n", "200", "--allowance", "5mm")
+        first = text.strip().splitlines()[1]
+        self.assertIn("24 up", first)
+        self.assertIn("9 sheet(s)", first)
+
+    def test_the_crossover_is_where_the_shop_puts_it(self):
+        """Up to 100 the tidy grid; past it the dense one."""
+        for quantity, expected in ((100, "20 up"), (101, "24 up")):
+            with self.subTest(quantity=quantity):
+                _, text, _ = run(
+                    "fit", "90mmx50mm", "-n", str(quantity), "--allowance", "5mm"
+                )
+                self.assertIn(expected, text.strip().splitlines()[1])
 
     def test_a_size_that_does_not_fit_is_refused(self):
         status, _, err = run("fit", "A2")

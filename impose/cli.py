@@ -20,7 +20,7 @@ import sys
 from collections.abc import Sequence
 
 from . import ImposeError, __version__
-from .fit import DEFAULT_GUTTER, compare
+from .fit import DEFAULT_GUTTER, arrangements, compare
 from .job import SCHEMAS, build_plan, impose_document, source_boxes
 from .marks import MarkStyle
 from .press import get as get_press
@@ -282,10 +282,18 @@ def _fit(args: argparse.Namespace, out) -> int:
     trim = paper(args.size)
     quantity = max(0, args.quantity)
 
-    runs = compare(
-        trim, area, quantity or 1, gutter=args.gutter, allowance=args.allowance
-    )
-    if not runs:
+    # With no quantity there is nothing to weigh density against, so the
+    # arrangements are listed as they pack. With one, they are costed and
+    # ordered by what the job actually takes.
+    if quantity:
+        runs = compare(
+            trim, area, quantity, gutter=args.gutter, allowance=args.allowance
+        )
+        options = [run.arrangement for run in runs]
+    else:
+        runs = []
+        options = arrangements(trim, area, gutter=args.gutter, allowance=args.allowance)
+    if not options:
         raise ImposeError(
             f"A finished size of {format_mm(trim)} does not fit the imageable "
             f"area of {press.name} ({format_mm(area.size)}) even one up."
@@ -295,21 +303,25 @@ def _fit(args: argparse.Namespace, out) -> int:
         f"{format_mm(trim)} on {press.name}, imageable {format_mm(area.size)}",
         file=out,
     )
-    for run in runs:
-        line = f"  {run.arrangement.describe()}"
+    for index, arrangement in enumerate(options):
+        line = f"  {arrangement.describe()}"
         if quantity:
+            run = runs[index]
             line += f"  ->  {run.sheets} sheet(s), {run.waste} wasted"
+            if index == 0:
+                line += "   <- run this"
         print(line, file=out)
+
     if quantity:
         advice = runs[0].advice()
         if advice:
             print(f"\n  {advice}", file=out)
-        leanest = min(runs, key=lambda r: (r.waste, r.sheets))
-        if leanest is not runs[0] and leanest.waste < runs[0].waste:
+        densest = max(runs, key=lambda r: r.arrangement.up)
+        if densest is not runs[0]:
             print(
-                f"  {leanest.arrangement.up} up wastes {leanest.waste} instead "
-                f"of {runs[0].waste}, on {leanest.sheets} sheet(s) rather than "
-                f"{runs[0].sheets}.",
+                f"  {densest.arrangement.up} up is denser but costs the same "
+                f"{densest.sheets} sheet(s) and throws away "
+                f"{densest.waste} instead of {runs[0].waste}.",
                 file=out,
             )
     return 0
