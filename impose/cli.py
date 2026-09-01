@@ -86,6 +86,8 @@ def _common(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--gutters",
+        "--gutter",
+        dest="gutters",
         type=_length,
         default=0.0,
         metavar="LENGTH",
@@ -249,6 +251,8 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--sheet", metavar="SIZE", help="Sheet, if not the maximum.")
     fit.add_argument(
         "--gutter",
+        "--gutters",
+        dest="gutter",
         type=_length,
         default=DEFAULT_GUTTER,
         metavar="LENGTH",

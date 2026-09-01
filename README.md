@@ -83,9 +83,7 @@ impose steprepeat card.pdf --up 3x4 --copies 250 --marks black
 impose perfect novel.pdf --section-pages 16 --press indigo-7000
 ```
 
-Each schema is a subcommand, so options that suit only one of them appear only
-there. `impose presses` lists the profiles; `--dry-run` shows the page order
-and sheet count without writing anything:
+`--dry-run` shows the page order and sheet count without writing anything:
 
 ```
 $ impose saddle book.pdf --dry-run
@@ -97,13 +95,129 @@ sheet 1 back
   16 pages, 4 sheet(s), 8 surface(s); finished page 105 × 148 mm
 ```
 
-Refusals are sentences, and exit non-zero — 1 when the job cannot be done, 2
-when the arguments do not parse:
+Refusals are sentences:
 
 ```
 $ impose nup report.pdf --up 4x4
 impose: The imposed form is 436 × 608 mm including bleed and marks, and the
 imageable area is 310 × 450 mm. It does not fit either way round.
+```
+
+Every command and option is listed below.
+
+## Command line reference
+
+```
+impose SCHEMA INPUT [options]     impose a document
+impose fit SIZE [options]         how many fit, before there is a file
+impose presses                    list the press profiles
+```
+
+Sizes and lengths accept `mm`, `cm`, `in`, `pt`, `pc`, or a bare number meaning
+PDF points. One inch is 72 points. Paper names work anywhere a size does: `A4`,
+`SRA3`, `letter`, `tabloid`, and the rest of the ISO A/B/C, RA/SRA and ANSI
+series.
+
+### Schemas
+
+| command | binding | grid |
+|---|---|---|
+| `impose saddle` | nested, stapled through the fold | fixed 2-up spread |
+| `impose perfect` | sections gathered, spine glued | fixed 2-up spread |
+| `impose nup` | none; read as a stack | yours, or chosen |
+| `impose cutstack` | none; cut into stacks | yours, or chosen |
+| `impose steprepeat` | none; cut apart | yours, or chosen |
+
+### Options every schema takes
+
+| option | default | what it does |
+|---|---|---|
+| `INPUT` | — | the PDF to impose |
+| `-o`, `--output FILE` | `INPUT-imposed.pdf` | where to write |
+| `--press NAME` | `indigo-5000` | press profile; see `impose presses` |
+| `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
+| `--gutter LENGTH` | none | space between pages, for the knife (`--gutters` also accepted) |
+| `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |
+| `--mark-offset LENGTH` | `3mm` | gap between the trim and the start of a mark |
+| `--mark-length LENGTH` | `5mm` | how long each mark is |
+| `--mark-width LENGTH` | `0.25pt` | stroke width |
+| `--registration` | off | bullseye on each side of the form |
+| `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
+| `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
+| `-n`, `--dry-run` | off | show the page order and sheet count, write nothing |
+| `-q`, `--quiet` | off | say nothing on success; warnings still go to stderr |
+
+### Options for particular schemas
+
+| option | schemas | default | what it does |
+|---|---|---|---|
+| `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
+| `--copies N` | `steprepeat` | one sheet's worth | finished pieces wanted |
+| `--section-pages N` | `perfect` | `4` | pages per gathered section, a multiple of 4 |
+| `--paper-caliper LENGTH` | `saddle`, `perfect` | off | one sheet's thickness; turns on creep |
+| `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
+
+`saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
+asking for another grid is refused rather than quietly ignored.
+
+### `impose fit`
+
+Answers how many pieces of a size go on a sheet, and what an order wastes,
+without needing a file.
+
+| option | default | what it does |
+|---|---|---|
+| `SIZE` | — | finished size: `A6`, or `90mmx50mm` |
+| `-n`, `--quantity N` | none | pieces wanted; adds sheet counts and waste |
+| `--press NAME` | `indigo-5000` | press profile |
+| `--sheet SIZE` | the press maximum | sheet to run |
+| `--gutter LENGTH` | `4mm` | gap between pieces |
+| `--allowance LENGTH` | `5mm` | room kept clear each edge for marks and bleed |
+
+Note that `-n` means `--quantity` here and `--dry-run` on the schemas. `fit`
+never writes a file, so it has no dry run to ask for.
+
+Without a quantity the arrangements are listed as they pack. With one they are
+costed and ordered by what the job actually takes — fewest sheets first, then
+least waste.
+
+### Exit codes
+
+| code | meaning |
+|---|---|
+| `0` | done |
+| `1` | the job cannot be done: file missing, unknown press, form will not fit |
+| `2` | the arguments do not parse |
+
+Warnings — a book too thick to staple, say — go to stderr and do **not** change
+the exit code. The job still runs; it is your press and your stapler.
+
+### Worked examples
+
+```bash
+# A magazine on the default press, with creep for 100 micron stock
+impose saddle magazine.pdf --paper-caliper 0.1mm
+
+# Check the page order before committing anything
+impose saddle magazine.pdf --dry-run
+
+# A paperback in 16-page sections on the larger press
+impose perfect novel.pdf --section-pages 16 --press indigo-7000
+
+# Business cards: how many fit, and what 500 wastes
+impose fit 90mmx50mm -n 500
+
+# ...then run them, letting the grid be chosen
+impose steprepeat card.pdf --copies 500 --gutter 4mm --marks black
+
+# A6 flyers eight up, marks tightened to make them fit
+impose nup flyers.pdf --gutter 4mm --mark-offset 1mm --mark-length 4mm
+
+# Full press furniture for a proofing sheet
+impose nup artwork.pdf --registration --colour-bar
+
+# A long document cut into stacks that reassemble in order
+impose cutstack manual.pdf --up 2x2 --gutter 3mm
 ```
 
 ## Using it as a library
@@ -240,34 +354,6 @@ What moves is the **image inside its cell**, never the cell. The fold is where
 the fold is, and sliding both halves of a spread toward it would only overlap
 them.
 
-## Press marks
-
-Beyond cut and fold marks, two things a press sheet usually carries:
-
-```bash
-impose saddle book.pdf --registration --colour-bar
-```
-
-**Registration targets** — a ringed bullseye with a crosshair, one on each side
-of the form, in registration colour. Where the separations are out, the rings
-and the cross stop agreeing, which is what makes them readable at a glance
-rather than by measurement.
-
-**A colour bar** — each process ink solid and in quarter steps, the two-colour
-overprints that show trapping, and a three-colour grey. It sits flush to the
-tail of the sheet, in the waste, and the patches are laid down in DeviceCMYK
-directly, since their whole purpose is to put a known ink value on the sheet
-for a densitometer to read back.
-
-Both are placed only where the margin has room, and the bar is dropped
-entirely if the patches would come out narrower than an instrument aperture can
-read — an unreadable bar is worse than none, because it looks like a check that
-was made.
-
-This is a working bar, not a standardised one. Fogra, Ugra and GATF wedges are
-specified objects with their own patch geometry; a job that needs one of those
-needs the real thing rather than an approximation of it.
-
 ## Bindery limits
 
 A saddle-stitched book can only be so thick before the stapler struggles: the
@@ -311,6 +397,35 @@ reference and gives the cutter nothing at all on a job with no black in it.
 `black` is K only. On a digital press there are no plates to register — the
 marks are only guiding the knife and the folder — and 400% coverage in the trim
 zone risks setting off onto the next sheet.
+
+### Registration targets and colour bars
+
+Two more things a press sheet usually carries, both off unless asked for:
+
+```bash
+impose saddle book.pdf --registration --colour-bar
+```
+
+**Registration targets** — a ringed bullseye with a crosshair, one on each side
+of the form, in registration colour. Where the separations are out, the rings
+and the cross stop agreeing, which is what makes them readable at a glance
+rather than by measurement.
+
+**A colour bar** — each process ink solid and in quarter steps, the two-colour
+overprints that show trapping, and a three-colour grey. It sits flush to the
+tail of the sheet, in the waste, and the patches are laid down in DeviceCMYK
+directly, since their whole purpose is to put a known ink value on the sheet
+for a densitometer to read back.
+
+Both are placed only where the margin has room, and the bar is dropped
+entirely if the patches would come out narrower than an instrument aperture can
+read — an unreadable bar is worse than none, because it looks like a check that
+was made.
+
+This is a working bar, not a standardised one. Fogra, Ugra and GATF wedges are
+specified objects with their own patch geometry; a job that needs one of those
+needs the real thing rather than an approximation of it.
+
 
 ## PDF/X
 
