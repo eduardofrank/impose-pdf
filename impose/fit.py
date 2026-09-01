@@ -1,0 +1,206 @@
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+
+"""How many fit, which way round, and what the leftovers cost.
+
+The schemas answer "what order do the pages go in". This answers the question
+that comes first in a shop: given a finished size and a press, how many fit on
+a sheet, and how much of the sheet is thrown away.
+
+Two things decide it. Pages may sit upright or on their sides, and the denser
+of the two is usually -- not always -- the one to run. And the count along a
+span is not a simple division once there is a gutter: *n* pieces have *n-1*
+gaps between them, never *n*, so the gap is added once to the span before
+dividing rather than once per piece.
+
+The waste arithmetic is here because it belongs to imposition, not to pricing.
+A job of 500 cards at 21 up runs 24 sheets and leaves 4 slots empty. Those 4
+are already paid for, so the useful thing to tell someone is that 504 cards
+cost the same as 500.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import math
+
+from .geometry import Rect, Size
+from .units import format_mm
+
+#: A gap wide enough for a guillotine to take without cutting into a neighbour.
+DEFAULT_GUTTER = 4.0 * 72 / 25.4
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Arrangement:
+    """One way of putting a finished size onto a sheet."""
+
+    columns: int
+    rows: int
+    turned: bool
+    cell: Size
+    gutter: float = 0.0
+
+    @property
+    def up(self) -> int:
+        """How many pieces one surface carries."""
+        return self.columns * self.rows
+
+    @property
+    def form(self) -> Size:
+        """The trims and their gutters, without marks or bleed."""
+        return Size(
+            self.columns * self.cell.width + (self.columns - 1) * self.gutter,
+            self.rows * self.cell.height + (self.rows - 1) * self.gutter,
+        )
+
+    def describe(self) -> str:
+        """A line for an operator choosing a layout.
+
+        >>> from .units import MM
+        >>> a = Arrangement(2, 4, True, Size(148 * MM, 105 * MM), 4 * MM)
+        >>> a.describe()
+        '8 up, 2 × 4 turned, form 300 × 432 mm'
+        """
+        way = "turned" if self.turned else "upright"
+        return (
+            f"{self.up} up, {self.columns} × {self.rows} {way}, "
+            f"form {format_mm(self.form)}"
+        )
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Run:
+    """What an arrangement means for a job of a given size."""
+
+    arrangement: Arrangement
+    quantity: int
+    sheets: int
+    on_last_sheet: int
+
+    @property
+    def capacity(self) -> int:
+        """Pieces the press run could carry."""
+        return self.sheets * self.arrangement.up
+
+    @property
+    def waste(self) -> int:
+        """Slots printed and thrown away."""
+        return self.capacity - self.quantity
+
+    def advice(self) -> str | None:
+        """What to say about the leftovers, if anything.
+
+        The empty slots are already being printed, so the honest thing to
+        report is that filling them is free.
+        """
+        if self.waste <= 0:
+            return None
+        return (
+            f"{self.waste} slot(s) on the last sheet are printed and "
+            f"discarded. Raising the order to {self.capacity} costs no more "
+            f"press time."
+        )
+
+    def describe(self) -> str:
+        """A summary of the run."""
+        return (
+            f"{self.quantity} on {self.sheets} sheet(s) at "
+            f"{self.arrangement.up} up; {self.on_last_sheet} on the last, "
+            f"{self.waste} wasted"
+        )
+
+
+def count_along(span: float, unit: float, gutter: float = 0.0) -> int:
+    """How many *unit* lengths fit in *span* with *gutter* between them.
+
+    There are one fewer gaps than pieces, so the gap is added to the span once
+    before dividing rather than charged against every piece.
+
+    >>> count_along(300, 148, 4)
+    2
+    >>> count_along(440, 105, 4)
+    4
+    >>> count_along(100, 150, 0)
+    0
+    """
+    if unit <= 0 or span < unit:
+        return 0
+    if gutter <= 0:
+        return int(math.floor((span + 1e-9) / unit))
+    return max(0, int(math.floor((span + gutter + 1e-9) / (unit + gutter))))
+
+
+def arrangements(
+    trim: Size,
+    area: Size | Rect,
+    *,
+    gutter: float = DEFAULT_GUTTER,
+    allowance: float = 0.0,
+) -> list[Arrangement]:
+    """Every way *trim* fits *area*, densest first.
+
+    *allowance* is the room to keep clear on each edge for marks and bleed; it
+    is taken off the area before anything is counted.
+    """
+    usable = area.size if isinstance(area, Rect) else area
+    width = usable.width - 2 * allowance
+    height = usable.height - 2 * allowance
+
+    found: list[Arrangement] = []
+    for turned in (False, True):
+        cell = trim.swapped() if turned else trim
+        columns = count_along(width, cell.width, gutter)
+        rows = count_along(height, cell.height, gutter)
+        if columns and rows:
+            found.append(Arrangement(columns, rows, turned, cell, gutter))
+    # Densest first; on a tie the upright one, since turning pages for no gain
+    # only makes the sheet harder to read on the stacker.
+    found.sort(key=lambda a: (-a.up, a.turned))
+    return found
+
+
+def best(
+    trim: Size,
+    area: Size | Rect,
+    *,
+    gutter: float = DEFAULT_GUTTER,
+    allowance: float = 0.0,
+) -> Arrangement | None:
+    """The densest arrangement, or ``None`` if the size will not fit at all."""
+    found = arrangements(trim, area, gutter=gutter, allowance=allowance)
+    return found[0] if found else None
+
+
+def plan_run(arrangement: Arrangement, quantity: int) -> Run:
+    """What *quantity* pieces cost in sheets at this arrangement.
+
+    >>> from .units import MM
+    >>> a = Arrangement(3, 7, False, Size(90 * MM, 55 * MM), 4 * MM)
+    >>> plan_run(a, 500).describe()
+    '500 on 24 sheet(s) at 21 up; 17 on the last, 4 wasted'
+    """
+    if quantity < 1:
+        raise ValueError(f"A run is at least one piece; got {quantity}.")
+    up = arrangement.up
+    sheets = math.ceil(quantity / up)
+    on_last = quantity - (sheets - 1) * up
+    return Run(arrangement, quantity, sheets, on_last)
+
+
+def compare(
+    trim: Size,
+    area: Size | Rect,
+    quantity: int,
+    *,
+    gutter: float = DEFAULT_GUTTER,
+    allowance: float = 0.0,
+) -> list[Run]:
+    """Every arrangement costed for a job, densest first.
+
+    The densest is not always the cheapest for a given order: a slightly
+    sparser grid can divide the quantity more evenly and waste less.
+    """
+    return [
+        plan_run(arrangement, quantity)
+        for arrangement in arrangements(trim, area, gutter=gutter, allowance=allowance)
+    ]

@@ -208,3 +208,72 @@ class TestInformation(unittest.TestCase):
         status, text, _ = run("--version")
         self.assertEqual(status, 0)
         self.assertIn("impose", text)
+
+
+class TestFit(unittest.TestCase):
+    """The question a shop asks first: how many to a sheet."""
+
+    def test_lists_arrangements_densest_first(self):
+        status, text, _ = run("fit", "A6", "--gutter", "4mm", "--allowance", "5mm")
+        self.assertEqual(status, 0)
+        self.assertIn("8 up", text)
+        self.assertIn("turned", text)
+        self.assertLess(text.index("8 up"), text.index("4 up"))
+
+    def test_a_quantity_adds_sheets_and_waste(self):
+        status, text, _ = run("fit", "90mmx55mm", "-n", "500")
+        self.assertEqual(status, 0)
+        self.assertIn("sheet(s)", text)
+        self.assertIn("wasted", text)
+
+    def test_offers_the_free_units(self):
+        _, text, _ = run("fit", "90mmx55mm", "-n", "500")
+        self.assertIn("504", text)
+        self.assertIn("no more press time", text)
+
+    def test_names_a_leaner_grid_when_one_exists(self):
+        """21 up wastes 4; 20 up wastes none."""
+        _, text, _ = run("fit", "90mmx55mm", "-n", "500")
+        self.assertIn("wastes 0 instead of 4", text)
+
+    def test_a_size_that_does_not_fit_is_refused(self):
+        status, _, err = run("fit", "A2")
+        self.assertEqual(status, 1)
+        self.assertIn("even one up", err)
+
+    def test_press_can_be_chosen(self):
+        status, text, _ = run("fit", "A6", "--press", "indigo-12000")
+        self.assertEqual(status, 0)
+        self.assertIn("indigo-12000", text)
+
+
+class TestAutomaticGrid(unittest.TestCase):
+    def test_the_grid_is_chosen_when_not_given(self):
+        """Eight A6 on one Indigo sheet, without being told 2x4."""
+        with workspace(pages=8) as source:
+            status, text, err = run(
+                "nup",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--gutters",
+                "4mm",
+                "--mark-offset",
+                "1mm",
+                "--mark-length",
+                "4mm",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertIn("1 sheet(s)", text)
+
+    def test_an_explicit_grid_still_wins(self):
+        with workspace(pages=4) as source:
+            status, _, err = run(
+                "nup",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--up",
+                "2x1",
+            )
+            self.assertEqual(status, 0, err)

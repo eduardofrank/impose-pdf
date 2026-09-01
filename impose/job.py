@@ -25,6 +25,7 @@ import pikepdf
 
 from . import ImposeError
 from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
+from .fit import best
 from .geometry import Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, trim_marks
@@ -139,6 +140,28 @@ def build_plan(schema: str, pages: int, **options: Any) -> Plan:
     return build(pages, **{k: v for k, v in options.items() if v is not None})
 
 
+def choose_grid(
+    trim: Size, press: Press, sheet: Size, *, gutters: Gutters, allowance: float
+) -> tuple[int, int, bool]:
+    """The densest grid that fits, and whether it needs the pages turned.
+
+    This is the question a shop asks before anything else: given this finished
+    size and this press, how many to a sheet. Answering it here means the
+    caller does not have to already know.
+    """
+    gutter = max(gutters.horizontal, gutters.vertical)
+    arrangement = best(
+        trim, press.imageable_area(sheet), gutter=gutter, allowance=allowance
+    )
+    if arrangement is None:
+        raise ImposeError(
+            f"A finished size of {format_mm(trim)} does not fit the imageable "
+            f"area of {press.name} "
+            f"({format_mm(press.imageable_area(sheet).size)}) even one up."
+        )
+    return arrangement.columns, arrangement.rows, arrangement.turned
+
+
 def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     source: pikepdf.Pdf | str | pathlib.Path,
     output: str | pathlib.Path | IO[bytes],
@@ -179,8 +202,25 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         machine.check_sheet(sheet_size)
         boxes = source_boxes(opened)
 
+        gaps = _gutters(gutters)
+        allowance = marks.reach if marks else 0.0
+        chose_turned = False
+        if schema not in _FIXED_GRID and not (
+            options.get("columns") or options.get("rows")
+        ):
+            columns, rows, chose_turned = choose_grid(
+                boxes.trim_size,
+                machine,
+                sheet_size,
+                gutters=gaps,
+                allowance=allowance,
+            )
+            options["columns"], options["rows"] = columns, rows
+
         plan = build_plan(schema, len(opened.pages), **options)
         plan.validate(exhaustive=schema != "steprepeat")
+        if chose_turned and orientation == "auto":
+            orientation = "turned"
 
         style = marks
         plan, layouts = _fit(
@@ -188,10 +228,10 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             schema=schema,
             orientation=orientation,
             boxes=boxes,
-            gutters=_gutters(gutters),
+            gutters=gaps,
             press=machine,
             sheet=sheet_size,
-            allowance=style.reach if style else 0.0,
+            allowance=allowance,
         )
         renderer = Renderer(style=style)
         turned = any(layout.turned for layout in layouts)

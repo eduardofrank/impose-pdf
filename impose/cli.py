@@ -20,11 +20,12 @@ import sys
 from collections.abc import Sequence
 
 from . import ImposeError, __version__
+from .fit import DEFAULT_GUTTER, compare
 from .job import SCHEMAS, build_plan, impose_document, source_boxes
 from .marks import MarkStyle
 from .press import get as get_press
 from .press import press_names
-from .units import format_mm, length
+from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
 _GRID_SCHEMAS = ("nup", "cutstack", "steprepeat")
@@ -162,9 +163,10 @@ def build_parser() -> argparse.ArgumentParser:
             schema.add_argument(
                 "--up",
                 type=_grid,
-                default=(2, 1),
+                default=None,
                 metavar="COLUMNSxROWS",
-                help="How many pages across and down. Default: 2x1.",
+                help="How many pages across and down. Omit it and the densest "
+                "grid that fits the press is chosen for you.",
             )
         if name == "perfect":
             schema.add_argument(
@@ -182,6 +184,47 @@ def build_parser() -> argparse.ArgumentParser:
                 metavar="N",
                 help="Finished pieces wanted. Default: one sheet's worth.",
             )
+
+    fit = subcommands.add_parser(
+        "fit",
+        help="How many fit on a sheet, and what the leftovers cost.",
+        description="Work out how many pieces of a given finished size fit on "
+        "a press sheet, and how much of the run is wasted.",
+    )
+    fit.set_defaults(command="fit")
+    fit.add_argument(
+        "size",
+        help="Finished size: a name such as A6, or WIDTHxHEIGHT such " "as 90mmx55mm.",
+    )
+    fit.add_argument(
+        "-n",
+        "--quantity",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Pieces wanted. With this, the sheet count and waste are shown.",
+    )
+    fit.add_argument(
+        "--press",
+        default="indigo-5000",
+        metavar="NAME",
+        help="Press profile. Default: %(default)s.",
+    )
+    fit.add_argument("--sheet", metavar="SIZE", help="Sheet, if not the maximum.")
+    fit.add_argument(
+        "--gutter",
+        type=_length,
+        default=DEFAULT_GUTTER,
+        metavar="LENGTH",
+        help="Gap between pieces, for the knife. Default: 4mm.",
+    )
+    fit.add_argument(
+        "--allowance",
+        type=_length,
+        default=5 * 72 / 25.4,
+        metavar="LENGTH",
+        help="Room kept clear on each edge for marks and bleed. Default: 5mm.",
+    )
 
     presses = subcommands.add_parser(
         "presses", help="List the press profiles.", description="List press profiles."
@@ -206,7 +249,7 @@ def _style(args: argparse.Namespace) -> MarkStyle | None:
 def _schema_options(args: argparse.Namespace) -> dict:
     """Options belonging to the chosen schema."""
     options: dict = {}
-    if hasattr(args, "up"):
+    if getattr(args, "up", None) is not None:
         options["columns"], options["rows"] = args.up
     if getattr(args, "section_pages", None) is not None:
         options["section_pages"] = args.section_pages
@@ -227,6 +270,48 @@ def _list_presses(out) -> int:
         "committing a job.",
         file=out,
     )
+    return 0
+
+
+def _fit(args: argparse.Namespace, out) -> int:
+    """Answer how many fit, and what a given order wastes."""
+    press = get_press(args.press)
+    sheet = paper(args.sheet) if args.sheet else press.sheet
+    press.check_sheet(sheet)
+    area = press.imageable_area(sheet)
+    trim = paper(args.size)
+    quantity = max(0, args.quantity)
+
+    runs = compare(
+        trim, area, quantity or 1, gutter=args.gutter, allowance=args.allowance
+    )
+    if not runs:
+        raise ImposeError(
+            f"A finished size of {format_mm(trim)} does not fit the imageable "
+            f"area of {press.name} ({format_mm(area.size)}) even one up."
+        )
+
+    print(
+        f"{format_mm(trim)} on {press.name}, imageable {format_mm(area.size)}",
+        file=out,
+    )
+    for run in runs:
+        line = f"  {run.arrangement.describe()}"
+        if quantity:
+            line += f"  ->  {run.sheets} sheet(s), {run.waste} wasted"
+        print(line, file=out)
+    if quantity:
+        advice = runs[0].advice()
+        if advice:
+            print(f"\n  {advice}", file=out)
+        leanest = min(runs, key=lambda r: (r.waste, r.sheets))
+        if leanest is not runs[0] and leanest.waste < runs[0].waste:
+            print(
+                f"  {leanest.arrangement.up} up wastes {leanest.waste} instead "
+                f"of {runs[0].waste}, on {leanest.sheets} sheet(s) rather than "
+                f"{runs[0].sheets}.",
+                file=out,
+            )
     return 0
 
 
@@ -260,6 +345,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "presses":
             return _list_presses(out)
+        if args.command == "fit":
+            return _fit(args, out)
         if not args.input.exists():
             raise ImposeError(f"No such file: {args.input}")
         if args.dry_run:

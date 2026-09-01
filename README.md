@@ -156,6 +156,38 @@ The pieces underneath are all public, and `impose_document` is only their
 assembly — read `impose/job.py` if you want to drive `plan`, `layout`,
 `marks`, and `render` yourself.
 
+## How many fit
+
+Before the page order comes the question a shop asks first: how many pieces of
+this size go on a sheet, and what do the leftovers cost.
+
+```
+$ impose fit 90mmx55mm -n 500
+90 × 55 mm on indigo-5000, imageable 310 × 450 mm
+  21 up, 3 × 7 upright, form 278 × 409 mm  ->  24 sheet(s), 4 wasted
+  20 up, 5 × 4 turned, form 291 × 372 mm  ->  25 sheet(s), 0 wasted
+
+  4 slot(s) on the last sheet are printed and discarded. Raising the order to
+  504 costs no more press time.
+  20 up wastes 0 instead of 4, on 25 sheet(s) rather than 24.
+```
+
+The densest grid is not always the one to run: a slightly sparser layout can
+divide the order more evenly. Both are shown, costed, and the leaner one is
+named.
+
+The same arithmetic runs when imposing, so the grid is chosen for you unless
+you pin it with `--up`:
+
+```
+$ impose nup a6.pdf --gutters 4mm --mark-offset 1mm --mark-length 4mm
+n-up: 8 pages onto 1 sheet(s) of 320 × 470 mm on indigo-5000
+```
+
+Counting along a span allows for gutters correctly: *n* pieces have *n−1* gaps
+between them, so the gap is added to the span once before dividing rather than
+charged against every piece.
+
 ## Schemas
 
 | schema | assembly | ordering |
@@ -286,7 +318,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `pdfx` — OutputIntent and conformance keys carried through |
 | ✅ | `cli` — the `impose` command |
 | ⬜ | Registration targets, colour bars, slug line |
-| ⬜ | Choosing the grid as well as the orientation |
+| ✅ | `fit` — densest grid, orientation, and run waste |
 | ⬜ | Creep compensation for thick saddle-stitched work |
 
 ## Development
