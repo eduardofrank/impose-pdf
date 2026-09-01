@@ -9,8 +9,7 @@ sheet size and imageable area it knows.
 
 > **Status: complete for the five schemas it covers.** Library and command line
 > both work end to end. Still to come: registration targets and colour bars,
-> creep compensation, and documents whose pages differ in size. See
-> [Roadmap](#roadmap).
+> and documents whose pages differ in size. See [Roadmap](#roadmap).
 
 ## Why this exists
 
