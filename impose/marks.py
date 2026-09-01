@@ -28,6 +28,10 @@ from typing import Literal
 from .geometry import Rect, approx
 from .units import MM
 
+#: Bezier handle length for a circular arc of unit radius. Four arcs of this
+#: make a circle indistinguishable from one at any sane resolution.
+_KAPPA = 0.5522847498307936
+
 #: How a mark is coloured.
 #:
 #: ``registration`` is a Separation /All colorant at 100%, overprinting, which
@@ -70,6 +74,67 @@ class MarkStyle:
     def reach(self) -> float:
         """How far beyond the trim a mark extends, offset and length together."""
         return self.offset + self.length
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Patch:
+    """A filled rectangle of a named ink mixture, for a colour bar."""
+
+    rect: Rect
+    cmyk: tuple[float, float, float, float]
+    label: str = ""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Target:
+    """A registration bullseye: concentric ring with a crosshair through it.
+
+    Drawn in registration colour, so it appears on every plate. Where the
+    plates are out, the rings and the cross stop agreeing, which is what makes
+    it readable at a glance rather than by measurement.
+    """
+
+    x: float
+    y: float
+    radius: float
+    width: float
+
+    @property
+    def reach(self) -> float:
+        """Half the space the target needs, crosshair included."""
+        return self.radius * 1.6
+
+
+#: The patch sequence of a working colour bar: each process ink solid and in
+#: quarter steps, then the two-colour overprints that show trapping, then a
+#: three-colour grey and a registration solid.
+#:
+#: This is a serviceable bar for checking density and dot gain on press. It is
+#: not a standardised wedge -- Fogra, Ugra and GATF strips are specified
+#: objects with their own patch geometry, and if a job needs one of those it
+#: needs the real thing, not an approximation of it.
+STANDARD_PATCHES: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
+    ("C", (1, 0, 0, 0)),
+    ("C75", (0.75, 0, 0, 0)),
+    ("C50", (0.5, 0, 0, 0)),
+    ("C25", (0.25, 0, 0, 0)),
+    ("M", (0, 1, 0, 0)),
+    ("M75", (0, 0.75, 0, 0)),
+    ("M50", (0, 0.5, 0, 0)),
+    ("M25", (0, 0.25, 0, 0)),
+    ("Y", (0, 0, 1, 0)),
+    ("Y75", (0, 0, 0.75, 0)),
+    ("Y50", (0, 0, 0.5, 0)),
+    ("Y25", (0, 0, 0.25, 0)),
+    ("K", (0, 0, 0, 1)),
+    ("K75", (0, 0, 0, 0.75)),
+    ("K50", (0, 0, 0, 0.5)),
+    ("K25", (0, 0, 0, 0.25)),
+    ("CM", (1, 1, 0, 0)),
+    ("CY", (1, 0, 1, 0)),
+    ("MY", (0, 1, 1, 0)),
+    ("CMY", (1, 1, 1, 0)),
+)
 
 
 def cut_lines(trims: list[Rect]) -> tuple[list[float], list[float]]:
@@ -137,6 +202,125 @@ def trim_marks(
             Segment(form.x1 + style.offset, y, form.x1 + style.reach, y, style.width)
         )
     return marks
+
+
+def registration_targets(
+    form: Rect,
+    area: Rect,
+    *,
+    style: MarkStyle | None = None,
+    radius: float = 2.5 * MM,
+) -> list[Target]:
+    """Bullseyes centred on each side of the form, out in the margin.
+
+    One per edge is enough to read a plate that has moved or turned. A target
+    is placed only where the margin actually has room for it, so a form that
+    nearly fills the sheet simply gets fewer.
+    """
+    style = style or MarkStyle()
+    gap = style.reach + radius * 1.6
+    centre_x = (form.x0 + form.x1) / 2
+    centre_y = (form.y0 + form.y1) / 2
+    candidates = (
+        (centre_x, form.y0 - gap),
+        (centre_x, form.y1 + gap),
+        (form.x0 - gap, centre_y),
+        (form.x1 + gap, centre_y),
+    )
+    return [
+        Target(x, y, radius, style.width)
+        for x, y in candidates
+        if _has_room(x, y, radius * 1.6, area)
+    ]
+
+
+def _has_room(x: float, y: float, reach: float, area: Rect) -> bool:
+    """Whether a mark of this reach fits inside the imageable area."""
+    return (
+        area.x0 <= x - reach
+        and x + reach <= area.x1
+        and area.y0 <= y - reach
+        and y + reach <= area.y1
+    )
+
+
+def colour_bar(  # pylint: disable=too-many-arguments
+    form: Rect,
+    area: Rect,
+    *,
+    style: MarkStyle | None = None,
+    patches: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
+        STANDARD_PATCHES
+    ),
+    height: float = 5 * MM,
+    minimum_patch: float = 3 * MM,
+) -> list[Patch]:
+    """A row of ink patches along the tail of the sheet, if there is room.
+
+    The bar is laid below the form and sized to the space available. Where the
+    patches would come out narrower than a spectrophotometer aperture can read,
+    none are drawn: an unreadable bar is worse than no bar, because it looks
+    like a check that was made.
+    """
+    style = style or MarkStyle()
+    # Flush to the tail of the imageable area. A colour bar lives in the waste
+    # at the sheet edge, not tucked against the form, and putting it there
+    # keeps it clear of anything else in the margin.
+    bottom = area.y0
+    top = bottom + height
+    if not patches or top > form.y0 - style.reach:
+        return []
+    width = min(form.width, area.width) / len(patches)
+    if width < minimum_patch:
+        return []
+    left = max(area.x0, (form.x0 + form.x1) / 2 - width * len(patches) / 2)
+    return [
+        Patch(
+            Rect(left + index * width, bottom, left + (index + 1) * width, top),
+            cmyk,
+            label,
+        )
+        for index, (label, cmyk) in enumerate(patches)
+    ]
+
+
+def circle_path(x: float, y: float, radius: float) -> list[tuple[float, ...]]:
+    """Four Bezier arcs approximating a circle, as PDF operands.
+
+    Returned as ``(x1, y1, x2, y2, x3, y3)`` control points for ``c``, after a
+    ``m`` to the starting point.
+    """
+    k = _KAPPA * radius
+    return [
+        (x + radius, y + k, x + k, y + radius, x, y + radius),
+        (x - k, y + radius, x - radius, y + k, x - radius, y),
+        (x - radius, y - k, x - k, y - radius, x, y - radius),
+        (x + k, y - radius, x + radius, y - k, x + radius, y),
+    ]
+
+
+def furniture(
+    form: Rect,
+    area: Rect,
+    *,
+    style: MarkStyle | None = None,
+    bar: bool = True,
+    targets: bool = True,
+) -> tuple[list[Target], list[Patch]]:
+    """Everything that goes in the margin, placed so nothing lands on anything.
+
+    The bar takes the tail of the sheet and the targets sit just outside the
+    form, so the only way they can meet is on a sheet with almost no margin --
+    and there the target that would collide is dropped rather than printed over
+    the patches.
+    """
+    style = style or MarkStyle()
+    patches = colour_bar(form, area, style=style) if bar else []
+    found = registration_targets(form, area, style=style) if targets else []
+    if not patches:
+        return found, patches
+    ceiling = max(patch.rect.y1 for patch in patches)
+    return [t for t in found if t.y - t.reach > ceiling], patches
 
 
 def allowance(style: MarkStyle | None) -> float:

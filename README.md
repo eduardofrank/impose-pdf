@@ -8,8 +8,8 @@ BleedBox is the margin that gets trimmed away — and targets a named press whos
 sheet size and imageable area it knows.
 
 > **Status: complete for the five schemas it covers.** Library and command line
-> both work end to end. Still to come: registration targets and colour bars,
-> and documents whose pages differ in size. See [Roadmap](#roadmap).
+> both work end to end. Still to come: a slug line, and documents whose pages
+> differ in size. See [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -240,6 +240,34 @@ What moves is the **image inside its cell**, never the cell. The fold is where
 the fold is, and sliding both halves of a spread toward it would only overlap
 them.
 
+## Press marks
+
+Beyond cut and fold marks, two things a press sheet usually carries:
+
+```bash
+impose saddle book.pdf --registration --colour-bar
+```
+
+**Registration targets** — a ringed bullseye with a crosshair, one on each side
+of the form, in registration colour. Where the separations are out, the rings
+and the cross stop agreeing, which is what makes them readable at a glance
+rather than by measurement.
+
+**A colour bar** — each process ink solid and in quarter steps, the two-colour
+overprints that show trapping, and a three-colour grey. It sits flush to the
+tail of the sheet, in the waste, and the patches are laid down in DeviceCMYK
+directly, since their whole purpose is to put a known ink value on the sheet
+for a densitometer to read back.
+
+Both are placed only where the margin has room, and the bar is dropped
+entirely if the patches would come out narrower than an instrument aperture can
+read — an unreadable bar is worse than none, because it looks like a check that
+was made.
+
+This is a working bar, not a standardised one. Fogra, Ugra and GATF wedges are
+specified objects with their own patch geometry; a job that needs one of those
+needs the real thing rather than an approximation of it.
+
 ## Bindery limits
 
 A saddle-stitched book can only be so thick before the stapler struggles: the
@@ -368,7 +396,8 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `job` — one call from source document to imposed file |
 | ✅ | `pdfx` — OutputIntent and conformance keys carried through |
 | ✅ | `cli` — the `impose` command |
-| ⬜ | Registration targets, colour bars, slug line |
+| ✅ | `marks` — registration targets and colour bar |
+| ⬜ | Slug line (needs an embedded font to stay PDF/X) |
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `creep` — fore-edge push-out compensated per sheet |
 

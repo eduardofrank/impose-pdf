@@ -117,6 +117,20 @@ def _common(parser: argparse.ArgumentParser) -> None:
         help="Stroke width of marks. Default: 0.25pt.",
     )
     parser.add_argument(
+        "--registration",
+        action="store_true",
+        help="Add a registration bullseye on each side of the form, in "
+        "registration colour. Placed only where the margin has room.",
+    )
+    parser.add_argument(
+        "--colour-bar",
+        "--color-bar",
+        dest="colour_bar",
+        action="store_true",
+        help="Add a row of process-ink patches along the tail of the sheet, "
+        "for reading density on press.",
+    )
+    parser.add_argument(
         "--orientation",
         choices=("auto", "upright", "turned"),
         default="auto",
@@ -397,6 +411,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             orientation=args.orientation,
             max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
             paper_caliper=getattr(args, "paper_caliper", 0.0),
+            registration=args.registration,
+            colour_bar=args.colour_bar,
             **_schema_options(args),
         )
         if not args.quiet:

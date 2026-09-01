@@ -28,7 +28,7 @@ from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
 from .fit import best
 from .geometry import Size, approx
 from .layout import Gutters, lay_out
-from .marks import MarkStyle, Segment, trim_marks
+from .marks import MarkStyle, Segment, furniture, trim_marks
 from .plan import Plan
 from .press import Press
 from .press import get as get_press
@@ -175,6 +175,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     orientation: str = "auto",
     max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
     paper_caliper: float | str = 0.0,
+    registration: bool = False,
+    colour_bar: bool = False,
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
@@ -187,6 +189,10 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     each sheet's image is slid toward the spine by as much as its own fold has
     been displaced. Measure it rather than guess -- a micrometer on a stack of
     twenty, divided by twenty, is how a shop gets this number.
+
+    *registration* adds a bullseye on each side of the form, and *colour_bar*
+    a row of ink patches along the tail. Both are placed only where the margin
+    has room, so a form that nearly fills the sheet simply gets fewer or none.
 
     *orientation* decides how the pages sit in their cells. ``"auto"`` tries
     them upright and, if the form will not fit, tries them turned a quarter --
@@ -248,10 +254,23 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         renderer = Renderer(style=style)
         turned = any(layout.turned for layout in layouts)
         for layout in layouts:
+            targets, patches = (
+                furniture(
+                    layout.trim_bounds,
+                    layout.imageable,
+                    style=style,
+                    bar=colour_bar,
+                    targets=registration,
+                )
+                if style and (registration or colour_bar)
+                else ([], [])
+            )
             renderer.add(
                 layout,
                 opened,
                 marks=_marks(layout, plan, style),
+                targets=targets,
+                bar=patches,
                 source_rotation=boxes.rotation,
             )
         identity = renderer.carry_over(opened)

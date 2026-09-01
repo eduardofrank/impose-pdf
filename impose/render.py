@@ -20,7 +20,7 @@ from pikepdf import Array, Dictionary, Name
 from . import __version__
 from .geometry import Rect
 from .layout import PlacedPage, SheetLayout
-from .marks import MarkStyle, Segment
+from .marks import MarkStyle, Patch, Segment, Target, circle_path
 from .pdfx import Identity, carry_over, minimum_version
 from .pdfx import read as read_identity
 
@@ -117,6 +117,60 @@ def _draw_marks(
     return "".join(parts)
 
 
+def _draw_patches(patches: list[Patch]) -> str:
+    """Colour-bar patches, filled in DeviceCMYK.
+
+    Patches are laid down in process inks directly rather than through the
+    output intent, because their whole purpose is to put a known ink value on
+    the sheet for a densitometer to read back.
+    """
+    if not patches:
+        return ""
+    parts = ["q\n"]
+    for patch in patches:
+        cyan, magenta, yellow, black = patch.cmyk
+        parts.append(f"{_numbers(cyan, magenta, yellow, black)} k\n")
+        parts.append(
+            f"{_numbers(patch.rect.x0, patch.rect.y0, patch.rect.width, patch.rect.height)}"
+            " re f\n"
+        )
+    parts.append("Q\n")
+    return "".join(parts)
+
+
+def _draw_targets(
+    targets: list[Target], colour_name: Name | None, state_name: Name | None
+) -> str:
+    """Registration bullseyes: two rings and a crosshair through them."""
+    if not targets:
+        return ""
+    parts = ["q\n"]
+    if colour_name is not None:
+        parts.append(f"{colour_name} CS\n1 SCN\n")
+    else:
+        parts.append("0 0 0 1 K\n")
+    if state_name is not None:
+        parts.append(f"{state_name} gs\n")
+    for target in targets:
+        parts.append(f"{_numbers(target.width)} w\n")
+        for radius in (target.radius, target.radius / 2):
+            parts.append(f"{_numbers(target.x + radius, target.y)} m\n")
+            for curve in circle_path(target.x, target.y, radius):
+                parts.append(f"{_numbers(*curve)} c\n")
+            parts.append("h S\n")
+        reach = target.reach
+        parts.append(
+            f"{_numbers(target.x - reach, target.y)} m "
+            f"{_numbers(target.x + reach, target.y)} l S\n"
+        )
+        parts.append(
+            f"{_numbers(target.x, target.y - reach)} m "
+            f"{_numbers(target.x, target.y + reach)} l S\n"
+        )
+    parts.append("Q\n")
+    return "".join(parts)
+
+
 class Renderer:
     """Builds an imposed document, one surface at a time."""
 
@@ -141,12 +195,14 @@ class Renderer:
                 self._min_version = max(self._min_version, candidate)
         return identity
 
-    def add(
+    def add(  # pylint: disable=too-many-arguments,too-many-locals
         self,
         layout: SheetLayout,
         source: pikepdf.Pdf,
         *,
         marks: list[Segment] | None = None,
+        targets: list[Target] | None = None,
+        bar: list[Patch] | None = None,
         source_rotation: int = 0,
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
@@ -166,8 +222,14 @@ class Renderer:
             xobject = self.pdf.copy_foreign(form)
             name = page.add_resource(xobject, Name.XObject)
             stream.append(_place(placed, name, source_rotation))
-        if marks:
-            stream.append(_draw_marks(marks, *self._mark_resources(page)))
+        if marks or targets:
+            resources = self._mark_resources(page)
+            if marks:
+                stream.append(_draw_marks(marks, *resources))
+            if targets:
+                stream.append(_draw_targets(targets, *resources))
+        if bar:
+            stream.append(_draw_patches(bar))
         page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("ascii")))
         _set_boxes(page, sheet, layout)
         return page
