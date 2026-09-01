@@ -62,6 +62,51 @@ def _default_output(source: pathlib.Path) -> pathlib.Path:
     return source.with_name(f"{source.stem}-imposed{source.suffix or '.pdf'}")
 
 
+def _add_mark_options(parser: argparse.ArgumentParser) -> None:
+    """Options describing the marks, shared by imposing and by `fit`.
+
+    `fit` needs them because the room the marks reserve is exactly the room the
+    artwork does not get, and answering how many fit without knowing that is
+    answering a different question.
+    """
+    parser.add_argument(
+        "--marks",
+        choices=("registration", "black", "none"),
+        default="registration",
+        help="Colour for cut and fold marks. registration prints on every "
+        "plate; black is K only, for digital presses. Default: %(default)s.",
+    )
+    parser.add_argument(
+        "--mark-offset",
+        type=_length,
+        metavar="LENGTH",
+        help="Gap between the trim and the start of a mark. Default: 2mm.",
+    )
+    parser.add_argument(
+        "--mark-length",
+        type=_length,
+        metavar="LENGTH",
+        help="How long each mark is. Default: 3mm.",
+    )
+    parser.add_argument(
+        "--mark-width",
+        type=_length,
+        metavar="LENGTH",
+        help="Stroke width of marks. Default: 0.25pt.",
+    )
+
+
+def _mark_reach(args: argparse.Namespace) -> float:
+    """How far the marks described by *args* reach past the trim."""
+    if args.marks == "none":
+        return 0.0
+    default = MarkStyle()
+    return MarkStyle(
+        offset=args.mark_offset if args.mark_offset is not None else default.offset,
+        length=args.mark_length if args.mark_length is not None else default.length,
+    ).reach
+
+
 def _common(parser: argparse.ArgumentParser) -> None:
     """Options every schema takes."""
     parser.add_argument("input", type=pathlib.Path, help="PDF to impose.")
@@ -93,31 +138,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         metavar="LENGTH",
         help="Space between pages, for the knife. Default: none.",
     )
-    parser.add_argument(
-        "--marks",
-        choices=("registration", "black", "none"),
-        default="registration",
-        help="Colour for cut and fold marks. registration prints on every "
-        "plate; black is K only, for digital presses. Default: %(default)s.",
-    )
-    parser.add_argument(
-        "--mark-offset",
-        type=_length,
-        metavar="LENGTH",
-        help="Gap between the trim and the start of a mark. Default: 2mm.",
-    )
-    parser.add_argument(
-        "--mark-length",
-        type=_length,
-        metavar="LENGTH",
-        help="How long each mark is. Default: 3mm.",
-    )
-    parser.add_argument(
-        "--mark-width",
-        type=_length,
-        metavar="LENGTH",
-        help="Stroke width of marks. Default: 0.25pt.",
-    )
+    _add_mark_options(parser)
     parser.add_argument(
         "--registration",
         action="store_true",
@@ -258,14 +279,22 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="LENGTH",
         help="Gap between pieces, for the knife. Default: 4mm.",
     )
+    _add_mark_options(fit)
+    fit.add_argument(
+        "--bleed",
+        type=_length,
+        default=0.0,
+        metavar="LENGTH",
+        help="Bleed on the artwork. Default: none.",
+    )
     fit.add_argument(
         "--allowance",
         type=_length,
-        default=MarkStyle().reach,
+        default=None,
         metavar="LENGTH",
-        help="Room kept clear on each edge for marks and bleed. Defaults to "
-        "what the marks actually reach, so `fit` and imposing agree on how "
-        "much of the sheet is left for artwork.",
+        help="Room kept clear on each edge, overriding what the marks and "
+        "bleed work out to. Rarely needed: give the marks and the bleed and "
+        "let this follow.",
     )
 
     presses = subcommands.add_parser(
@@ -315,7 +344,19 @@ def _list_presses(out) -> int:
     return 0
 
 
-def _fit(args: argparse.Namespace, out) -> int:
+def _fit_allowance(args: argparse.Namespace) -> float:
+    """Room to keep clear on each edge, from the marks and the bleed.
+
+    Layout reserves whichever of the two reaches further on an edge, not their
+    sum: a 3 mm bleed and a 5 mm mark reach need 5 mm, not 8. An explicit
+    --allowance overrides both.
+    """
+    if args.allowance is not None:
+        return args.allowance
+    return max(_mark_reach(args), args.bleed)
+
+
+def _fit(args: argparse.Namespace, out) -> int:  # pylint: disable=too-many-locals
     """Answer how many fit, and what a given order wastes."""
     press = get_press(args.press)
     sheet = paper(args.sheet) if args.sheet else press.sheet
@@ -323,18 +364,17 @@ def _fit(args: argparse.Namespace, out) -> int:
     area = press.imageable_area(sheet)
     trim = paper(args.size)
     quantity = max(0, args.quantity)
+    allowance = _fit_allowance(args)
 
     # With no quantity there is nothing to weigh density against, so the
     # arrangements are listed as they pack. With one, they are costed and
     # ordered by what the job actually takes.
     if quantity:
-        runs = compare(
-            trim, area, quantity, gutter=args.gutter, allowance=args.allowance
-        )
+        runs = compare(trim, area, quantity, gutter=args.gutter, allowance=allowance)
         options = [run.arrangement for run in runs]
     else:
         runs = []
-        options = arrangements(trim, area, gutter=args.gutter, allowance=args.allowance)
+        options = arrangements(trim, area, gutter=args.gutter, allowance=allowance)
     if not options:
         raise ImposeError(
             f"A finished size of {format_mm(trim)} does not fit the imageable "

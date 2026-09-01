@@ -340,3 +340,75 @@ class TestCreep(unittest.TestCase):
             status, _, err = run("nup", str(source), "--paper-caliper", "0.1mm")
             self.assertEqual(status, 2)
             self.assertIn("unrecognized", err)
+
+
+class TestFitAllowance(unittest.TestCase):
+    """`fit` works its own allowance out from the marks and the bleed."""
+
+    @staticmethod
+    def leading_up(text):
+        """The `n up` of the first arrangement listed."""
+        return int(text.strip().splitlines()[1].strip().split()[0])
+
+    def test_defaults_reserve_the_mark_reach(self):
+        _, text, _ = run("fit", "A6", "--gutter", "4mm")
+        self.assertEqual(self.leading_up(text), 8)
+
+    def test_longer_marks_cost_a_row(self):
+        """Three plus five reserves eight, and eight A6 no longer fit."""
+        _, text, _ = run(
+            "fit",
+            "A6",
+            "--gutter",
+            "4mm",
+            "--mark-offset",
+            "3mm",
+            "--mark-length",
+            "5mm",
+        )
+        self.assertEqual(self.leading_up(text), 4)
+
+    def test_no_marks_reserve_nothing(self):
+        _, text, _ = run("fit", "A6", "--gutter", "4mm", "--marks", "none")
+        self.assertEqual(self.leading_up(text), 8)
+
+    def test_bleed_is_reserved_when_it_reaches_further(self):
+        _, text, _ = run(
+            "fit", "A6", "--gutter", "4mm", "--marks", "none", "--bleed", "8mm"
+        )
+        self.assertEqual(self.leading_up(text), 4)
+
+    def test_the_larger_of_the_two_wins_not_their_sum(self):
+        """A 3 mm bleed behind a 5 mm mark reach needs 5, not 8."""
+        with_bleed = run("fit", "A6", "--gutter", "4mm", "--bleed", "3mm")[1]
+        without = run("fit", "A6", "--gutter", "4mm")[1]
+        self.assertEqual(self.leading_up(with_bleed), self.leading_up(without))
+
+    def test_an_explicit_allowance_still_overrides(self):
+        _, text, _ = run("fit", "A6", "--gutter", "4mm", "--allowance", "8mm")
+        self.assertEqual(self.leading_up(text), 4)
+
+    def test_fit_and_imposing_agree(self):
+        """The reason fit takes mark options at all."""
+        cases = (
+            ([], []),
+            (["--mark-length", "5mm"], ["--mark-length", "5mm"]),
+            (["--marks", "none"], ["--marks", "none"]),
+        )
+        for fit_args, impose_args in cases:
+            with self.subTest(args=fit_args), workspace(pages=8) as source:
+                _, text, _ = run("fit", "A6", "--gutter", "4mm", *fit_args)
+                predicted = self.leading_up(text)
+                status, summary, err = run(
+                    "nup",
+                    str(source),
+                    "-o",
+                    str(source.with_name("o.pdf")),
+                    "--gutter",
+                    "4mm",
+                    *impose_args,
+                )
+                self.assertEqual(status, 0, err)
+                # n-up is duplex, so a sheet carries twice what fits on a side.
+                sheets = -(-8 // (predicted * 2))
+                self.assertIn(f"{sheets} sheet(s)", summary)

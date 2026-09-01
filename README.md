@@ -172,7 +172,30 @@ without needing a file.
 | `--press NAME` | `indigo-5000` | press profile |
 | `--sheet SIZE` | the press maximum | sheet to run |
 | `--gutter LENGTH` | `4mm` | gap between pieces |
-| `--allowance LENGTH` | the mark reach, `5mm` | room kept clear each edge for marks and bleed |
+| `--marks {registration,black,none}` | `registration` | `none` reserves no room for marks |
+| `--mark-offset LENGTH` | `2mm` | gap between the trim and the start of a mark |
+| `--mark-length LENGTH` | `3mm` | how long each mark is |
+| `--bleed LENGTH` | none | bleed on the artwork |
+| `--allowance LENGTH` | from the marks and bleed | override the room kept clear each edge |
+
+`fit` takes the same mark options as the schemas and works the allowance out
+itself, so quoting how many fit and then imposing them cannot disagree:
+
+```
+$ impose fit A6 --gutter 4mm                          # 5 mm reserved
+  8 up, 2 × 4 turned, form 300 × 432 mm
+
+$ impose fit A6 --gutter 4mm --mark-length 5mm        # 7 mm reserved
+  4 up, 2 × 2 upright, form 214 × 300 mm
+```
+
+Marks and bleed are not added together: layout reserves whichever reaches
+further on an edge, so a 3 mm bleed behind a 5 mm mark reach needs 5 mm, not 8.
+`--allowance` overrides both, and is rarely what you want.
+
+`--mark-width` is accepted here for symmetry with the schemas, so the same
+flags can be pasted to both, but a stroke width cannot change how many pieces
+fit and it is ignored.
 
 Note that `-n` means `--quantity` here and `--dry-run` on the schemas. `fit`
 never writes a file, so it has no dry run to ask for.

@@ -19,7 +19,7 @@ from impose.marks import (
     registration_targets,
 )
 from impose.press import INDIGO_5000
-from impose.units import MM, to_mm
+from impose.units import MM
 
 from .support import make_pdf
 
