@@ -104,13 +104,13 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "--mark-offset",
         type=_length,
         metavar="LENGTH",
-        help="Gap between the trim and the start of a mark. Default: 3mm.",
+        help="Gap between the trim and the start of a mark. Default: 2mm.",
     )
     parser.add_argument(
         "--mark-length",
         type=_length,
         metavar="LENGTH",
-        help="How long each mark is. Default: 5mm.",
+        help="How long each mark is. Default: 3mm.",
     )
     parser.add_argument(
         "--mark-width",

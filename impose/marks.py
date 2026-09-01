@@ -61,12 +61,14 @@ class Segment:
 class MarkStyle:
     """How marks are drawn.
 
-    The default offset clears a 3 mm bleed, so a mark never lands on artwork
-    that is about to be trimmed off and mistaken for part of the image.
+    The default offset clears a 2 mm gap before the mark starts, and 3 mm of
+    mark is enough for a guillotine operator to line up on. Together they
+    reserve 5 mm beyond the trim on each marked edge, which is what decides
+    whether a tight form fits: eight A6 up on an Indigo needs exactly that.
     """
 
-    offset: float = 3 * MM
-    length: float = 5 * MM
+    offset: float = 2 * MM
+    length: float = 3 * MM
     width: float = 0.25
     colour: MarkColour = "registration"
 

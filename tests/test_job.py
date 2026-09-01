@@ -64,7 +64,7 @@ class TestSchemas(unittest.TestCase):
 
     def test_a_form_too_big_for_the_press_is_refused_with_both_sizes(self):
         with self.assertRaises(ImposeError) as caught:
-            run(source=make_pdf(2), schema="steprepeat", columns=4, rows=2)
+            run(source=make_pdf(2), schema="steprepeat", columns=4, rows=4)
         message = str(caught.exception)
         self.assertIn("does not fit", message)
         self.assertIn("310 × 450 mm", message)
@@ -186,8 +186,16 @@ class TestOrientation(unittest.TestCase):
 
     @staticmethod
     def small_marks():
-        """A 5 mm mark reach, which is what an A6 six-up needs to fit."""
-        return MarkStyle(offset=1 * MM, length=4 * MM)
+        """The default reach, spelled out: 2 mm clear then a 3 mm mark."""
+        return MarkStyle(offset=2 * MM, length=3 * MM)
+
+    def test_eight_a6_up_fits_on_the_default_marks(self):
+        """The reason the defaults are 2 mm and 3 mm: five is what fits."""
+        result, _ = run(pages=8, schema="nup", columns=2, rows=4, gutters="4mm")
+        self.assertEqual(result.sheets, 1)
+        self.assertTrue(
+            all(p.rotation == 90 for s in result.plan for p in s.placements)
+        )
 
     def test_six_a6_up_fits_only_once_the_pages_are_turned(self):
         """2x3 upright is 462 mm tall; on their sides the same six fit."""
@@ -253,7 +261,7 @@ class TestOrientation(unittest.TestCase):
 
     def test_the_refusal_names_what_is_taking_the_room(self):
         with self.assertRaises(ImposeError) as caught:
-            run(pages=6, schema="nup", columns=2, rows=3, gutters="4mm")
+            run(pages=16, schema="nup", columns=4, rows=4, gutters="4mm")
         message = str(caught.exception)
         self.assertIn("for marks per edge", message)
         self.assertIn("misses by", message)

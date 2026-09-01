@@ -138,8 +138,8 @@ series.
 | `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
 | `--gutter LENGTH` | none | space between pages, for the knife (`--gutters` also accepted) |
 | `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |
-| `--mark-offset LENGTH` | `3mm` | gap between the trim and the start of a mark |
-| `--mark-length LENGTH` | `5mm` | how long each mark is |
+| `--mark-offset LENGTH` | `2mm` | gap between the trim and the start of a mark |
+| `--mark-length LENGTH` | `3mm` | how long each mark is |
 | `--mark-width LENGTH` | `0.25pt` | stroke width |
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
@@ -210,8 +210,8 @@ impose fit 90mmx50mm -n 500
 # ...then run them, letting the grid be chosen
 impose steprepeat card.pdf --copies 500 --gutter 4mm --marks black
 
-# A6 flyers eight up, marks tightened to make them fit
-impose nup flyers.pdf --gutter 4mm --mark-offset 1mm --mark-length 4mm
+# A6 flyers, eight up on one sheet without being told the grid
+impose nup flyers.pdf --gutter 4mm
 
 # Full press furniture for a proofing sheet
 impose nup artwork.pdf --registration --colour-bar
@@ -302,7 +302,7 @@ The same choice is made when imposing, so the grid is picked for you unless
 you pin it with `--up`:
 
 ```
-$ impose nup a6.pdf --gutters 4mm --mark-offset 1mm --mark-length 4mm
+$ impose nup a6.pdf --gutter 4mm
 n-up: 8 pages onto 1 sheet(s) of 320 × 470 mm on indigo-5000
 ```
 
@@ -375,6 +375,10 @@ stderr even under `--quiet`, since a book that will not staple is not something
 to keep quiet about.
 
 ## Marks
+
+Marks start 2 mm clear of the trim and run 3 mm, reserving 5 mm beyond the trim
+on each marked edge. That figure decides whether a tight form fits: eight A6 up
+on an Indigo needs exactly 5 mm and no more.
 
 Marks sit at the ends of each cut line, out beyond the form, because that is
 how a guillotine is used: the operator lines the blade up on a pair of marks at
