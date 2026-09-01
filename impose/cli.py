@@ -179,6 +179,17 @@ def build_parser() -> argparse.ArgumentParser:
                 "Default: %(default)s, which holds for bond and coated up to "
                 "about 150 gsm. Heavier stock staples fewer.",
             )
+        if name in ("saddle", "perfect"):
+            schema.add_argument(
+                "--paper-caliper",
+                type=_length,
+                default=0.0,
+                metavar="LENGTH",
+                help="Thickness of one sheet of the stock, which turns on "
+                "creep compensation. Nested sheets push out at the fore edge, "
+                "and each sheet's image is slid toward the spine to match. "
+                "Measure it: a micrometer on twenty sheets, divided by twenty.",
+            )
         if name == "perfect":
             schema.add_argument(
                 "--section-pages",
@@ -385,6 +396,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             marks=_style(args),
             orientation=args.orientation,
             max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
+            paper_caliper=getattr(args, "paper_caliper", 0.0),
             **_schema_options(args),
         )
         if not args.quiet:

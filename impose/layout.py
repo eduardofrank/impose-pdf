@@ -8,6 +8,13 @@ outer edge, none of it where two pages butt at a fold, and half the gutter in
 between. And does the finished form fit the part of the sheet the press can
 actually image.
 
+Creep is the other thing that happens here. Nested sheets push out at the fore
+edge -- an inner sheet's fold sits further toward the opening, so its leaf
+protrudes and the common trim takes more off it. The compensation is to slide
+the *image* toward the spine, leaving the cell where it is: the fold is where
+the fold is, and moving both halves of a spread toward it would only overlap
+them.
+
 Bleed is the part worth stating plainly. Two pages meeting at a spine share one
 cut line: there is no gap for bleed to live in, and painting it there puts one
 page's image over its neighbour. So bleed is shaved to nothing on a butting
@@ -162,14 +169,61 @@ def _kept_bleed(available: Insets, butts: frozenset[str], gutters: Gutters) -> I
     )
 
 
-def _source_clip(trim: Rect, kept: Insets, rotation: int) -> Rect:
+def _source_clip(
+    trim: Rect, kept: Insets, rotation: int, shift: tuple[float, float] = (0.0, 0.0)
+) -> Rect:
     """The region of the source page to take, in its own coordinates.
 
     *kept* is expressed on the sheet, so it is turned back through the
-    placement's rotation to reach source space.
+    placement's rotation to reach source space. *shift* is where the image
+    should move on the sheet; the window moves the opposite way, because the
+    destination is fixed and sliding the window left makes the image appear
+    further right.
     """
     inverse = rotate_insets(kept, -rotation)
-    return trim.expanded(inverse)
+    window = trim.expanded(inverse)
+    if shift == (0.0, 0.0):
+        return window
+    dx, dy = _unrotate_vector(shift, rotation)
+    return window.translated(-dx, -dy)
+
+
+def _unrotate_vector(vector: tuple[float, float], rotation: int) -> tuple[float, float]:
+    """A sheet-space displacement expressed in the source page's own axes.
+
+    >>> _unrotate_vector((1, 0), 0)
+    (1, 0)
+    >>> _unrotate_vector((1, 0), 90)
+    (0, 1)
+    """
+    x, y = vector
+    turn = rotation % 360
+    if turn == 0:
+        return (x, y)
+    if turn == 90:
+        return (-y, x)
+    if turn == 180:
+        return (-x, -y)
+    return (y, -x)
+
+
+def _creep_shift(
+    column: int, fold_columns: tuple[int, ...], creep: float
+) -> tuple[float, float]:
+    """Which way, and how far, this cell's image slides toward its spine.
+
+    A page to the left of a fold has its spine on the right, so its image
+    moves right; one to the right of the fold moves left. A cell with no fold
+    beside it does not creep at all.
+    """
+    if creep <= 0 or not fold_columns:
+        return (0.0, 0.0)
+    for boundary in fold_columns:
+        if column == boundary - 1:
+            return (creep, 0.0)
+        if column == boundary:
+            return (-creep, 0.0)
+    return (0.0, 0.0)
 
 
 def _turn_rect(rect: Rect, form: Size) -> Rect:
@@ -192,6 +246,8 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     sheet: Size | None = None,
     mark_allowance: float = 0.0,
     trim_origin: Rect,
+    creep: float = 0.0,
+    fold_columns: tuple[int, ...] = (),
 ) -> SheetLayout:
     """Place one surface on a sheet.
 
@@ -232,7 +288,12 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
                 source=placement.source,
                 trim=cell_rect,
                 paint=paint,
-                clip=_source_clip(source_trim, kept, placement.rotation),
+                clip=_source_clip(
+                    source_trim,
+                    kept,
+                    placement.rotation,
+                    _creep_shift(placement.column, fold_columns, creep),
+                ),
                 rotation=placement.rotation,
                 butts=butts,
                 column=placement.column,

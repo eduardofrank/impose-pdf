@@ -298,3 +298,45 @@ class TestAutomaticGrid(unittest.TestCase):
                 "2x1",
             )
             self.assertEqual(status, 0, err)
+
+
+class TestCreep(unittest.TestCase):
+    def test_the_caliper_reaches_the_output(self):
+        """Without the pass-through the flag parses and does nothing."""
+        with workspace(pages=32) as source:
+            plain = source.with_name("plain.pdf")
+            crept = source.with_name("crept.pdf")
+            self.assertEqual(run("saddle", str(source), "-o", str(plain), "-q")[0], 0)
+            self.assertEqual(
+                run(
+                    "saddle",
+                    str(source),
+                    "-o",
+                    str(crept),
+                    "--paper-caliper",
+                    "0.1mm",
+                    "-q",
+                )[0],
+                0,
+            )
+            self.assertNotEqual(plain.read_bytes(), crept.read_bytes())
+
+    def test_perfect_binding_takes_it_too(self):
+        with workspace(pages=32) as source:
+            status, _, err = run(
+                "perfect",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--section-pages",
+                "16",
+                "--paper-caliper",
+                "0.1mm",
+            )
+            self.assertEqual(status, 0, err)
+
+    def test_flat_schemas_do_not_offer_it(self):
+        with workspace() as source:
+            status, _, err = run("nup", str(source), "--paper-caliper", "0.1mm")
+            self.assertEqual(status, 2)
+            self.assertIn("unrecognized", err)

@@ -218,6 +218,29 @@ against the wrong neighbour with nothing looking wrong until the job is cut.
 `cutstack` and `steprepeat` really are cut, so each finished piece takes its
 reverse from the *mirrored* cell of the back surface.
 
+## Creep
+
+Nested sheets push out. An inner sheet's fold sits further toward the opening,
+so its leaf protrudes, and trimming the folded book at one common line takes
+more off the inside than the outside. Left alone, the fore-edge margin shrinks
+page by page as you work inward — visible by the middle of a thick booklet.
+
+Give `impose` the thickness of one sheet and it compensates, sliding each
+sheet's image toward the spine by as much as its own fold has been displaced:
+
+```bash
+impose saddle book.pdf --paper-caliper 0.1mm
+```
+
+Measure the caliper rather than guess it — a micrometer on twenty sheets,
+divided by twenty, is how a shop gets that number. The outermost sheet has
+nothing wrapping it and does not creep at all; depth restarts with each section
+of a perfect-bound book, since sections are gathered rather than nested.
+
+What moves is the **image inside its cell**, never the cell. The fold is where
+the fold is, and sliding both halves of a spread toward it would only overlap
+them.
+
 ## Bindery limits
 
 A saddle-stitched book can only be so thick before the stapler struggles: the
@@ -348,7 +371,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `cli` — the `impose` command |
 | ⬜ | Registration targets, colour bars, slug line |
 | ✅ | `fit` — densest grid, orientation, and run waste |
-| ⬜ | Creep compensation for thick saddle-stitched work |
+| ✅ | `creep` — fore-edge push-out compensated per sheet |
 
 ## Development
 
