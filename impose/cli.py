@@ -261,9 +261,11 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument(
         "--allowance",
         type=_length,
-        default=5 * 72 / 25.4,
+        default=MarkStyle().reach,
         metavar="LENGTH",
-        help="Room kept clear on each edge for marks and bleed. Default: 5mm.",
+        help="Room kept clear on each edge for marks and bleed. Defaults to "
+        "what the marks actually reach, so `fit` and imposing agree on how "
+        "much of the sheet is left for artwork.",
     )
 
     presses = subcommands.add_parser(

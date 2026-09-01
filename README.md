@@ -172,7 +172,7 @@ without needing a file.
 | `--press NAME` | `indigo-5000` | press profile |
 | `--sheet SIZE` | the press maximum | sheet to run |
 | `--gutter LENGTH` | `4mm` | gap between pieces |
-| `--allowance LENGTH` | `5mm` | room kept clear each edge for marks and bleed |
+| `--allowance LENGTH` | the mark reach, `5mm` | room kept clear each edge for marks and bleed |
 
 Note that `-n` means `--quantity` here and `--dry-run` on the schemas. `fit`
 never writes a file, so it has no dry run to ask for.
@@ -377,8 +377,13 @@ to keep quiet about.
 ## Marks
 
 Marks start 2 mm clear of the trim and run 3 mm, reserving 5 mm beyond the trim
-on each marked edge. That figure decides whether a tight form fits: eight A6 up
-on an Indigo needs exactly 5 mm and no more.
+on each marked edge.
+
+They are deliberately small, and the reason is the sheet. On an SRA3-class
+press every millimetre of margin is a millimetre not available to the artwork,
+and the difference between reserving 5 mm and 8 mm is the difference between
+eight A6 up and four. A 3 mm mark is short but plenty to line a guillotine up
+on. Raise them where the sheet can afford it; nothing depends on the defaults.
 
 Marks sit at the ends of each cut line, out beyond the form, because that is
 how a guillotine is used: the operator lines the blade up on a pair of marks at

@@ -61,10 +61,18 @@ class Segment:
 class MarkStyle:
     """How marks are drawn.
 
-    The default offset clears a 2 mm gap before the mark starts, and 3 mm of
-    mark is enough for a guillotine operator to line up on. Together they
-    reserve 5 mm beyond the trim on each marked edge, which is what decides
-    whether a tight form fits: eight A6 up on an Indigo needs exactly that.
+    Marks start 2 mm clear of the trim and run 3 mm, reserving 5 mm beyond the
+    trim on each marked edge.
+
+    These are deliberately small, and the reason is the sheet. On an SRA3-class
+    press every millimetre of margin is a millimetre not available to the
+    artwork, and the difference between reserving 5 mm and 8 mm is the
+    difference between eight A6 up and four. A 3 mm mark is short but it is
+    plenty to line a guillotine up on -- this is a decade of production
+    practice on this press, not a guess -- so the margin goes to the job.
+
+    Raise them where the sheet can afford it and the bindery prefers longer
+    marks; nothing here depends on the defaults.
     """
 
     offset: float = 2 * MM
