@@ -200,3 +200,24 @@ class TestRotation(unittest.TestCase):
     def test_half_turn_keeps_the_cell_size(self):
         layout = spread(rotation=180)
         self.assertAlmostEqual(to_mm(layout.pages[0].trim.width), 105.0, places=6)
+
+
+class TestOuterBleed(unittest.TestCase):
+    """An outer edge has no neighbour, so it keeps the whole bleed."""
+
+    def test_a_gutter_does_not_cap_the_outside_of_the_form(self):
+        layout = spread(bleed=Insets.uniform(5 * MM), gutters=Gutters(4 * MM, 4 * MM))
+        left, right = layout.pages
+        self.assertAlmostEqual(to_mm(left.trim.x0 - left.paint.x0), 5.0, places=6)
+        self.assertAlmostEqual(to_mm(right.paint.x1 - right.trim.x1), 5.0, places=6)
+
+    def test_the_inner_edges_still_share_the_gutter(self):
+        layout = spread(bleed=Insets.uniform(5 * MM), gutters=Gutters(4 * MM, 4 * MM))
+        left, right = layout.pages
+        self.assertAlmostEqual(to_mm(left.paint.x1 - left.trim.x1), 2.0, places=6)
+        self.assertAlmostEqual(to_mm(right.trim.x0 - right.paint.x0), 2.0, places=6)
+
+    def test_top_and_bottom_are_outer_on_a_single_row(self):
+        layout = spread(bleed=Insets.uniform(5 * MM), gutters=Gutters(4 * MM, 4 * MM))
+        for page in layout.pages:
+            self.assertAlmostEqual(to_mm(page.trim.y0 - page.paint.y0), 5.0, places=6)

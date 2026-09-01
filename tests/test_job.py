@@ -291,3 +291,45 @@ class TestWarnings(unittest.TestCase):
         result, data = run(pages=64, schema="saddle")
         self.assertTrue(result.warnings)
         self.assertGreater(len(data), 0)
+
+
+class TestBleedCap(unittest.TestCase):
+    """Bleed is capped at what the shop places, not at what the client sent."""
+
+    @staticmethod
+    def placed(source, **kwargs):
+        """Bleed actually placed on the outer edge of the imposed form."""
+        buffer = io.BytesIO()
+        impose_document(source, buffer, schema="nup", gutters="4mm", **kwargs)
+        buffer.seek(0)
+        pdf = pikepdf.open(buffer)
+        page = pdf.pages[0]
+        trim = [float(v) for v in page.obj["/TrimBox"]]
+        bleed = [float(v) for v in page.obj["/BleedBox"]]
+        pdf.close()
+        return to_mm(trim[0] - bleed[0])
+
+    def test_generous_artwork_is_shaved_to_the_default(self):
+        self.assertAlmostEqual(self.placed(make_pdf(8, bleed=5 * MM)), 2.0, places=3)
+
+    def test_exactly_the_default_is_kept(self):
+        self.assertAlmostEqual(self.placed(make_pdf(8, bleed=2 * MM)), 2.0, places=3)
+
+    def test_less_than_the_default_is_not_invented(self):
+        """Bleed that is not in the file cannot be manufactured."""
+        self.assertAlmostEqual(self.placed(make_pdf(8, bleed=1 * MM)), 1.0, places=3)
+
+    def test_no_bleed_stays_none(self):
+        self.assertAlmostEqual(
+            self.placed(make_pdf(8, with_bleedbox=False)), 0.0, places=3
+        )
+
+    def test_the_cap_is_editable(self):
+        self.assertAlmostEqual(
+            self.placed(make_pdf(8, bleed=5 * MM), bleed="5mm"), 5.0, places=3
+        )
+
+    def test_it_can_be_turned_off(self):
+        self.assertAlmostEqual(
+            self.placed(make_pdf(8, bleed=5 * MM), bleed=0), 0.0, places=3
+        )

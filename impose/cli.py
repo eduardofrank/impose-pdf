@@ -21,7 +21,7 @@ from collections.abc import Sequence
 
 from . import ImposeError, __version__
 from .fit import DEFAULT_GUTTER, arrangements, compare
-from .job import SCHEMAS, build_plan, impose_document, source_boxes
+from .job import DEFAULT_BLEED, SCHEMAS, build_plan, impose_document, source_boxes
 from .marks import MarkStyle
 from .press import get as get_press
 from .press import press_names
@@ -137,6 +137,15 @@ def _common(parser: argparse.ArgumentParser) -> None:
         default=0.0,
         metavar="LENGTH",
         help="Space between pages, for the knife. Default: none.",
+    )
+    parser.add_argument(
+        "--bleed",
+        type=_length,
+        default=_length(DEFAULT_BLEED),
+        metavar="LENGTH",
+        help="The most bleed to place. This caps what the artwork brought "
+        "rather than asking for it: 5 mm is shaved to this, 1 mm stays 1 mm, "
+        "and none stays none. Default: 2mm.",
     )
     _add_mark_options(parser)
     parser.add_argument(
@@ -283,9 +292,10 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument(
         "--bleed",
         type=_length,
-        default=0.0,
+        default=_length(DEFAULT_BLEED),
         metavar="LENGTH",
-        help="Bleed on the artwork. Default: none.",
+        help="Bleed to allow room for, capped the same way imposing caps it. "
+        "Default: 2mm.",
     )
     fit.add_argument(
         "--allowance",
@@ -457,6 +467,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             orientation=args.orientation,
             max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
             paper_caliper=getattr(args, "paper_caliper", 0.0),
+            bleed=args.bleed,
             registration=args.registration,
             colour_bar=args.colour_bar,
             **_schema_options(args),

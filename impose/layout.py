@@ -146,27 +146,53 @@ def _butting_edges(
     return frozenset(edges)
 
 
-def _kept_bleed(available: Insets, butts: frozenset[str], gutters: Gutters) -> Insets:
+def _outer_edges(placement: Placement, columns: int, rows: int) -> frozenset[str]:
+    """Edges of this cell that face the outside of the form.
+
+    Nothing is beside them, so they have the whole margin to bleed into.
+    """
+    edges = set()
+    if placement.column == 0:
+        edges.add("left")
+    if placement.column == columns - 1:
+        edges.add("right")
+    if placement.row == 0:
+        edges.add("top")
+    if placement.row == rows - 1:
+        edges.add("bottom")
+    return frozenset(edges)
+
+
+def _kept_bleed(
+    available: Insets,
+    butts: frozenset[str],
+    outer: frozenset[str],
+    gutters: Gutters,
+) -> Insets:
     """How much bleed each edge may keep.
 
-    An outer edge keeps all of it. A butting edge keeps none: there is no gap
-    to put it in. An edge with a gutter keeps up to half the gutter, so two
-    neighbours' bleeds meet in the middle rather than overlapping.
+    An outer edge keeps all of it: there is no neighbour to run into, and the
+    margin beyond the form is waste anyway. A butting edge keeps none, since
+    there is no gap to put it in. An edge with a gutter keeps up to half of it,
+    so two neighbours' bleeds meet in the middle rather than overlapping.
     """
-    half_h = gutters.horizontal / 2
-    half_v = gutters.vertical / 2
-    return Insets(
-        left=0.0 if "left" in butts else min(available.left, half_h or available.left),
-        right=(
-            0.0 if "right" in butts else min(available.right, half_h or available.right)
-        ),
-        bottom=(
-            0.0
-            if "bottom" in butts
-            else min(available.bottom, half_v or available.bottom)
-        ),
-        top=0.0 if "top" in butts else min(available.top, half_v or available.top),
-    )
+    halves = {
+        "left": gutters.horizontal / 2,
+        "right": gutters.horizontal / 2,
+        "bottom": gutters.vertical / 2,
+        "top": gutters.vertical / 2,
+    }
+
+    def keep(edge: str) -> float:
+        have = getattr(available, edge)
+        if edge in butts:
+            return 0.0
+        if edge in outer:
+            return have
+        half = halves[edge]
+        return min(have, half) if half else have
+
+    return Insets(**{edge: keep(edge) for edge in ("left", "right", "bottom", "top")})
 
 
 def _source_clip(
@@ -276,7 +302,8 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
         y1 = form.height - placement.row * step_y
         cell_rect = Rect(x0, y1 - cell.height, x0 + cell.width, y1)
         butts = _butting_edges(placement, columns, rows, gutters)
-        kept = _kept_bleed(bleed, butts, gutters)
+        outer = _outer_edges(placement, columns, rows)
+        kept = _kept_bleed(bleed, butts, outer, gutters)
         paint = cell_rect.expanded(kept)
         # Butting neighbours are painted a hair into each other so the shared
         # edge cannot show as a pale hairline.

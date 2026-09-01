@@ -26,7 +26,7 @@ import pikepdf
 from . import ImposeError
 from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
 from .fit import best
-from .geometry import Size, approx
+from .geometry import Insets, Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, furniture, trim_marks
 from .plan import Plan
@@ -52,6 +52,11 @@ _FIXED_GRID = frozenset({"saddle", "perfect"})
 #: the fold runs the other way, which is a top-bound book, not the one that was
 #: asked for. The flat schemas are cut apart, so orientation is free.
 _BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect"})
+
+#: The most bleed to place, capping whatever the artwork arrived with. Two
+#: millimetres is enough for any guillotine to cut into and leaves the rest of
+#: a small sheet to the job.
+DEFAULT_BLEED = "2mm"
 
 #: Marks are drawn unless a caller explicitly asks for none. A press sheet
 #: with no indication of where to cut is not much use to a bindery.
@@ -175,6 +180,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     orientation: str = "auto",
     max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
     paper_caliper: float | str = 0.0,
+    bleed: float | str = DEFAULT_BLEED,
     registration: bool = False,
     colour_bar: bool = False,
     **options: Any,
@@ -183,6 +189,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
     marks.
+
+    *bleed* is the most bleed to place, and it caps whatever the artwork
+    brought rather than requesting it: a file supplied with 5 mm is shaved to
+    2 mm, one supplied with 1 mm keeps its 1 mm, and one with none stays with
+    none. Bleed that is not there cannot be invented.
 
     *paper_caliper* is the thickness of one sheet of the stock being run, and
     turns on creep compensation: nested sheets push out at the fore edge, and
@@ -218,7 +229,14 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         boxes = source_boxes(opened)
 
         gaps = _gutters(gutters)
-        allowance = marks.reach if marks else 0.0
+        bleed_insets = boxes.bleed_insets.capped(length(bleed))
+        allowance = max(
+            marks.reach if marks else 0.0,
+            bleed_insets.left,
+            bleed_insets.right,
+            bleed_insets.bottom,
+            bleed_insets.top,
+        )
         chose_turned = False
         if schema not in _FIXED_GRID and not (
             options.get("columns") or options.get("rows")
@@ -243,6 +261,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             schema=schema,
             orientation=orientation,
             boxes=boxes,
+            bleed=bleed_insets,
             gutters=gaps,
             press=machine,
             sheet=sheet_size,
@@ -314,6 +333,7 @@ def _fit(  # pylint: disable=too-many-arguments
     schema: str,
     orientation: str,
     boxes: PageBoxes,
+    bleed: Insets,
     gutters: Gutters,
     press: Press,
     sheet: Size,
@@ -331,7 +351,7 @@ def _fit(  # pylint: disable=too-many-arguments
                     rows=candidate.rows,
                     trim=boxes.trim_size,
                     trim_origin=boxes.trim,
-                    bleed=boxes.bleed_insets,
+                    bleed=bleed,
                     gutters=gutters,
                     press=press,
                     sheet=sheet,

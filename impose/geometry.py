@@ -79,6 +79,19 @@ class Insets:
         """
         return cls(amount, amount, amount, amount)
 
+    def capped(self, limit: float) -> Insets:
+        """These insets with no edge exceeding *limit*.
+
+        >>> Insets(5, 1, 5, 1).capped(2)
+        Insets(left=2, right=1, bottom=2, top=1)
+        """
+        return Insets(
+            left=min(self.left, limit),
+            right=min(self.right, limit),
+            bottom=min(self.bottom, limit),
+            top=min(self.top, limit),
+        )
+
     @property
     def horizontal(self) -> float:
         """Total width consumed, left plus right."""
