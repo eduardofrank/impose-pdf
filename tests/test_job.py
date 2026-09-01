@@ -11,7 +11,14 @@ import pikepdf
 
 from impose import ImposeError
 from impose.geometry import Size
-from impose.job import DEFAULT_MARKS, SCHEMAS, build_plan, impose_document, source_boxes
+from impose.job import (
+    DEFAULT_MARKS,
+    SCHEMAS,
+    build_plan,
+    default_gutter,
+    impose_document,
+    source_boxes,
+)
 from impose.marks import MarkStyle
 from impose.units import MM, to_mm
 
@@ -333,3 +340,40 @@ class TestBleedCap(unittest.TestCase):
         self.assertAlmostEqual(
             self.placed(make_pdf(8, bleed=5 * MM), bleed=0), 0.0, places=3
         )
+
+
+class TestGutterDefault(unittest.TestCase):
+    """Cut work wants room for the knife; a folded spread wants none."""
+
+    def test_cut_schemas_leave_room_for_the_knife(self):
+        for schema in ("nup", "cutstack", "steprepeat"):
+            with self.subTest(schema=schema):
+                self.assertAlmostEqual(to_mm(default_gutter(schema)), 4.0, places=6)
+
+    def test_folded_schemas_butt_at_the_spine(self):
+        for schema in ("saddle", "perfect"):
+            with self.subTest(schema=schema):
+                self.assertEqual(default_gutter(schema), 0.0)
+
+    def test_a_saddle_spread_still_meets_at_the_fold(self):
+        """A gap here is a gap in the middle of the reader's page."""
+        result, data = run(pages=8, schema="saddle")
+        self.assertEqual(result.plan.grid, (2, 1))
+        pdf = pikepdf.open(io.BytesIO(data))
+        trim = [float(v) for v in pdf.pages[0].obj["/TrimBox"]]
+        pdf.close()
+        # Two A6 pages, no gutter: the form is exactly twice the page width.
+        self.assertAlmostEqual(to_mm(trim[2] - trim[0]), 210.0, places=3)
+
+    def test_an_explicit_gutter_still_wins_everywhere(self):
+        result, _ = run(pages=8, schema="nup", gutters="10mm")
+        self.assertEqual(result.sheets, 1)
+
+    def test_zero_can_be_asked_for_explicitly(self):
+        """None means 'the schema's default'; zero means zero."""
+        result, data = run(pages=8, schema="nup", gutters=0)
+        pdf = pikepdf.open(io.BytesIO(data))
+        trim = [float(v) for v in pdf.pages[0].obj["/TrimBox"]]
+        pdf.close()
+        columns = result.plan.columns
+        self.assertAlmostEqual(to_mm(trim[2] - trim[0]), columns * 148.0, places=3)

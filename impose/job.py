@@ -25,7 +25,7 @@ import pikepdf
 
 from . import ImposeError
 from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
-from .fit import best
+from .fit import DEFAULT_GUTTER, best
 from .geometry import Insets, Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, furniture, trim_marks
@@ -57,6 +57,19 @@ _BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect"})
 #: millimetres is enough for any guillotine to cut into and leaves the rest of
 #: a small sheet to the job.
 DEFAULT_BLEED = "2mm"
+
+
+def default_gutter(schema: str) -> float:
+    """The gap to leave between pages, when the caller has not said.
+
+    Cut work wants room for the knife: 4 mm between pieces is what a guillotine
+    needs to come down without shaving a neighbour. A folded spread wants the
+    opposite -- its two pages meet across the fold and any gap there is a gap
+    in the middle of the reader's page -- so the binding schemas default to
+    none and butt at the spine.
+    """
+    return 0.0 if schema in _BINDING_EDGE_MATTERS else DEFAULT_GUTTER
+
 
 #: Marks are drawn unless a caller explicitly asks for none. A press sheet
 #: with no indication of where to cut is not much use to a bindery.
@@ -175,7 +188,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     schema: str = "saddle",
     press: Press | str = "indigo-5000",
     sheet: Size | str | tuple[float, float] | None = None,
-    gutters: Gutters | float | str = 0.0,
+    gutters: Gutters | float | str | None = None,
     marks: MarkStyle | None = DEFAULT_MARKS,
     orientation: str = "auto",
     max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
@@ -189,6 +202,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
     marks.
+
+    *gutters* defaults to what the schema wants: 4 mm between pieces that will
+    be cut apart, and none between the two halves of a folded spread.
 
     *bleed* is the most bleed to place, and it caps whatever the artwork
     brought rather than requesting it: a file supplied with 5 mm is shaved to
@@ -228,7 +244,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         machine.check_sheet(sheet_size)
         boxes = source_boxes(opened)
 
-        gaps = _gutters(gutters)
+        gaps = _gutters(default_gutter(schema) if gutters is None else gutters)
         bleed_insets = boxes.bleed_insets.capped(length(bleed))
         allowance = max(
             marks.reach if marks else 0.0,

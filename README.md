@@ -68,6 +68,11 @@ mm. `orientation="auto"` tries upright first and turns the pages if it must.
 Binding schemas are never turned automatically, because moving the fold turns a
 side-bound booklet into a top-bound one.
 
+**Gutters follow the binding.** Cut work defaults to 4 mm between pieces —
+what a guillotine needs to come down without shaving a neighbour. A folded
+spread defaults to none: its two pages meet across the fold, and a gap there is
+a gap in the middle of the reader's page. `--gutter` overrides either.
+
 **Bleed is capped, not requested.** `--bleed` says the most to place, and the
 default is 2 mm. Artwork arriving with 5 mm is shaved to 2; artwork with 1 mm
 keeps its 1; artwork with none stays with none, because bleed that is not in
@@ -143,7 +148,7 @@ series.
 | `--press NAME` | `indigo-5000` | press profile; see `impose presses` |
 | `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
-| `--gutter LENGTH` | none | space between pages, for the knife (`--gutters` also accepted) |
+| `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
 | `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |
 | `--mark-offset LENGTH` | `2mm` | gap between the trim and the start of a mark |
 | `--mark-length LENGTH` | `3mm` | how long each mark is |

@@ -134,9 +134,11 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "--gutter",
         dest="gutters",
         type=_length,
-        default=0.0,
+        default=None,
         metavar="LENGTH",
-        help="Space between pages, for the knife. Default: none.",
+        help="Space between pages, for the knife. Defaults to 4mm where the "
+        "sheet will be cut apart, and to none between the two halves of a "
+        "folded spread, which must meet at the fold.",
     )
     parser.add_argument(
         "--bleed",
