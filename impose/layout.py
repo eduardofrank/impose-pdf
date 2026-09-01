@@ -24,7 +24,7 @@ from .boxes import rotate_insets
 from .geometry import Insets, Rect, Size, bounds
 from .plan import BLANK, Placement, Surface
 from .press import Press
-from .units import format_mm
+from .units import format_mm, to_mm
 
 #: Neighbouring pages are painted a hair into each other so that antialiasing
 #: at the shared edge cannot show the sheet through as a pale hairline.
@@ -261,10 +261,9 @@ def _position(
     if not _fits(extent.size, imageable.size):
         if not _fits(extent.size.swapped(), imageable.size):
             raise ImposeError(
-                f"The imposed form is {format_mm(extent.size)} including bleed "
-                f"and marks, and the imageable area is "
-                f"{format_mm(imageable.size)}. It does not fit either way "
-                f"round."
+                _why_it_does_not_fit(
+                    extent, trim_bounds, paint_bounds, imageable, mark_allowance
+                )
             )
         turned = True
         placed = [
@@ -300,6 +299,43 @@ def _position(
         trim_bounds=bounds([page.trim for page in placed]),
         bleed_bounds=bounds([page.paint for page in placed]),
         turned=turned,
+    )
+
+
+def _why_it_does_not_fit(
+    extent: Rect, trims: Rect, paint: Rect, imageable: Rect, allowance: float
+) -> str:
+    """Say what the form is made of, so the operator can see what to shed.
+
+    A bare "it does not fit" leaves someone measuring by hand to work out
+    whether it was the bleed, the marks, or the gutters that pushed it over.
+    Each is a knob they can turn, so each is named with its cost.
+    """
+    over_w = extent.width - imageable.width
+    over_h = extent.height - imageable.height
+    turned_w = extent.height - imageable.width
+    turned_h = extent.width - imageable.height
+    by = min(
+        max(over_w, over_h),
+        max(turned_w, turned_h),
+    )
+    parts = [f"trims {format_mm(trims.size)}"]
+    bleed = max(
+        trims.x0 - paint.x0,
+        paint.x1 - trims.x1,
+        trims.y0 - paint.y0,
+        paint.y1 - trims.y1,
+    )
+    if bleed > 1e-6:
+        parts.append(f"{to_mm(bleed):g} mm bleed per edge")
+    if allowance > 1e-6:
+        parts.append(f"{to_mm(allowance):g} mm for marks per edge")
+    return (
+        f"The imposed form is {format_mm(extent.size)} "
+        f"({', '.join(parts)}), and the imageable area is "
+        f"{format_mm(imageable.size)}. It does not fit either way round, and "
+        f"misses by {to_mm(by):.3g} mm. Fewer pages per sheet, a smaller "
+        f"gutter, or shorter marks would each make room."
     )
 
 

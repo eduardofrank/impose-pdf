@@ -115,6 +115,14 @@ def _common(parser: argparse.ArgumentParser) -> None:
         help="Stroke width of marks. Default: 0.25pt.",
     )
     parser.add_argument(
+        "--orientation",
+        choices=("auto", "upright", "turned"),
+        default="auto",
+        help="How pages sit in their cells. auto turns them a quarter if that "
+        "is what fits, except for the binding schemas, where it would move "
+        "the fold. Default: %(default)s.",
+    )
+    parser.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
@@ -265,6 +273,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             sheet=args.sheet,
             gutters=args.gutters,
             marks=_style(args),
+            orientation=args.orientation,
             **_schema_options(args),
         )
         if not args.quiet:

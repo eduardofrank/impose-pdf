@@ -184,6 +184,31 @@ class Plan:
                 f"{self.schema or 'plan'}: page {missing[0]} is never imposed."
             )
 
+    def turned(self) -> Plan:
+        """This plan with every page given a quarter turn.
+
+        Turning the pages is not the same as turning the form. A form turned
+        whole keeps its cells in the same relation and swaps the outline; pages
+        turned individually change the cell's own proportions, so a grid of
+        upright A6 becomes a grid of landscape A6 and fits a quite different
+        sheet. Nothing about the page order changes.
+        """
+        return dataclasses.replace(
+            self,
+            surfaces=tuple(
+                dataclasses.replace(
+                    surface,
+                    placements=tuple(
+                        dataclasses.replace(
+                            placement, rotation=(placement.rotation + 90) % 360
+                        )
+                        for placement in surface.placements
+                    ),
+                )
+                for surface in self.surfaces
+            ),
+        )
+
     def describe(self) -> str:
         """The plan as a grid of page numbers, for reading and for bug reports.
 

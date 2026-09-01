@@ -62,6 +62,13 @@ edge that feeds first. On an Indigo 5000 that is 12 mm at the lead edge and
 8 mm at the tail. A form that will not fit is turned; the sheet never is,
 because the gripper edge is fixed with respect to the machine.
 
+**Pages are turned if that is what fits.** Six A6 pages will not go on an
+Indigo upright — two across by three down is 462 mm tall against a 450 mm
+imageable area — but the same six fit comfortably on their sides, at 310 × 333
+mm. `orientation="auto"` tries upright first and turns the pages if it must.
+Binding schemas are never turned automatically, because moving the fold turns a
+side-bound booklet into a top-bound one.
+
 **Bleed is not invented.** Where two pages meet at a spine they share one cut
 line, so bleed is shaved to nothing there and the two trims are snapped onto
 one coordinate. Where a file declares no BleedBox, the answer is no bleed — the
@@ -279,6 +286,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `pdfx` — OutputIntent and conformance keys carried through |
 | ✅ | `cli` — the `impose` command |
 | ⬜ | Registration targets, colour bars, slug line |
+| ⬜ | Choosing the grid as well as the orientation |
 | ⬜ | Creep compensation for thick saddle-stitched work |
 
 ## Development

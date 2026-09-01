@@ -46,6 +46,12 @@ SCHEMAS: dict[str, Callable[..., Plan]] = {
 #: Schemas whose grid is fixed by the binding rather than chosen.
 _FIXED_GRID = frozenset({"saddle", "perfect"})
 
+#: Schemas where turning the pages would change the product. A saddle-stitched
+#: booklet folds down the middle of its spread: turn the pages a quarter and
+#: the fold runs the other way, which is a top-bound book, not the one that was
+#: asked for. The flat schemas are cut apart, so orientation is free.
+_BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect"})
+
 #: Marks are drawn unless a caller explicitly asks for none. A press sheet
 #: with no indication of where to cut is not much use to a bindery.
 DEFAULT_MARKS = MarkStyle()
@@ -142,14 +148,24 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     sheet: Size | str | tuple[float, float] | None = None,
     gutters: Gutters | float | str = 0.0,
     marks: MarkStyle | None = DEFAULT_MARKS,
+    orientation: str = "auto",
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
-    marks. Remaining keyword arguments go to the schema: ``columns`` and
-    ``rows`` for the grid schemas, ``section_pages`` for perfect binding,
-    ``copies`` for step and repeat.
+    marks.
+
+    *orientation* decides how the pages sit in their cells. ``"auto"`` tries
+    them upright and, if the form will not fit, tries them turned a quarter --
+    six A6 pages will not fit an Indigo upright but fit comfortably on their
+    sides. ``"upright"`` and ``"turned"`` pin it. Turning is never tried
+    automatically for a binding schema, because it would move the fold and
+    give a top-bound book instead of a side-bound one.
+
+    Remaining keyword arguments go to the schema: ``columns`` and ``rows`` for
+    the grid schemas, ``section_pages`` for perfect binding, ``copies`` for
+    step and repeat.
     """
     # Imported here rather than at module scope so that building and checking
     # a plan costs nothing but this module: the renderer pulls in pikepdf's
@@ -167,23 +183,19 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         plan.validate(exhaustive=schema != "steprepeat")
 
         style = marks
-        gaps = _gutters(gutters)
+        plan, layouts = _fit(
+            plan,
+            schema=schema,
+            orientation=orientation,
+            boxes=boxes,
+            gutters=_gutters(gutters),
+            press=machine,
+            sheet=sheet_size,
+            allowance=style.reach if style else 0.0,
+        )
         renderer = Renderer(style=style)
-        turned = False
-        for surface in plan:
-            layout = lay_out(
-                surface,
-                columns=plan.columns,
-                rows=plan.rows,
-                trim=boxes.trim_size,
-                trim_origin=boxes.trim,
-                bleed=boxes.bleed_insets,
-                gutters=gaps,
-                press=machine,
-                sheet=sheet_size,
-                mark_allowance=style.reach if style else 0.0,
-            )
-            turned = turned or layout.turned
+        turned = any(layout.turned for layout in layouts)
+        for layout in layouts:
             renderer.add(
                 layout,
                 opened,
@@ -206,6 +218,58 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     finally:
         if opened is not source:
             opened.close()
+
+
+def _candidates(plan: Plan, schema: str, orientation: str) -> list[Plan]:
+    """The page orientations worth trying, in order of preference."""
+    if orientation == "upright":
+        return [plan]
+    if orientation == "turned":
+        return [plan.turned()]
+    if orientation != "auto":
+        raise ImposeError(
+            f"Unknown orientation {orientation!r}; use auto, upright, or turned."
+        )
+    if schema in _BINDING_EDGE_MATTERS:
+        return [plan]
+    return [plan, plan.turned()]
+
+
+def _fit(  # pylint: disable=too-many-arguments
+    plan: Plan,
+    *,
+    schema: str,
+    orientation: str,
+    boxes: PageBoxes,
+    gutters: Gutters,
+    press: Press,
+    sheet: Size,
+    allowance: float,
+) -> tuple[Plan, list]:
+    """Lay every surface out, turning the pages if that is what fits."""
+    failure: ImposeError | None = None
+    for candidate in _candidates(plan, schema, orientation):
+        try:
+            layouts = [
+                lay_out(
+                    surface,
+                    columns=candidate.columns,
+                    rows=candidate.rows,
+                    trim=boxes.trim_size,
+                    trim_origin=boxes.trim,
+                    bleed=boxes.bleed_insets,
+                    gutters=gutters,
+                    press=press,
+                    sheet=sheet,
+                    mark_allowance=allowance,
+                )
+                for surface in candidate
+            ]
+        except ImposeError as error:
+            failure = error
+            continue
+        return candidate, layouts
+    raise failure  # every orientation was tried and none fitted
 
 
 def _marks(layout, plan: Plan, style: MarkStyle | None) -> list[Segment] | None:

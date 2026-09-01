@@ -179,3 +179,81 @@ class TestOptions(unittest.TestCase):
         source = make_pdf(8)
         run(source=source)
         self.assertEqual(len(source.pages), 8)
+
+
+class TestOrientation(unittest.TestCase):
+    """Pages are turned in their cells when that is what fits."""
+
+    @staticmethod
+    def small_marks():
+        """A 5 mm mark reach, which is what an A6 six-up needs to fit."""
+        return MarkStyle(offset=1 * MM, length=4 * MM)
+
+    def test_six_a6_up_fits_only_once_the_pages_are_turned(self):
+        """2x3 upright is 462 mm tall; on their sides the same six fit."""
+        result, _ = run(
+            pages=6,
+            schema="nup",
+            columns=2,
+            rows=3,
+            gutters="4mm",
+            marks=self.small_marks(),
+        )
+        self.assertEqual(result.sheets, 1)
+        self.assertTrue(
+            all(p.rotation == 90 for s in result.plan for p in s.placements)
+        )
+
+    def test_eight_a6_up_also_fits(self):
+        result, _ = run(
+            pages=8,
+            schema="nup",
+            columns=2,
+            rows=4,
+            gutters="4mm",
+            marks=self.small_marks(),
+        )
+        self.assertEqual(result.sheets, 1)
+
+    def test_upright_is_preferred_when_it_fits(self):
+        result, _ = run(pages=4, schema="nup", columns=2, rows=1)
+        self.assertTrue(all(p.rotation == 0 for s in result.plan for p in s.placements))
+
+    def test_upright_can_be_pinned(self):
+        with self.assertRaises(ImposeError):
+            run(
+                pages=6,
+                schema="nup",
+                columns=2,
+                rows=3,
+                gutters="4mm",
+                marks=self.small_marks(),
+                orientation="upright",
+            )
+
+    def test_turned_can_be_pinned(self):
+        result, _ = run(pages=4, schema="nup", columns=2, rows=1, orientation="turned")
+        self.assertTrue(
+            all(p.rotation == 90 for s in result.plan for p in s.placements)
+        )
+
+    def test_binding_schemas_are_never_turned_automatically(self):
+        """Turning a saddle spread moves the fold and makes a top-bound book."""
+        result, _ = run(pages=8, schema="saddle")
+        self.assertTrue(all(p.rotation == 0 for s in result.plan for p in s.placements))
+
+    def test_unknown_orientation_is_refused(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(schema="nup", orientation="sideways")
+        self.assertIn("auto, upright, or turned", str(caught.exception))
+
+    def test_page_order_is_unchanged_by_turning(self):
+        upright = build_plan("nup", 12, columns=2, rows=3)
+        self.assertEqual(upright.placed_sources(), upright.turned().placed_sources())
+
+    def test_the_refusal_names_what_is_taking_the_room(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(pages=6, schema="nup", columns=2, rows=3, gutters="4mm")
+        message = str(caught.exception)
+        self.assertIn("for marks per edge", message)
+        self.assertIn("misses by", message)
