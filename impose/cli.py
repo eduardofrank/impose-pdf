@@ -25,6 +25,7 @@ from .job import SCHEMAS, build_plan, impose_document, source_boxes
 from .marks import MarkStyle
 from .press import get as get_press
 from .press import press_names
+from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
@@ -167,6 +168,16 @@ def build_parser() -> argparse.ArgumentParser:
                 metavar="COLUMNSxROWS",
                 help="How many pages across and down. Omit it and the densest "
                 "grid that fits the press is chosen for you.",
+            )
+        if name == "saddle":
+            schema.add_argument(
+                "--max-nested-sheets",
+                type=int,
+                default=SADDLE_NESTING_LIMIT,
+                metavar="N",
+                help="Sheets that can be nested and stapled through the fold. "
+                "Default: %(default)s, which holds for bond and coated up to "
+                "about 150 gsm. Heavier stock staples fewer.",
             )
         if name == "perfect":
             schema.add_argument(
@@ -373,11 +384,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             gutters=args.gutters,
             marks=_style(args),
             orientation=args.orientation,
+            max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
             **_schema_options(args),
         )
         if not args.quiet:
             print(result.describe(), file=out)
             print(f"wrote {args.output or _default_output(args.input)}", file=out)
+        # Warnings go to stderr even when quiet: a job that will not staple is
+        # not something to keep to ourselves because output was suppressed.
+        for warning in result.warnings:
+            print(f"impose: warning: {warning}", file=sys.stderr)
         return 0
     # ValueError as well as ImposeError: a schema rejects an impossible
     # request with one, and whichever it is, the person at the terminal asked

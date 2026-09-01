@@ -8,7 +8,7 @@ import unittest
 
 from impose.plan import BLANK
 from impose.schemas import LEFT, RIGHT
-from impose.schemas.saddle import impose
+from impose.schemas.saddle import MAX_NESTED_SHEETS, impose, nesting_warning
 
 from .booklet import read_nested
 
@@ -73,3 +73,31 @@ class TestPadding(unittest.TestCase):
 
     def test_grid_is_a_spread(self):
         self.assertEqual(impose(8).grid, (2, 1))
+
+
+class TestNestingLimit(unittest.TestCase):
+    """How many sheets will actually staple through the fold."""
+
+    def test_thin_stock_takes_fifteen_sheets(self):
+        self.assertEqual(MAX_NESTED_SHEETS, 15)
+        self.assertIsNone(nesting_warning(15))
+        self.assertIsNone(nesting_warning(1))
+
+    def test_past_the_limit_it_says_so_and_says_what_to_do(self):
+        warning = nesting_warning(16)
+        self.assertIn("16 nested sheets", warning)
+        self.assertIn("15", warning)
+        self.assertIn("perfect bound", warning)
+
+    def test_sixty_pages_is_the_last_that_staples(self):
+        """Fifteen sheets at four pages each."""
+        self.assertIsNone(nesting_warning(impose(60).sheets))
+        self.assertIsNotNone(nesting_warning(impose(64).sheets))
+
+    def test_the_limit_belongs_to_the_stock_and_the_stapler(self):
+        """Heavier paper bulks up faster, so the figure is a parameter."""
+        self.assertIsNone(nesting_warning(8, 8))
+        self.assertIsNotNone(nesting_warning(9, 8))
+
+    def test_the_page_count_in_the_message_matches_the_limit(self):
+        self.assertIn("32 pages", nesting_warning(9, 8))

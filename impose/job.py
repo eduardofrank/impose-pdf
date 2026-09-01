@@ -70,6 +70,7 @@ class Result:  # pylint: disable=too-many-instance-attributes
     press: str
     turned: bool
     pdfx: str | None = None
+    warnings: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """A summary an operator can check before sending the file."""
@@ -172,6 +173,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     gutters: Gutters | float | str = 0.0,
     marks: MarkStyle | None = DEFAULT_MARKS,
     orientation: str = "auto",
+    max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
@@ -244,6 +246,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
+        warnings = _warnings(plan, schema, max_nested_sheets)
 
         return Result(
             plan=plan,
@@ -254,6 +257,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             press=machine.name,
             turned=turned,
             pdfx=identity.version,
+            warnings=warnings,
         )
     finally:
         if opened is not source:
@@ -310,6 +314,16 @@ def _fit(  # pylint: disable=too-many-arguments
             continue
         return candidate, layouts
     raise failure  # every orientation was tried and none fitted
+
+
+def _warnings(plan: Plan, schema: str, max_nested_sheets: int) -> tuple[str, ...]:
+    """Things worth saying about a job that is otherwise imposable."""
+    found = []
+    if schema == "saddle":
+        warning = saddle.nesting_warning(plan.sheets, max_nested_sheets)
+        if warning:
+            found.append(warning)
+    return tuple(found)
 
 
 def _marks(layout, plan: Plan, style: MarkStyle | None) -> list[Segment] | None:

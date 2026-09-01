@@ -98,14 +98,17 @@ class Run:
     def advice(self) -> str | None:
         """What to say about the leftovers, if anything.
 
-        The empty slots are already being printed, so the honest thing to
-        report is that filling them is free.
+        The sheets are already being run, so the empty slots cost nothing more
+        in clicks. They do cost ink: every surplus piece is imaged and then
+        thrown away. So the useful thing to say is that filling them is free,
+        and that discarding them is not quite.
         """
         if self.waste <= 0:
             return None
         return (
-            f"{self.waste} slot(s) on the last sheet are printed and "
-            f"discarded. Raising the order to {self.capacity} costs no more "
+            f"{self.waste} surplus piece(s) are imaged on the last sheet and "
+            f"discarded, which is ink spent on nothing. The sheets are already "
+            f"being run, so raising the order to {self.capacity} costs no more "
             f"press time."
         )
 

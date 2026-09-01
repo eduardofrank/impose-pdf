@@ -257,3 +257,29 @@ class TestOrientation(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("for marks per edge", message)
         self.assertIn("misses by", message)
+
+
+class TestWarnings(unittest.TestCase):
+    """Things worth saying about a job that is otherwise imposable."""
+
+    def test_a_thick_saddle_book_warns_about_stapling(self):
+        result, _ = run(pages=64, schema="saddle")
+        self.assertEqual(result.sheets, 16)
+        self.assertTrue(any("staple" in w for w in result.warnings))
+
+    def test_a_book_within_the_limit_says_nothing(self):
+        result, _ = run(pages=60, schema="saddle")
+        self.assertEqual(result.warnings, ())
+
+    def test_the_limit_can_be_lowered_for_heavier_stock(self):
+        result, _ = run(pages=40, schema="saddle", max_nested_sheets=8)
+        self.assertTrue(any("exceeds the 8" in w for w in result.warnings))
+
+    def test_other_schemas_do_not_warn_about_stapling(self):
+        result, _ = run(pages=64, schema="nup")
+        self.assertEqual(result.warnings, ())
+
+    def test_a_warning_does_not_stop_the_job(self):
+        result, data = run(pages=64, schema="saddle")
+        self.assertTrue(result.warnings)
+        self.assertGreater(len(data), 0)

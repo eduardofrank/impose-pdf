@@ -218,6 +218,26 @@ against the wrong neighbour with nothing looking wrong until the job is cut.
 `cutstack` and `steprepeat` really are cut, so each finished piece takes its
 reverse from the *mirrored* cell of the back surface.
 
+## Bindery limits
+
+A saddle-stitched book can only be so thick before the stapler struggles: the
+constraint is bulk at the spine, not page count. Fifteen nested sheets — sixty
+pages — holds for thin stock, bond and coated up to about 150 gsm. Heavier
+paper bulks up faster and staples fewer, so the figure is a parameter rather
+than a constant.
+
+```
+$ impose saddle book-64pp.pdf
+impose: warning: 16 nested sheets exceeds the 15 that staple cleanly (60
+pages). Thicker books are usually gathered into sections and perfect bound
+instead.
+```
+
+The job still runs — it is your press and your stapler — and
+`--max-nested-sheets` sets the limit for the stock in hand. Warnings go to
+stderr even under `--quiet`, since a book that will not staple is not something
+to keep quiet about.
+
 ## Marks
 
 Marks sit at the ends of each cut line, out beyond the form, because that is

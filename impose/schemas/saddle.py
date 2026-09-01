@@ -23,6 +23,34 @@ from . import LEFT, RIGHT
 #: Pages carried by one folded sheet: two on the front, two on the back.
 PAGES_PER_SHEET = 4
 
+#: Sheets that can be nested and stapled through the fold before the stapler
+#: starts to struggle. Fifteen holds for thin stock -- bond, and coated up to
+#: about 150 gsm. Heavier paper bulks up faster and staples fewer, and the
+#: figure for a given stock belongs to the shop and its stapler, so it is a
+#: parameter rather than a constant.
+MAX_NESTED_SHEETS = 15
+
+
+def nesting_warning(sheets: int, limit: int = MAX_NESTED_SHEETS) -> str | None:
+    """Whether this many nested sheets will staple, and what to do if not.
+
+    The constraint is the bulk at the spine, not the page count: fifteen sheets
+    of bond is a different thing from fifteen of 300 gsm board. Past the limit
+    the answer is usually to split the book into sections and bind it another
+    way.
+
+    >>> nesting_warning(10)
+    >>> nesting_warning(20, 15)[:44]
+    '20 nested sheets exceeds the 15 that staple '
+    """
+    if sheets <= limit:
+        return None
+    return (
+        f"{sheets} nested sheets exceeds the {limit} that staple cleanly "
+        f"({limit * PAGES_PER_SHEET} pages). Thicker books are usually "
+        f"gathered into sections and perfect bound instead."
+    )
+
 
 def impose(pages: int) -> Plan:
     """Impose *pages* as a saddle-stitched booklet.
