@@ -190,9 +190,15 @@ class Renderer:
         identity = read_identity(source)
         carry_over(self.pdf, source, identity)
         required = minimum_version(identity.version)
-        for candidate in (str(source.pdf_version), required):
-            if candidate:
-                self._min_version = max(self._min_version, candidate)
+        if identity.declares_pdfx:
+            # A PDF/X file conformed at the version it was written at, and the
+            # older parts pin that version rather than set a floor. Writing it
+            # newer than it arrived would break the claim we are preserving.
+            self._min_version = max(str(source.pdf_version), required or "1.3")
+        else:
+            for candidate in (str(source.pdf_version), required):
+                if candidate:
+                    self._min_version = max(self._min_version, candidate)
         return identity
 
     def add(  # pylint: disable=too-many-arguments,too-many-locals
@@ -249,10 +255,19 @@ class Renderer:
         with self.pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
             meta["dc:creator"] = ["impose"]
             meta["pdf:Producer"] = f"impose {__version__}"
+        # Object streams are a PDF 1.5 feature. A file that must stay at 1.3 or
+        # 1.4 -- which the older PDF/X parts require -- cannot have them, and
+        # compressing it that way would quietly break the conformance this went
+        # to trouble to carry across.
+        streams = (
+            pikepdf.ObjectStreamMode.generate
+            if self._min_version >= "1.5"
+            else pikepdf.ObjectStreamMode.disable
+        )
         self.pdf.save(
             path,
             compress_streams=True,
-            object_stream_mode=pikepdf.ObjectStreamMode.generate,
+            object_stream_mode=streams,
             linearize=linearize,
             min_version=self._min_version,
         )

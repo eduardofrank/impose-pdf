@@ -125,10 +125,14 @@ class TestCarryOver(unittest.TestCase):
         self.assertGreaterEqual(str(out.pdf_version), "1.6")
         out.close()
 
-    def test_version_is_never_lowered(self):
-        """An older part does not drag a newer file backwards."""
+    def test_an_old_part_is_written_at_its_own_version(self):
+        """PDF/X-1a:2003 is defined against PDF 1.4, so 1.4 is what to write.
+
+        The output used to come out 1.5 because object streams were switched on
+        unconditionally, which is a PDF 1.5 feature and breaks the claim.
+        """
         out = imposed(add_output_intent(declare_pdfx(make_pdf(4), "PDF/X-1a:2003")))
-        self.assertGreaterEqual(str(out.pdf_version), "1.5")
+        self.assertEqual(str(out.pdf_version), "1.4")
         out.close()
 
     def test_carry_over_is_callable_directly(self):
@@ -153,3 +157,63 @@ class TestReporting(unittest.TestCase):
 
     def test_identity_defaults_are_empty(self):
         self.assertFalse(Identity().declares_pdfx)
+
+
+class TestRealWorldShapes(unittest.TestCase):
+    """Shapes that real exports use and a convenient fixture does not."""
+
+    @staticmethod
+    def direct_intent(pdf):
+        """An OutputIntent written directly, with only the profile indirect.
+
+        Which is how a real PDF/X-1a export from a layout application does it.
+        """
+        profile = pikepdf.Stream(pdf, ICC_MARKER + b"\x00" * 64, N=4)
+        pdf.Root.OutputIntents = pikepdf.Array(
+            [
+                pikepdf.Dictionary(
+                    Type=pikepdf.Name.OutputIntent,
+                    S=pikepdf.Name.GTS_PDFX,
+                    OutputConditionIdentifier="CGATS TR 001",
+                    DestOutputProfile=profile,
+                )
+            ]
+        )
+        return pdf
+
+    def test_a_direct_output_intent_is_copied(self):
+        """copy_foreign refuses direct objects; the intent has to be rebuilt."""
+        source = self.direct_intent(declare_pdfx(make_pdf(4), "PDF/X-1:2001"))
+        out = imposed(source)
+        intents = out.Root.get("/OutputIntents")
+        self.assertEqual(len(intents), 1)
+        self.assertIn(ICC_MARKER, intents[0]["/DestOutputProfile"].read_bytes())
+        self.assertEqual(str(intents[0]["/OutputConditionIdentifier"]), "CGATS TR 001")
+        out.close()
+
+    def test_the_x1_family_is_recognised(self):
+        """Files claim PDF/X-1:2001 as well as PDF/X-1a:2001."""
+        self.assertEqual(minimum_version("PDF/X-1:2001"), "1.3")
+        self.assertEqual(minimum_version("PDF/X-1a:2001"), "1.3")
+
+    def test_an_old_part_is_not_written_newer_than_it_arrived(self):
+        """PDF/X-1a is defined against PDF 1.3, and object streams are 1.5."""
+        source = self.direct_intent(declare_pdfx(make_pdf(4), "PDF/X-1:2001"))
+        # Round-trip through a save so the document really carries 1.3, the way
+        # an export from a layout application would.
+        buffer = io.BytesIO()
+        source.save(
+            buffer,
+            min_version="1.3",
+            object_stream_mode=pikepdf.ObjectStreamMode.disable,
+        )
+        buffer.seek(0)
+        out = imposed(pikepdf.open(buffer))
+        self.assertEqual(str(out.pdf_version), "1.3")
+        out.close()
+
+    def test_a_modern_part_still_gets_object_streams(self):
+        source = add_output_intent(declare_pdfx(make_pdf(4), "PDF/X-4"))
+        out = imposed(source)
+        self.assertGreaterEqual(str(out.pdf_version), "1.6")
+        out.close()

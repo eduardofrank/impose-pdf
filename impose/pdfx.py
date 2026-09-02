@@ -23,7 +23,7 @@ from __future__ import annotations
 import dataclasses
 
 import pikepdf
-from pikepdf import Array, Name
+from pikepdf import Array, Dictionary, Name
 
 from .boxes import pdfx_version
 
@@ -38,6 +38,7 @@ _DEFINITE_TRAPPING = ("/True", "/False")
 #: than the claim requires contradicts the claim, so the output is raised to
 #: meet it -- never lowered, since the source may legitimately be newer.
 _MINIMUM_VERSION = {
+    "PDF/X-1:2001": "1.3",
     "PDF/X-1A:2001": "1.3",
     "PDF/X-3:2002": "1.3",
     "PDF/X-1A:2003": "1.4",
@@ -149,13 +150,31 @@ def carry_over(target: pikepdf.Pdf, source: pikepdf.Pdf, identity: Identity) -> 
         _declare_version(target, identity.version)
 
 
+def _transplant(target: pikepdf.Pdf, value):
+    """Copy *value* out of another document, whether or not it is indirect.
+
+    copy_foreign only takes indirect objects, and there is no rule that says an
+    OutputIntent must be one. Real files write the array, and often the intent
+    dictionary inside it, as direct objects with only the ICC profile stream
+    given a reference of its own. So walk the structure: hand indirect objects
+    to copy_foreign, and rebuild direct containers around whatever comes back.
+    """
+    if value.is_indirect:
+        return target.copy_foreign(value)
+    if isinstance(value, Dictionary):
+        return Dictionary({str(k): _transplant(target, v) for k, v in value.items()})
+    if isinstance(value, Array):
+        return Array([_transplant(target, item) for item in value])
+    return value
+
+
 def _copy_output_intents(target: pikepdf.Pdf, source: pikepdf.Pdf) -> None:
     """Bring the source's OutputIntents across, ICC profile and all."""
     intents = source.Root.get("/OutputIntents")
     if intents is None or len(intents) == 0:
         return
     target.Root.OutputIntents = Array(
-        [target.copy_foreign(intent) for intent in intents]
+        [target.make_indirect(_transplant(target, intent)) for intent in intents]
     )
 
 
