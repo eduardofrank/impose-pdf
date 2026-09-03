@@ -485,3 +485,27 @@ class TestPageSize(unittest.TestCase):
         """--sheet fit already says exactly what the page is."""
         width, _ = self.media(run(pages=8, schema="saddle", sheet="fit", marks=None)[1])
         self.assertLess(width, 310.0)
+
+
+class TestChosenGrid(unittest.TestCase):
+    """Which grid gets picked when none is given."""
+
+    def test_step_and_repeat_takes_the_densest(self):
+        """It makes one sheet per item, so more copies a sheet is always better.
+
+        Ranking it by sheets-for-a-quantity, as the schemas that divide a
+        document are ranked, picks 42 up on a label that fits 50.
+        """
+        label = make_pdf(2, trim=Size(40 * MM, 55 * MM))
+        result, _ = run(source=label, schema="steprepeat", gutters="4mm")
+        self.assertEqual(result.plan.columns * result.plan.rows, 50)
+
+    def test_the_dividing_schemas_still_weigh_the_page_count(self):
+        """n-up spreads a document across cells; fewest sheets wins there."""
+        result, _ = run(pages=8, schema="nup", gutters="4mm")
+        self.assertEqual(result.sheets, 1)
+
+    def test_an_explicit_grid_beats_either_rule(self):
+        label = make_pdf(2, trim=Size(40 * MM, 55 * MM))
+        result, _ = run(source=label, schema="steprepeat", columns=2, rows=2)
+        self.assertEqual(result.plan.grid, (2, 2))

@@ -171,18 +171,33 @@ def build_plan(schema: str, pages: int, **options: Any) -> Plan:
     return build(pages, **{k: v for k, v in options.items() if v is not None})
 
 
-def choose_grid(
-    trim: Size, press: Press, sheet: Size, *, gutters: Gutters, allowance: float
+def choose_grid(  # pylint: disable=too-many-arguments
+    trim: Size,
+    press: Press,
+    sheet: Size,
+    *,
+    gutters: Gutters,
+    allowance: float,
+    quantity: int | None = None,
 ) -> tuple[int, int, bool]:
-    """The densest grid that fits, and whether it needs the pages turned.
+    """The grid to run, and whether it needs the pages turned.
 
     This is the question a shop asks before anything else: given this finished
-    size and this press, how many to a sheet. Answering it here means the
-    caller does not have to already know.
+    size and this press, how many to a sheet.
+
+    With a *quantity* the answer is what costs fewest sheets, then wastes least
+    -- the densest grid is not always that, since a sparser one can divide the
+    document more evenly. Without one, density is all there is to go on, which
+    is the right answer for a schema that fills every sheet with the same thing
+    however many are wanted.
     """
     gutter = max(gutters.horizontal, gutters.vertical)
     arrangement = best(
-        trim, press.imageable_area(sheet), gutter=gutter, allowance=allowance
+        trim,
+        press.imageable_area(sheet),
+        quantity=quantity,
+        gutter=gutter,
+        allowance=allowance,
     )
     if arrangement is None:
         raise ImposeError(
@@ -287,6 +302,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 sheet_size,
                 gutters=gaps,
                 allowance=allowance,
+                # Step and repeat makes one sheet per item whatever the grid,
+                # so nothing is being divided and denser is simply better. The
+                # schemas that spread a document across the cells are weighed
+                # against the page count instead.
+                quantity=None if schema == "steprepeat" else len(opened.pages),
             )
             options["columns"], options["rows"] = columns, rows
 
