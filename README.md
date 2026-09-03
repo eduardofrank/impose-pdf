@@ -560,6 +560,25 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `creep` — fore-edge push-out compensated per sheet |
 
+## Checking artwork
+
+Imposition cannot fix a page whose ground stops short of its own TrimBox. It
+prints as an uneven margin at a cut edge, or as a hairline down the spine where
+the neighbouring page reaches and this one does not — invisible on screen,
+obvious once folded.
+
+```bash
+pip install pypdfium2
+python tools/check-artwork.py catalogue.pdf
+```
+
+It renders a narrow band along each trim edge of each page and reports how far
+in the first ink appears. Deliberately not part of `impose` and never run when
+imposing: it needs a renderer, which the library takes some trouble not to
+depend on, and it costs around 50 ms a page on image-heavy work because the
+images must be decoded before anything can be measured. Run it on a job you
+have reason to doubt.
+
 ## Development
 
 ```bash
