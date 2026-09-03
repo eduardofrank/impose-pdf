@@ -251,6 +251,16 @@ def build_parser() -> argparse.ArgumentParser:
             )
         if name == "steprepeat":
             schema.add_argument(
+                "--sides",
+                type=int,
+                choices=(1, 2),
+                default=None,
+                metavar="N",
+                help="Sides per item: 1 for single-sided, 2 for a front and a "
+                "back. Taken from the page count when left out -- an even "
+                "document is read as front-and-back pairs.",
+            )
+            schema.add_argument(
                 "--copies",
                 type=int,
                 metavar="N",
@@ -340,6 +350,8 @@ def _schema_options(args: argparse.Namespace) -> dict:
         options["section_pages"] = args.section_pages
     if getattr(args, "copies", None) is not None:
         options["copies"] = args.copies
+    if getattr(args, "sides", None) is not None:
+        options["sides"] = args.sides
     return options
 
 

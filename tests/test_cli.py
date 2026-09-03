@@ -160,8 +160,10 @@ class TestFailures(unittest.TestCase):
 
     def test_a_schema_refusing_the_job_is_a_sentence(self):
         """Schemas raise ValueError, and that must not reach the terminal raw."""
-        with workspace() as source:
-            status, _, err = run("steprepeat", str(source), "--up", "2x2")
+        with workspace(pages=15) as source:
+            status, _, err = run(
+                "steprepeat", str(source), "--up", "2x2", "--sides", "2"
+            )
             self.assertEqual(status, 1)
             self.assertTrue(err.startswith("impose: "))
             self.assertNotIn("Traceback", err)

@@ -47,11 +47,66 @@ class TestValidation(unittest.TestCase):
         with self.assertRaises(ImposeError):
             impose(1, columns=4, rows=2).validate()
 
-    def test_rejects_more_than_a_front_and_a_back(self):
+    def test_rejects_pages_that_do_not_divide_into_items(self):
         with self.assertRaises(ValueError) as caught:
-            impose(3, columns=2, rows=2)
-        self.assertIn("front and a back", str(caught.exception))
+            impose(3, columns=2, rows=2, sides=2)
+        self.assertIn("do not divide", str(caught.exception))
+
+    def test_rejects_an_empty_document(self):
+        with self.assertRaises(ValueError):
+            impose(0, columns=2, rows=2)
+
+    def test_rejects_an_impossible_sidedness(self):
+        with self.assertRaises(ValueError):
+            impose(4, columns=2, rows=2, sides=3)
 
     def test_rejects_empty_grid(self):
         with self.assertRaises(ValueError):
             impose(1, columns=0, rows=1)
+
+
+class TestDocumentOfItems(unittest.TestCase):
+    """Several items, each filling its own sheets -- what a booklet needs."""
+
+    def test_each_pair_gets_its_own_sheets(self):
+        """Four signatures, two up, four copies: two sheets a signature."""
+        plan = impose(8, columns=1, rows=2, copies=4)
+        self.assertEqual(plan.sheets, 8)
+        fronts = [s for s in plan.surfaces if s.side == "front"]
+        self.assertEqual(
+            [s.placements[0].source for s in fronts], [0, 0, 2, 2, 4, 4, 6, 6]
+        )
+
+    def test_a_sheet_carries_one_item_only(self):
+        for surface in impose(8, columns=2, rows=2, copies=8).surfaces:
+            with self.subTest(sheet=surface.sheet, side=surface.side):
+                self.assertEqual(len({p.source for p in surface.placements}), 1)
+
+    def test_the_back_of_a_sheet_is_that_item_s_back(self):
+        plan = impose(8, columns=1, rows=2, copies=2)
+        for front, back in zip(plan.surfaces[::2], plan.surfaces[1::2]):
+            with self.subTest(sheet=front.sheet):
+                self.assertEqual(
+                    back.placements[0].source, front.placements[0].source + 1
+                )
+
+    def test_sidedness_is_read_from_the_page_count(self):
+        self.assertEqual(len(impose(4, columns=2, rows=1).surfaces), 4)  # 2 pairs
+        self.assertEqual(len(impose(3, columns=2, rows=1).surfaces), 3)  # 3 singles
+
+    def test_single_sided_items_can_be_stated(self):
+        """Four one-sided items, not two double-sided ones."""
+        plan = impose(4, columns=2, rows=1, sides=1)
+        self.assertTrue(all(s.side == "front" for s in plan.surfaces))
+        self.assertEqual(plan.sheets, 4)
+
+    def test_copies_are_per_item(self):
+        """A hundred booklets whose forms go two up is fifty sheets a signature."""
+        plan = impose(4, columns=1, rows=2, copies=100)
+        self.assertEqual(plan.sheets, 2 * 50)
+
+    def test_impressions_counts_pieces_of_each_item(self):
+        self.assertEqual(impressions(impose(8, columns=1, rows=2, copies=4)), 4)
+
+    def test_it_still_validates_without_the_exhaustive_check(self):
+        self.assertIsNone(impose(8, columns=1, rows=2).validate(exhaustive=False))

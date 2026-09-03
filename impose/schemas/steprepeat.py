@@ -2,13 +2,25 @@
 
 """Step and repeat: one item, many times, filling the sheet.
 
-Business cards, labels, tickets, swatches. There is no document order to
-preserve -- there is one piece of artwork, and the job is to get as many
+Business cards, labels, tickets, swatches -- and folded signatures, which is
+the same problem wearing different clothes. There is no document order to
+preserve. There is a piece of artwork, and the job is to get as many
 impressions of it onto each sheet as will fit, then cut them apart.
 
-This is the one schema that deliberately places the same page more than once,
-so its plans are validated without the exhaustive check the binding schemas
-use. A two-page source is read as a front and a back rather than as a sequence.
+An item may be one page or two. Two makes it double-sided, and the second page
+goes on the back of the sheet, mirrored, so it lands behind the first once the
+press turns it. A document of several items is several separate step-and-repeat
+runs, one after another: each item gets its own sheets, filled with itself.
+
+That last part is what a saddle-stitched booklet needs. Impose it onto its own
+form first, and the result is a document of two-page items -- each folded sheet,
+front and back. Step and repeat that two up and every press sheet carries one
+signature twice; cut it down the middle and there are two identical folded
+sheets, one for each copy of the booklet. No collation to get right, because
+the halves are interchangeable.
+
+This is the one schema that places a page more than once on purpose, so its
+plans are validated without the exhaustive check the binding schemas use.
 """
 
 from __future__ import annotations
@@ -19,18 +31,26 @@ from ..plan import Placement, Plan, Surface
 from . import Flip, backing_cell, check_grid, reading_order
 
 
-def impose(
+def impose(  # pylint: disable=too-many-arguments
     pages: int = 1,
     *,
     columns: int,
     rows: int,
     copies: int | None = None,
+    sides: int | None = None,
     flip: Flip = "long-edge",
 ) -> Plan:
-    """Fill a ``columns`` x ``rows`` grid with repetitions of the artwork.
+    """Fill a ``columns`` x ``rows`` grid with repetitions of each item.
 
-    *pages* is 1 for a single-sided item, or 2 for one with a back. *copies* is
-    how many finished pieces are wanted; the default is one sheet's worth.
+    *sides* is 1 for single-sided items and 2 for items with a back. Left out,
+    it is taken from the page count: an even document is read as front-and-back
+    pairs, an odd one as separate single-sided items. Say it outright when a
+    document of an even number of single-sided items would otherwise be
+    misread.
+
+    *copies* is how many finished pieces are wanted **of each item**; the
+    default is one sheet's worth. A hundred copies of a booklet whose forms go
+    two up is fifty sheets per signature.
 
     >>> print(impose(2, columns=2, rows=2, copies=4).describe())
     sheet 1 front
@@ -39,37 +59,61 @@ def impose(
     sheet 1 back
          2    2
          2    2
+
+    Several items follow one another, each filling its own sheets:
+
+    >>> print(impose(4, columns=2, rows=1, copies=2).describe())
+    sheet 1 front
+         1    1
+    sheet 1 back
+         2    2
+    sheet 2 front
+         3    3
+    sheet 2 back
+         4    4
     """
     check_grid(columns, rows)
-    if pages not in (1, 2):
-        raise ValueError(
-            "Step and repeat takes one page, or two for a front and a back; "
-            f"got {pages}."
-        )
+    if pages < 1:
+        raise ValueError(f"There is nothing to repeat; got {pages} pages.")
+    if sides is None:
+        sides = 2 if pages % 2 == 0 else 1
+    if sides not in (1, 2):
+        raise ValueError(f"An item has one side or two; got {sides}.")
+    if pages % sides:
+        raise ValueError(f"{pages} pages do not divide into {sides}-sided items.")
+
+    items = pages // sides
     per_sheet = columns * rows
-    sheets = max(1, math.ceil((copies or per_sheet) / per_sheet))
+    sheets_each = max(1, math.ceil((copies or per_sheet) / per_sheet))
     cells = list(reading_order(columns, rows))
 
     surfaces: list[Surface] = []
-    for sheet in range(sheets):
-        surfaces.append(
-            Surface(
-                sheet,
-                "front",
-                tuple(Placement(0, column, row) for column, row in cells),
-            )
-        )
-        if pages == 2:
+    sheet = 0
+    for item in range(items):
+        front = item * sides
+        for _ in range(sheets_each):
             surfaces.append(
                 Surface(
                     sheet,
-                    "back",
-                    tuple(
-                        Placement(1, *backing_cell(column, row, columns, rows, flip))
-                        for column, row in cells
-                    ),
+                    "front",
+                    tuple(Placement(front, column, row) for column, row in cells),
                 )
             )
+            if sides == 2:
+                surfaces.append(
+                    Surface(
+                        sheet,
+                        "back",
+                        tuple(
+                            Placement(
+                                front + 1,
+                                *backing_cell(column, row, columns, rows, flip),
+                            )
+                            for column, row in cells
+                        ),
+                    )
+                )
+            sheet += 1
 
     return Plan(
         columns=columns,
@@ -81,6 +125,9 @@ def impose(
 
 
 def impressions(plan: Plan) -> int:
-    """How many finished pieces *plan* yields."""
-    fronts = [surface for surface in plan.surfaces if surface.side == "front"]
-    return sum(len(surface.placements) for surface in fronts)
+    """How many finished pieces of each item *plan* yields."""
+    fronts = [s for s in plan.surfaces if s.side == "front"]
+    if not fronts:
+        return 0
+    items = len({s.placements[0].source for s in fronts})
+    return sum(len(s.placements) for s in fronts) // max(1, items)

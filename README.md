@@ -564,33 +564,37 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 
 A saddle spread often uses a fraction of the sheet. A 16-page half-letter
 booklet is a 279 × 216 mm spread on a 310 × 450 mm imageable area — 43% of it,
-with 234 mm of height going to waste on every sheet.
+with 234 mm of height wasted on every sheet.
 
-`--sheet fit` imposes the signature onto its own outer edge instead of onto
-paper, producing a *form* rather than a press sheet. That form is then imposed
-again, several to a sheet, and the blanks cut apart before nesting:
+Impose the signature onto its own outer edge first, then step and repeat that
+form:
 
 ```bash
 impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
-impose cutstack forms.pdf --up 1x2 --gutter 0 -o press.pdf     # 4 sheets -> 2
+impose steprepeat forms.pdf --up 1x2 --copies 100 --gutter 0 -o press.pdf
 ```
 
-Cut and stack is the schema for the second pass, because it keeps each form's
-front and back on opposite sides of the same piece. N-up would put a form's
-front beside its own back on one surface, which is no use.
+The second pass fills each sheet with **copies of one signature**. Cut it down
+the middle and there are two identical folded sheets, one for each copy of the
+booklet — the halves are interchangeable, so there is no collation to get
+wrong. A hundred booklets goes from 400 press sheets to 200.
 
-**It costs sheet, though.** Each form carries its own margin, so stacking two
-doubles a margin a single pass would only need on the outside:
+`steprepeat` reads an even-page document as front-and-back pairs and gives each
+pair its own sheets. `--copies` is per item: a hundred booklets whose forms go
+two up is fifty sheets per signature. Use `--sides` where an even document is
+really that many single-sided items.
 
-| route | form | fits 310 × 450 |
+How many forms fit an Indigo 5000, at 2 mm bleed:
+
+| booklet | form | per sheet |
 |---|---|---|
-| single pass, 2 spreads a sheet | 289.4 × 441.8 mm | yes, 8 mm spare |
-| two-stage, marks on the form | 299.4 × 461.8 mm | **no** |
-| two-stage, bleed only | 293.4 × 449.8 mm | yes, by 0.2 mm |
+| quarter letter, 108 × 139.7 mm | 220.0 × 143.7 mm | **4 up** (2 × 2 turned) |
+| half letter, 215.9 × 139.7 mm | 435.8 × 143.7 mm | 2 up |
+| half letter, 139.7 × 215.9 mm | 283.4 × 219.9 mm | 2 up |
+| letter, 215.9 × 279.4 mm | 435.8 × 283.4 mm | 1 up — no saving |
 
-So the two-stage route works and is scriptable today, but it is tight, and
-dropping the marks from the first pass costs the bindery its page trim marks.
-Imposing several spreads in one pass is the better answer and is not built yet.
+Leave the marks off the first pass. Each form otherwise carries its own 5 mm
+margin, and two of those stacked need 462 mm where 450 is available.
 
 ## Checking artwork
 
