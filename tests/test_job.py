@@ -65,9 +65,9 @@ class TestSchemas(unittest.TestCase):
     def test_step_and_repeat_places_one_page_many_times(self):
         """Business cards: 85 x 55 mm, three across and four down."""
         card = make_pdf(2, trim=Size(85 * MM, 55 * MM))
-        result, _ = run(source=card, schema="steprepeat", columns=3, rows=4, copies=24)
+        result, _ = run(source=card, schema="steprepeat", columns=3, rows=4)
         self.assertEqual(result.plan.schema, "step-and-repeat")
-        self.assertEqual(result.sheets, 2)
+        self.assertEqual(result.sheets, 1)
 
     def test_a_form_too_big_for_the_press_is_refused_with_both_sizes(self):
         with self.assertRaises(ImposeError) as caught:
@@ -392,19 +392,22 @@ class TestFitSheet(unittest.TestCase):
         self.assertAlmostEqual(to_mm(media[2] - media[0]), 210.0 + 10, places=3)
         self.assertAlmostEqual(to_mm(media[3] - media[1]), 148.0 + 10, places=3)
 
-    def test_the_form_is_its_own_trim(self):
-        """The next pass cuts the blanks apart on this edge, so it is the trim.
+    def test_a_form_keeps_its_natural_boxes(self):
+        """The next pass places it by its trim and keeps its bleed.
 
-        Left as the spread's trim, the marks would sit outside the BleedBox and
-        the second imposition would clip them away as if they were bleed.
+        That is what makes two forms meet correctly in a gutter: their bleeds
+        abut in the middle of it and one cut serves both.
         """
-        _, data = run(pages=8, schema="saddle", sheet="fit")
+        _, data = run(pages=8, schema="saddle", sheet="fit", marks=None)
         pdf = pikepdf.open(io.BytesIO(data))
         page = pdf.pages[0]
         media = [float(v) for v in page.obj["/MediaBox"]]
         trim = [float(v) for v in page.obj["/TrimBox"]]
+        bleed = [float(v) for v in page.obj["/BleedBox"]]
         pdf.close()
-        self.assertEqual(media, trim)
+        self.assertNotEqual(media, trim)
+        self.assertEqual(media, bleed)
+        self.assertAlmostEqual(to_mm(trim[0] - bleed[0]), 2.0, places=3)
 
     def test_no_marks_makes_a_smaller_form(self):
         _, with_marks = run(pages=8, schema="saddle", sheet="fit")

@@ -235,7 +235,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     give a top-bound book instead of a side-bound one.
 
     Remaining keyword arguments go to the schema: ``columns`` and ``rows`` for
-    the grid schemas, ``section_pages`` for perfect binding, ``copies`` for
+    the grid schemas, ``section_pages`` for perfect binding, ``sides`` for
     step and repeat.
     """
     # Imported here rather than at module scope so that building and checking
@@ -320,7 +320,6 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 targets=targets,
                 bar=patches,
                 source_rotation=boxes.rotation,
-                trim_is_sheet=fit_to_form,
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)

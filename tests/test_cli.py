@@ -71,8 +71,6 @@ class TestImposing(unittest.TestCase):
                 str(output),
                 "--up",
                 "3x4",
-                "--copies",
-                "24",
             )
             self.assertEqual(status, 0, err)
             self.assertTrue(output.exists())

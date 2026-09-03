@@ -26,13 +26,13 @@ class TestFill(unittest.TestCase):
         plan = impose(1, columns=2, rows=2)
         self.assertEqual([s.side for s in plan.surfaces], ["front"])
 
-    def test_copies_drive_the_sheet_count(self):
-        self.assertEqual(impose(1, columns=4, rows=2, copies=8).sheets, 1)
-        self.assertEqual(impose(1, columns=4, rows=2, copies=9).sheets, 2)
-        self.assertEqual(impose(1, columns=4, rows=2, copies=80).sheets, 10)
+    def test_one_sheet_per_item_whatever_the_run(self):
+        """How many times to print it is a press setting, not an imposition."""
+        self.assertEqual(impose(1, columns=4, rows=2).sheets, 1)
+        self.assertEqual(impose(6, columns=4, rows=2).sheets, 3)
 
-    def test_impressions_counts_finished_pieces(self):
-        self.assertEqual(impressions(impose(1, columns=4, rows=2, copies=9)), 16)
+    def test_impressions_counts_pieces_a_sheet(self):
+        self.assertEqual(impressions(impose(1, columns=4, rows=2)), 8)
 
     def test_default_is_one_sheet(self):
         self.assertEqual(impose(1, columns=3, rows=3).sheets, 1)
@@ -68,22 +68,20 @@ class TestValidation(unittest.TestCase):
 class TestDocumentOfItems(unittest.TestCase):
     """Several items, each filling its own sheets -- what a booklet needs."""
 
-    def test_each_pair_gets_its_own_sheets(self):
-        """Four signatures, two up, four copies: two sheets a signature."""
-        plan = impose(8, columns=1, rows=2, copies=4)
-        self.assertEqual(plan.sheets, 8)
+    def test_each_pair_gets_its_own_sheet(self):
+        """Four signatures, two up: four sheets, each carrying one twice."""
+        plan = impose(8, columns=1, rows=2)
+        self.assertEqual(plan.sheets, 4)
         fronts = [s for s in plan.surfaces if s.side == "front"]
-        self.assertEqual(
-            [s.placements[0].source for s in fronts], [0, 0, 2, 2, 4, 4, 6, 6]
-        )
+        self.assertEqual([s.placements[0].source for s in fronts], [0, 2, 4, 6])
 
     def test_a_sheet_carries_one_item_only(self):
-        for surface in impose(8, columns=2, rows=2, copies=8).surfaces:
+        for surface in impose(8, columns=2, rows=2).surfaces:
             with self.subTest(sheet=surface.sheet, side=surface.side):
                 self.assertEqual(len({p.source for p in surface.placements}), 1)
 
     def test_the_back_of_a_sheet_is_that_item_s_back(self):
-        plan = impose(8, columns=1, rows=2, copies=2)
+        plan = impose(8, columns=1, rows=2)
         for front, back in zip(plan.surfaces[::2], plan.surfaces[1::2]):
             with self.subTest(sheet=front.sheet):
                 self.assertEqual(
@@ -100,13 +98,12 @@ class TestDocumentOfItems(unittest.TestCase):
         self.assertTrue(all(s.side == "front" for s in plan.surfaces))
         self.assertEqual(plan.sheets, 4)
 
-    def test_copies_are_per_item(self):
-        """A hundred booklets whose forms go two up is fifty sheets a signature."""
-        plan = impose(4, columns=1, rows=2, copies=100)
-        self.assertEqual(plan.sheets, 2 * 50)
+    def test_the_run_is_not_in_the_file(self):
+        """Four signatures are four sheets, however many books are wanted."""
+        self.assertEqual(impose(8, columns=1, rows=2).sheets, 4)
 
-    def test_impressions_counts_pieces_of_each_item(self):
-        self.assertEqual(impressions(impose(8, columns=1, rows=2, copies=4)), 4)
+    def test_impressions_counts_pieces_a_sheet(self):
+        self.assertEqual(impressions(impose(8, columns=1, rows=2)), 2)
 
     def test_it_still_validates_without_the_exhaustive_check(self):
         self.assertIsNone(impose(8, columns=1, rows=2).validate(exhaustive=False))

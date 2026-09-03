@@ -25,8 +25,6 @@ plans are validated without the exhaustive check the binding schemas use.
 
 from __future__ import annotations
 
-import math
-
 from ..plan import Placement, Plan, Surface
 from . import Flip, backing_cell, check_grid, reading_order
 
@@ -36,7 +34,6 @@ def impose(  # pylint: disable=too-many-arguments
     *,
     columns: int,
     rows: int,
-    copies: int | None = None,
     sides: int | None = None,
     flip: Flip = "long-edge",
 ) -> Plan:
@@ -48,11 +45,12 @@ def impose(  # pylint: disable=too-many-arguments
     document of an even number of single-sided items would otherwise be
     misread.
 
-    *copies* is how many finished pieces are wanted **of each item**; the
-    default is one sheet's worth. A hundred copies of a booklet whose forms go
-    two up is fifty sheets per signature.
+    There is no run length here. A schema says what one sheet carries; how
+    many times to print it is a press setting, and baking it into the file
+    would mean a 400-page PDF where 8 pages say the same thing. `impose fit`
+    answers how many sheets a quantity needs.
 
-    >>> print(impose(2, columns=2, rows=2, copies=4).describe())
+    >>> print(impose(2, columns=2, rows=2).describe())
     sheet 1 front
          1    1
          1    1
@@ -62,7 +60,7 @@ def impose(  # pylint: disable=too-many-arguments
 
     Several items follow one another, each filling its own sheets:
 
-    >>> print(impose(4, columns=2, rows=1, copies=2).describe())
+    >>> print(impose(4, columns=2, rows=1).describe())
     sheet 1 front
          1    1
     sheet 1 back
@@ -83,37 +81,32 @@ def impose(  # pylint: disable=too-many-arguments
         raise ValueError(f"{pages} pages do not divide into {sides}-sided items.")
 
     items = pages // sides
-    per_sheet = columns * rows
-    sheets_each = max(1, math.ceil((copies or per_sheet) / per_sheet))
     cells = list(reading_order(columns, rows))
 
     surfaces: list[Surface] = []
-    sheet = 0
     for item in range(items):
         front = item * sides
-        for _ in range(sheets_each):
+        surfaces.append(
+            Surface(
+                item,
+                "front",
+                tuple(Placement(front, column, row) for column, row in cells),
+            )
+        )
+        if sides == 2:
             surfaces.append(
                 Surface(
-                    sheet,
-                    "front",
-                    tuple(Placement(front, column, row) for column, row in cells),
+                    item,
+                    "back",
+                    tuple(
+                        Placement(
+                            front + 1,
+                            *backing_cell(column, row, columns, rows, flip),
+                        )
+                        for column, row in cells
+                    ),
                 )
             )
-            if sides == 2:
-                surfaces.append(
-                    Surface(
-                        sheet,
-                        "back",
-                        tuple(
-                            Placement(
-                                front + 1,
-                                *backing_cell(column, row, columns, rows, flip),
-                            )
-                            for column, row in cells
-                        ),
-                    )
-                )
-            sheet += 1
 
     return Plan(
         columns=columns,

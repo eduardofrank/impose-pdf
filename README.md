@@ -164,7 +164,7 @@ series.
 | option | schemas | default | what it does |
 |---|---|---|---|
 | `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
-| `--copies N` | `steprepeat` | one sheet's worth | finished pieces wanted |
+| `--sides N` | `steprepeat` | from the page count | 1 or 2 sides per item |
 | `--section-pages N` | `perfect` | `4` | pages per gathered section, a multiple of 4 |
 | `--paper-caliper LENGTH` | `saddle`, `perfect` | off | one sheet's thickness; turns on creep |
 | `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
@@ -287,7 +287,7 @@ impose_document(
 ```
 
 The schema's own options pass straight through: `columns` and `rows` for the
-grid schemas, `section_pages` for perfect binding, `copies` for step and
+grid schemas, `section_pages` for perfect binding, `sides` for step and
 repeat. `marks=None` draws none.
 
 Refusals name the problem rather than producing an unusable sheet:
@@ -571,18 +571,27 @@ form:
 
 ```bash
 impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
-impose steprepeat forms.pdf --up 1x2 --copies 100 --gutter 0 -o press.pdf
+impose steprepeat forms.pdf --up 1x2 -o press.pdf
 ```
 
-The second pass fills each sheet with **copies of one signature**. Cut it down
-the middle and there are two identical folded sheets, one for each copy of the
+The second pass fills each sheet with **copies of one signature**. Cut down the
+gutter and there are two identical folded sheets, one for each copy of the
 booklet — the halves are interchangeable, so there is no collation to get
-wrong. A hundred booklets goes from 400 press sheets to 200.
+wrong.
+
+**The run is not in the file.** Four signatures give four press sheets whatever
+the order quantity; how many times to print each is a press setting. Baking a
+hundred copies into the PDF would mean 400 pages saying what 8 pages already
+say. `impose fit -n` answers how many sheets a quantity needs.
 
 `steprepeat` reads an even-page document as front-and-back pairs and gives each
-pair its own sheets. `--copies` is per item: a hundred booklets whose forms go
-two up is fifty sheets per signature. Use `--sides` where an even document is
-really that many single-sided items.
+pair its own sheet. Use `--sides` where an even document is really that many
+single-sided items.
+
+Leave the first pass unmarked and the form keeps its natural boxes — the spread
+is the trim, the bleed is bleed. The second pass then places it by that trim
+and the two 2 mm bleeds meet in the middle of the 4 mm gutter, so one cut
+serves both halves.
 
 How many forms fit an Indigo 5000, at 2 mm bleed:
 

@@ -8,7 +8,8 @@ work is turning words into the arguments that module already takes, and turning
 failures back into a sentence rather than a traceback.
 
 Each schema is a subcommand, so the options that only make sense for one of
-them -- section size for perfect binding, copies for step and repeat -- appear
+them -- section size for perfect binding, sidedness for step and repeat --
+appear
 only where they apply.
 """
 
@@ -260,12 +261,6 @@ def build_parser() -> argparse.ArgumentParser:
                 "back. Taken from the page count when left out -- an even "
                 "document is read as front-and-back pairs.",
             )
-            schema.add_argument(
-                "--copies",
-                type=int,
-                metavar="N",
-                help="Finished pieces wanted. Default: one sheet's worth.",
-            )
 
     fit = subcommands.add_parser(
         "fit",
@@ -348,8 +343,6 @@ def _schema_options(args: argparse.Namespace) -> dict:
         options["columns"], options["rows"] = args.up
     if getattr(args, "section_pages", None) is not None:
         options["section_pages"] = args.section_pages
-    if getattr(args, "copies", None) is not None:
-        options["copies"] = args.copies
     if getattr(args, "sides", None) is not None:
         options["sides"] = args.sides
     return options
