@@ -108,9 +108,11 @@ class TestResult(unittest.TestCase):
         result, _ = run()
         self.assertAlmostEqual(to_mm(result.trim_size.width), 105.0, places=3)
 
-    def test_reports_the_sheet(self):
+    def test_reports_the_page(self):
+        """The page is the imageable area, not the sheet it is cut from."""
         result, _ = run()
-        self.assertAlmostEqual(to_mm(result.sheet_size.height), 470.0, places=3)
+        self.assertAlmostEqual(to_mm(result.sheet_size.height), 450.0, places=3)
+        self.assertAlmostEqual(to_mm(result.sheet_size.width), 310.0, places=3)
 
 
 class TestMarks(unittest.TestCase):
@@ -437,3 +439,49 @@ class TestFitSheet(unittest.TestCase):
         )
         source.close()
         self.assertEqual(result.sheets, 1)  # 4 forms -> 1 press sheet
+
+
+class TestPageSize(unittest.TestCase):
+    """What the output page is: the printable area, or the whole sheet."""
+
+    @staticmethod
+    def media(data):
+        pdf = pikepdf.open(io.BytesIO(data))
+        box = [float(v) for v in pdf.pages[0].obj["/MediaBox"]]
+        pdf.close()
+        return (to_mm(box[2] - box[0]), to_mm(box[3] - box[1]))
+
+    def test_the_page_is_the_imageable_area_by_default(self):
+        """A form that fits the page is a form that runs."""
+        width, height = self.media(run(pages=8, schema="saddle")[1])
+        self.assertAlmostEqual(width, 310.0, places=3)
+        self.assertAlmostEqual(height, 450.0, places=3)
+
+    def test_the_whole_sheet_can_be_asked_for(self):
+        width, height = self.media(run(pages=8, schema="saddle", page="sheet")[1])
+        self.assertAlmostEqual(width, 320.0, places=3)
+        self.assertAlmostEqual(height, 470.0, places=3)
+
+    def test_the_form_is_unchanged_either_way(self):
+        """Only the page around it differs; the layout does not move."""
+
+        def trim(data):
+            pdf = pikepdf.open(io.BytesIO(data))
+            box = [float(v) for v in pdf.pages[0].obj["/TrimBox"]]
+            pdf.close()
+            return (round(to_mm(box[2] - box[0]), 6), round(to_mm(box[3] - box[1]), 6))
+
+        self.assertEqual(
+            trim(run(pages=8, schema="saddle")[1]),
+            trim(run(pages=8, schema="saddle", page="sheet")[1]),
+        )
+
+    def test_an_unknown_page_is_refused(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(pages=8, schema="saddle", page="paper")
+        self.assertIn("imageable or sheet", str(caught.exception))
+
+    def test_a_form_sized_sheet_ignores_it(self):
+        """--sheet fit already says exactly what the page is."""
+        width, _ = self.media(run(pages=8, schema="saddle", sheet="fit", marks=None)[1])
+        self.assertLess(width, 310.0)

@@ -56,6 +56,13 @@ sheet 1 back
 that catches an off-by-one before it becomes a silent blank page in a bound
 book.
 
+**The page is the printable area, not the sheet.** By default the output page
+is the part of the sheet the press can actually image — 310 × 450 mm on an
+Indigo 5000, not the 320 × 470 mm sheet. A form that fits the page is a form
+that runs, so an operator can judge a job by opening it, and the press
+positions the smaller page on its own paper. `--page sheet` gives the physical
+sheet with its unprintable border.
+
 **Presses have a gripper edge.** A `Press` carries asymmetric margins and the
 edge that feeds first. On an Indigo 5000 that is 12 mm at the lead edge and
 8 mm at the tail. A form that will not fit is turned; the sheet never is,
@@ -147,6 +154,7 @@ series.
 | `-o`, `--output FILE` | `INPUT-imposed.pdf` | where to write |
 | `--press NAME` | `indigo-5000` | press profile; see `impose presses` |
 | `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
+| `--page {imageable,sheet}` | `imageable` | what the output page is |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
 | `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
 | `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |

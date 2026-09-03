@@ -144,6 +144,14 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "folded spread, which must meet at the fold.",
     )
     parser.add_argument(
+        "--page",
+        choices=("imageable", "sheet"),
+        default="imageable",
+        help="What the output page is. imageable is the area the press can "
+        "print, so a form that fits the page is a form that runs; sheet is "
+        "the physical sheet with its unprintable border. Default: %(default)s.",
+    )
+    parser.add_argument(
         "--bleed",
         type=_length,
         default=_length(DEFAULT_BLEED),
@@ -477,6 +485,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
             paper_caliper=getattr(args, "paper_caliper", 0.0),
             bleed=args.bleed,
+            page=args.page,
             registration=args.registration,
             colour_bar=args.colour_bar,
             **_schema_options(args),

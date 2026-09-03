@@ -64,6 +64,12 @@ DEFAULT_BLEED = "2mm"
 #: imposition that puts several of them on real paper.
 FIT_SHEET = "fit"
 
+#: What the output page is. `imageable` makes it the part of the sheet the
+#: press can actually print, so a form that fits the page is a form that runs --
+#: an operator can judge the job by opening it. `sheet` makes it the physical
+#: sheet, with the unimageable border shown as margin.
+PAGE_CHOICES = ("imageable", "sheet")
+
 
 def default_gutter(schema: str) -> float:
     """The gap to leave between pages, when the caller has not said.
@@ -102,7 +108,7 @@ class Result:  # pylint: disable=too-many-instance-attributes
         claim = f", {self.pdfx}" if self.pdfx else ""
         return (
             f"{self.plan.schema}: {self.plan.pages} pages onto {self.sheets} "
-            f"sheet(s) of {format_mm(self.sheet_size)} on {self.press}; "
+            f"sheet(s), page {format_mm(self.sheet_size)} on {self.press}; "
             f"finished page {format_mm(self.trim_size)}{turned}{claim}"
         )
 
@@ -202,12 +208,18 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     bleed: float | str = DEFAULT_BLEED,
     registration: bool = False,
     colour_bar: bool = False,
+    page: str = "imageable",
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
     marks.
+
+    *page* decides what the output page is. ``"imageable"``, the default, makes
+    it the area the press can print, so anything that fits the page will run
+    and the press positions the smaller sheet itself. ``"sheet"`` makes it the
+    physical sheet, with the gripper margin shown.
 
     *gutters* defaults to what the schema wants: 4 mm between pieces that will
     be cut apart, and none between the two halves of a folded spread.
@@ -250,6 +262,10 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         if not fit_to_form:
             sheet_size = paper(sheet) if sheet is not None else machine.sheet
             machine.check_sheet(sheet_size)
+        if page not in PAGE_CHOICES:
+            raise ImposeError(
+                f"Unknown page {page!r}; use {' or '.join(PAGE_CHOICES)}."
+            )
         boxes = source_boxes(opened)
 
         gaps = _gutters(default_gutter(schema) if gutters is None else gutters)
@@ -281,6 +297,18 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 boxes.trim_size, plan, gutters=gaps, allowance=allowance
             )
             sheet_size = machine.sheet
+        elif page == "imageable":
+            # The page becomes the printable area itself. Nothing about the
+            # layout changes -- the form still sits where it sat -- but the
+            # margin the press cannot reach is no longer part of the file, so
+            # a form that fits the page is a form that runs.
+            sheet_size = machine.imageable_area(sheet_size).size
+            machine = Press(
+                name=machine.name,
+                sheet=sheet_size,
+                margins=Insets(),
+                description=f"{machine.name} imageable area",
+            )
         if chose_turned and orientation == "auto":
             orientation = "turned"
 
