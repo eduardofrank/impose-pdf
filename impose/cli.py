@@ -16,13 +16,23 @@ only where they apply.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import pathlib
 import sys
 from collections.abc import Sequence
 
 from . import ImposeError, __version__
 from .fit import DEFAULT_GUTTER, arrangements, compare
-from .job import DEFAULT_BLEED, SCHEMAS, build_plan, impose_document, source_boxes
+from .geometry import Size
+from .job import (
+    DEFAULT_BLEED,
+    SCHEMAS,
+    build_plan,
+    impose_document,
+    measure,
+    repeating_unit,
+    source_boxes,
+)
 from .marks import MarkStyle
 from .press import get as get_press
 from .press import press_names
@@ -31,6 +41,9 @@ from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
 _GRID_SCHEMAS = ("nup", "cutstack", "steprepeat")
+
+#: Schemas that repeat a two-page spread rather than a single page.
+_SPREAD_SCHEMAS = ("saddle", "perfect")
 
 
 def _grid(text: str) -> tuple[int, int]:
@@ -279,7 +292,18 @@ def build_parser() -> argparse.ArgumentParser:
     fit.set_defaults(command="fit")
     fit.add_argument(
         "size",
-        help="Finished size: a name such as A6, or WIDTHxHEIGHT such " "as 90mmx55mm.",
+        metavar="SIZE_OR_PDF",
+        help="What to fit. A size -- a name such as A6, or WIDTHxHEIGHT such "
+        "as 90mmx55mm -- or a PDF, whose finished size is read off its "
+        "TrimBox and whose page count stands in for the quantity.",
+    )
+    fit.add_argument(
+        "--schema",
+        choices=sorted(SCHEMAS),
+        default=None,
+        help="Answer for the schema that would be run. The bound schemas "
+        "repeat a two-page spread rather than a single page, so this changes "
+        "what is being fitted. Omit it to fit the size as a flat piece.",
     )
     fit.add_argument(
         "-n",
@@ -287,7 +311,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         metavar="N",
-        help="Pieces wanted. With this, the sheet count and waste are shown.",
+        help="Pieces wanted. With this, the sheet count and waste are shown. "
+        "Taken from the page count when a PDF and a dividing schema are "
+        "given, which is what imposing that file would weigh the grid "
+        "against.",
     )
     fit.add_argument(
         "--press",
@@ -383,33 +410,116 @@ def _fit_allowance(args: argparse.Namespace) -> float:
     return max(_mark_reach(args), args.bleed)
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Subject:
+    """The thing being fitted, however it was named."""
+
+    unit: Size
+    label: str
+    quantity: int
+    allowance: float
+    #: Sheets one bound copy takes, when the subject is a bound document.
+    forms: int = 0
+
+
+def _fit_subject(args: argparse.Namespace) -> _Subject:
+    """What to fit, from either a size or a document.
+
+    A PDF answers two questions a typed size cannot: what the artwork's own
+    bleed is, which decides how much edge has to stay clear, and how many
+    pages there are to divide, which is what imposing that file would weigh
+    the grid against. Step and repeat is the exception -- it makes one sheet
+    per item whatever the grid, so there is nothing to divide and the page
+    count is not a quantity.
+    """
+    schema = args.schema
+    path = pathlib.Path(args.size)
+    if not path.is_file():
+        unit = repeating_unit(paper(args.size), schema) if schema else paper(args.size)
+        return _Subject(
+            unit, format_mm(unit), max(0, args.quantity), _fit_allowance(args)
+        )
+
+    measured = measure(path)
+    unit = repeating_unit(measured.trim_size, schema) if schema else measured.trim_size
+    # Imposing caps the artwork's bleed rather than inventing it, so a file
+    # with none needs no room for any. Match that, or fit answers a question
+    # the imposer is not asking.
+    bleed = measured.bleed_insets.capped(args.bleed)
+    allowance = (
+        args.allowance
+        if args.allowance is not None
+        else max(_mark_reach(args), bleed.left, bleed.right, bleed.bottom, bleed.top)
+    )
+    quantity = args.quantity
+    # The page count is a quantity only where the pages are dealt across the
+    # cells. Step and repeat fills every sheet with the same item however many
+    # are wanted, and a bound job's quantity is booklets ordered, which the
+    # file does not say. Neither has a quantity to read off the document.
+    if quantity <= 0 and schema and schema not in ("steprepeat", *_SPREAD_SCHEMAS):
+        quantity = measured.pages
+    label = f"{path.name}, {format_mm(unit)}"
+    forms = 0
+    if schema in _SPREAD_SCHEMAS:
+        label += f" spread ({format_mm(measured.trim_size)} page)"
+        forms = build_plan(schema, measured.pages).sheets
+    return _Subject(unit, label, max(0, quantity), allowance, forms)
+
+
+def _two_stage_advice(args: argparse.Namespace, arrangement) -> str:
+    """How to actually get more than one bound job onto the sheet.
+
+    The bound schemas fold, so their grid is fixed by the binding and they
+    cannot simply be told to run four up. The way a shop does it is two passes:
+    impose the booklet onto a sheet the size of its own form, then treat that
+    form as the piece and repeat it.
+    """
+    source = args.size if pathlib.Path(args.size).is_file() else "FILE.pdf"
+    return (
+        f"{arrangement.up} booklets fit one sheet. The binding fixes the grid, "
+        f"so run it in two passes:\n"
+        f"    impose {args.schema} {source} --sheet fit --marks none -o forms.pdf\n"
+        f"    impose steprepeat forms.pdf -o sheets.pdf\n"
+        f"  The second pass chooses its own grid; it should reach the same "
+        f"{arrangement.columns} × {arrangement.rows}."
+    )
+
+
 def _fit(args: argparse.Namespace, out) -> int:  # pylint: disable=too-many-locals
     """Answer how many fit, and what a given order wastes."""
     press = get_press(args.press)
     sheet = paper(args.sheet) if args.sheet else press.sheet
     press.check_sheet(sheet)
     area = press.imageable_area(sheet)
-    trim = paper(args.size)
-    quantity = max(0, args.quantity)
-    allowance = _fit_allowance(args)
+    subject = _fit_subject(args)
+    quantity = subject.quantity
 
     # With no quantity there is nothing to weigh density against, so the
     # arrangements are listed as they pack. With one, they are costed and
     # ordered by what the job actually takes.
     if quantity:
-        runs = compare(trim, area, quantity, gutter=args.gutter, allowance=allowance)
+        runs = compare(
+            subject.unit,
+            area,
+            quantity,
+            gutter=args.gutter,
+            allowance=subject.allowance,
+        )
         options = [run.arrangement for run in runs]
     else:
         runs = []
-        options = arrangements(trim, area, gutter=args.gutter, allowance=allowance)
+        options = arrangements(
+            subject.unit, area, gutter=args.gutter, allowance=subject.allowance
+        )
     if not options:
         raise ImposeError(
-            f"A finished size of {format_mm(trim)} does not fit the imageable "
-            f"area of {press.name} ({format_mm(area.size)}) even one up."
+            f"A finished size of {format_mm(subject.unit)} does not fit the "
+            f"imageable area of {press.name} ({format_mm(area.size)}) even "
+            f"one up."
         )
 
     print(
-        f"{format_mm(trim)} on {press.name}, imageable {format_mm(area.size)}",
+        f"{subject.label} on {press.name}, imageable {format_mm(area.size)}",
         file=out,
     )
     for index, arrangement in enumerate(options):
@@ -420,6 +530,17 @@ def _fit(args: argparse.Namespace, out) -> int:  # pylint: disable=too-many-loca
             if index == 0:
                 line += "   <- run this"
         print(line, file=out)
+
+    if args.schema in _SPREAD_SCHEMAS:
+        if options[0].up > 1:
+            print(f"\n  {_two_stage_advice(args, options[0])}", file=out)
+        if subject.forms:
+            print(
+                f"\n  Each booklet is {subject.forms} sheet(s) of that form, "
+                f"so an order of N booklets runs "
+                f"{subject.forms} × ceil(N ÷ {options[0].up}) sheets.",
+                file=out,
+            )
 
     if quantity:
         advice = runs[0].advice()

@@ -268,6 +268,120 @@ class TestFit(unittest.TestCase):
         self.assertIn("indigo-12000", text)
 
 
+class TestFitFromADocument(unittest.TestCase):
+    """Fit answered from a file rather than a typed size."""
+
+    @staticmethod
+    def leading(text):
+        return text.strip().splitlines()[1]
+
+    def test_the_finished_size_is_read_off_the_file(self):
+        with workspace(pages=8, trim=Size(105 * MM, 148 * MM)) as source:
+            status, text, err = run("fit", str(source))
+            self.assertEqual(status, 0, err)
+            self.assertIn("105 × 148 mm", text)
+            self.assertIn(source.name, text)
+
+    def test_a_bound_schema_fits_the_spread_not_the_page(self):
+        """Two booklets share a sheet when the pair fits twice, not the page."""
+        with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "saddle")
+            self.assertIn("279.4 × 215.9 mm spread", text)
+            self.assertIn("139.7 × 215.9 mm page", text)
+            self.assertIn("2 up", self.leading(text))
+
+    def test_a_flat_schema_fits_the_page(self):
+        with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "nup")
+            self.assertNotIn("spread", text)
+            self.assertIn("4 up", self.leading(text))
+
+    def test_the_page_count_stands_in_for_the_quantity(self):
+        """What imposing that file would weigh the grid against."""
+        with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "nup")
+            self.assertIn("sheet(s)", text)
+            self.assertIn("wasted", text)
+
+    def test_no_quantity_is_invented_for_a_bound_job(self):
+        """A booklet's quantity is booklets ordered, which the file never says."""
+        with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "saddle")
+            self.assertNotIn("wasted", text)
+            self.assertIn("4 sheet(s) of that form", text)
+
+    def test_no_quantity_is_invented_for_step_and_repeat(self):
+        """One sheet per item however many are wanted; nothing is divided."""
+        with workspace(pages=2, trim=Size(90 * MM, 50 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "steprepeat")
+            self.assertNotIn("wasted", text)
+            self.assertIn("24 up", self.leading(text))
+
+    def test_the_documents_own_bleed_sets_the_allowance(self):
+        """Imposing caps the bleed the artwork brought rather than inventing
+        it, so a file with none needs no room for any."""
+        size = Size(139.7 * MM, 215.9 * MM)
+        with workspace(pages=8, trim=size, bleed=0) as bare:
+            _, without, _ = run("fit", str(bare), "--marks", "none")
+        with workspace(pages=8, trim=size, bleed=3 * MM) as bled:
+            _, with_bleed, _ = run("fit", str(bled), "--marks", "none")
+        self.assertIn("4 up", self.leading(without))
+        self.assertIn("2 up", self.leading(with_bleed))
+
+    def test_the_two_stage_route_is_offered_when_more_than_one_fits(self):
+        with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "saddle")
+            self.assertIn("two passes", text)
+            self.assertIn("--sheet fit", text)
+            self.assertIn("impose steprepeat", text)
+            # Never a grid: an explicit --up skips the auto-orientation that
+            # made the grid fit, and stage two would then refuse the form.
+            self.assertNotIn("--up", text)
+
+    def test_no_two_stage_route_when_only_one_fits(self):
+        with workspace(pages=8, trim=Size(210 * MM, 297 * MM)) as source:
+            _, text, _ = run("fit", str(source), "--schema", "saddle")
+            self.assertNotIn("two passes", text)
+
+    def test_the_predicted_grid_is_the_one_stage_two_reaches(self):
+        """The advice is only worth printing if following it lands there."""
+        for trim, expected in (
+            (Size(139.7 * MM, 215.9 * MM), 2),
+            (Size(108 * MM, 140 * MM), 4),
+        ):
+            with self.subTest(trim=trim), workspace(pages=16, trim=trim) as source:
+                _, text, _ = run("fit", str(source), "--schema", "saddle")
+                self.assertIn(f"{expected} up", self.leading(text))
+
+                forms = source.with_name("forms.pdf")
+                sheets = source.with_name("sheets.pdf")
+                status, _, err = run(
+                    "saddle",
+                    str(source),
+                    "--sheet",
+                    "fit",
+                    "--marks",
+                    "none",
+                    "-o",
+                    str(forms),
+                    "-q",
+                )
+                self.assertEqual(status, 0, err)
+                # Step and repeat writes one page per item whatever the grid,
+                # so the page count says nothing; the summary states the grid.
+                status, summary, err = run("steprepeat", str(forms), "-o", str(sheets))
+                self.assertEqual(status, 0, err)
+                self.assertIn(f"at {expected} up", summary)
+
+    def test_a_file_that_cannot_be_measured_is_refused_in_a_sentence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "not.pdf"
+            path.write_bytes(b"not a pdf at all")
+            status, _, err = run("fit", str(path))
+            self.assertEqual(status, 1)
+            self.assertIn("Cannot open", err)
+
+
 class TestAutomaticGrid(unittest.TestCase):
     def test_the_grid_is_chosen_when_not_given(self):
         """Eight A6 on one Indigo sheet, without being told 2x4."""

@@ -102,14 +102,26 @@ class Result:  # pylint: disable=too-many-instance-attributes
     pdfx: str | None = None
     warnings: tuple[str, ...] = ()
 
+    @property
+    def up(self) -> int:
+        """Finished pages on one surface."""
+        return self.plan.columns * self.plan.rows
+
     def describe(self) -> str:
-        """A summary an operator can check before sending the file."""
+        """A summary an operator can check before sending the file.
+
+        The grid is in it because that is the number a shop checks first: how
+        many to a sheet. Whether it was given or worked out, it is the one
+        thing worth reading off the summary before the file goes to press.
+        """
         turned = ", form turned to fit" if self.turned else ""
         claim = f", {self.pdfx}" if self.pdfx else ""
         return (
             f"{self.plan.schema}: {self.plan.pages} pages onto {self.sheets} "
-            f"sheet(s), page {format_mm(self.sheet_size)} on {self.press}; "
-            f"finished page {format_mm(self.trim_size)}{turned}{claim}"
+            f"sheet(s) at {self.up} up ({self.plan.columns} × "
+            f"{self.plan.rows}), page {format_mm(self.sheet_size)} on "
+            f"{self.press}; finished page {format_mm(self.trim_size)}"
+            f"{turned}{claim}"
         )
 
 
@@ -169,6 +181,59 @@ def build_plan(schema: str, pages: int, **options: Any) -> Plan:
         options.setdefault("columns", 2)
         options.setdefault("rows", 1)
     return build(pages, **{k: v for k, v in options.items() if v is not None})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Measurement:
+    """What a document says about its own size, for the fit arithmetic.
+
+    Enough to answer "how many of these go on a sheet" without imposing
+    anything: the finished size, how many pages there are to divide, and how
+    much bleed the artwork actually brought.
+    """
+
+    trim_size: Size
+    pages: int
+    bleed_insets: Insets
+    pdfx: str | None = None
+
+
+def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
+    """Read the finished size and page count off a document.
+
+    The same checks imposing makes: a document whose pages disagree on their
+    finished size has no single size to fit, and says so here rather than on
+    the press.
+    """
+    pdf = _open(source)
+    try:
+        boxes = source_boxes(pdf)
+        return Measurement(
+            boxes.trim_size, len(pdf.pages), boxes.bleed_insets, pdfx_version(pdf)
+        )
+    finally:
+        if pdf is not source:
+            pdf.close()
+
+
+def repeating_unit(trim: Size, schema: str) -> Size:
+    """The block that has to fit for one more of the job to fit.
+
+    Most schemas repeat a finished page: fit the page and you have fitted the
+    unit. The bound ones repeat a spread. A saddle-stitched sheet carries two
+    pages butted at the spine and folds down the middle, so what has to go on
+    the sheet twice for two booklets to share it is the pair, not the page.
+
+    >>> from .units import MM, format_mm
+    >>> half_letter = Size(139.7 * MM, 215.9 * MM)
+    >>> format_mm(repeating_unit(half_letter, "nup"))
+    '139.7 × 215.9 mm'
+    >>> format_mm(repeating_unit(half_letter, "saddle"))
+    '279.4 × 215.9 mm'
+    """
+    if schema in _FIXED_GRID:
+        return Size(trim.width * 2, trim.height)
+    return trim
 
 
 def choose_grid(  # pylint: disable=too-many-arguments
@@ -524,4 +589,13 @@ def _open(source: pikepdf.Pdf | str | pathlib.Path) -> pikepdf.Pdf:
         raise ImposeError(f"Cannot open {source}: {error}") from error
 
 
-__all__ = ["Result", "SCHEMAS", "impose_document", "build_plan", "source_boxes"]
+__all__ = [
+    "Result",
+    "SCHEMAS",
+    "Measurement",
+    "impose_document",
+    "build_plan",
+    "measure",
+    "repeating_unit",
+    "source_boxes",
+]

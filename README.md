@@ -127,7 +127,7 @@ Every command and option is listed below.
 
 ```
 impose SCHEMA INPUT [options]     impose a document
-impose fit SIZE [options]         how many fit, before there is a file
+impose fit SIZE|PDF [options]     how many fit, with or without a file
 impose presses                    list the press profiles
 ```
 
@@ -182,12 +182,14 @@ asking for another grid is refused rather than quietly ignored.
 
 ### `impose fit`
 
-Answers how many pieces of a size go on a sheet, and what an order wastes,
-without needing a file.
+Answers how many pieces go on a sheet, and what an order wastes. Give it a
+size when there is no file yet, or a PDF once there is: the finished size comes
+off the TrimBox and the page count stands in for the quantity.
 
 | option | default | what it does |
 |---|---|---|
-| `SIZE` | — | finished size: `A6`, or `90mmx50mm` |
+| `SIZE_OR_PDF` | — | finished size (`A6`, `90mmx50mm`) or a PDF to measure |
+| `--schema NAME` | flat piece | answer for the schema that would be run |
 | `-n`, `--quantity N` | none | pieces wanted; adds sheet counts and waste |
 | `--press NAME` | `indigo-5000` | press profile |
 | `--sheet SIZE` | the press maximum | sheet to run |
@@ -212,6 +214,44 @@ $ impose fit A6 --gutter 4mm --mark-length 5mm        # 7 mm reserved
 Marks and bleed are not added together: layout reserves whichever reaches
 further on an edge, so a 3 mm bleed behind a 5 mm mark reach needs 5 mm, not 8.
 `--allowance` overrides both, and is rarely what you want.
+
+#### Fitting a document
+
+Given a PDF instead of a size, `fit` reads the finished size off the TrimBox
+and the bleed off the BleedBox, so the answer is the one imposing that same
+file will reach:
+
+```
+$ impose fit book.pdf --schema nup
+book.pdf, 139.7 × 215.9 mm on indigo-5000, imageable 310 × 450 mm
+  4 up, 2 × 2 upright, form 283.4 × 435.8 mm  ->  4 sheet(s), 0 wasted   <- run this
+  3 up, 1 × 3 turned, form 215.9 × 427.1 mm   ->  6 sheet(s), 2 wasted
+```
+
+`--schema` matters because the schemas do not all repeat the same thing. The
+flat ones repeat a finished page. The bound ones repeat a **spread**: a
+saddle-stitched sheet carries two pages butted at the spine and folds down the
+middle, so what has to fit twice for two booklets to share a sheet is the pair,
+not the page.
+
+```
+$ impose fit book.pdf --schema saddle
+book.pdf, 279.4 × 215.9 mm spread (139.7 × 215.9 mm page) on indigo-5000, imageable 310 × 450 mm
+  2 up, 1 × 2 upright, form 279.4 × 435.8 mm
+  1 up, 1 × 1 turned, form 215.9 × 279.4 mm
+
+  2 booklets fit one sheet. The binding fixes the grid, so run it in two passes:
+    impose saddle book.pdf --sheet fit --marks none -o forms.pdf
+    impose steprepeat forms.pdf -o sheets.pdf
+  The second pass chooses its own grid; it should reach the same 1 × 2.
+
+  Each booklet is 4 sheet(s) of that form, so an order of N booklets runs 4 × ceil(N ÷ 2) sheets.
+```
+
+The quantity is only read off the file where the pages are dealt across the
+cells. Step and repeat fills every sheet with the same item however many are
+wanted, and a bound job's quantity is booklets ordered, which the file never
+says — neither has a quantity to take from a page count.
 
 `--mark-width` is accepted here for symmetry with the schemas, so the same
 flags can be pasted to both, but a stroke width cannot change how many pieces
@@ -273,8 +313,8 @@ print(result.describe())
 ```
 
 ```
-saddle-stitch: 16 pages onto 4 sheet(s) of 320 × 470 mm on indigo-5000;
-finished page 105 × 148 mm
+saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1),
+page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 ```
 
 That reads the source's page boxes, checks every page is the same finished
@@ -342,11 +382,11 @@ breaks a remaining tie. With no quantity given there is nothing to weigh
 against, and they are simply listed as they pack.
 
 The same choice is made when imposing, so the grid is picked for you unless
-you pin it with `--up`:
+you pin it with `--up`, and every summary states the grid it ran:
 
 ```
 $ impose nup a6.pdf --gutter 4mm
-n-up: 8 pages onto 1 sheet(s) of 320 × 470 mm on indigo-5000
+n-up: 8 pages onto 1 sheet(s) at 8 up (2 × 4), page 310 × 450 mm on indigo-5000
 ```
 
 Counting along a span allows for gutters correctly: *n* pieces have *n−1* gaps
@@ -574,13 +614,18 @@ A saddle spread often uses a fraction of the sheet. A 16-page half-letter
 booklet is a 279 × 216 mm spread on a 310 × 450 mm imageable area — 43% of it,
 with 234 mm of height wasted on every sheet.
 
-Impose the signature onto its own outer edge first, then step and repeat that
-form:
+`impose fit booklet.pdf --schema saddle` says how many booklets share a sheet
+and prints the two passes to run. Impose the signature onto its own outer edge
+first, then step and repeat that form:
 
 ```bash
 impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
-impose steprepeat forms.pdf --up 1x2 -o press.pdf
+impose steprepeat forms.pdf -o press.pdf
 ```
+
+Leave the second pass to choose its grid. Pinning it with `--up` also turns off
+the auto-orientation that made the grid fit, so a form that needs turning a
+quarter will be refused.
 
 The second pass fills each sheet with **copies of one signature**. Cut down the
 gutter and there are two identical folded sheets, one for each copy of the
