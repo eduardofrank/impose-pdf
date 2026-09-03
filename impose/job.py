@@ -58,6 +58,12 @@ _BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect"})
 #: a small sheet to the job.
 DEFAULT_BLEED = "2mm"
 
+#: Ask for a sheet exactly the size of the imposed form -- no press margins, no
+#: centring, nothing spare. The result is not a press sheet but a *form*: one
+#: folded signature, trimmed to its own outer edge, ready to be fed to a second
+#: imposition that puts several of them on real paper.
+FIT_SHEET = "fit"
+
 
 def default_gutter(schema: str) -> float:
     """The gap to leave between pages, when the caller has not said.
@@ -239,9 +245,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
 
     opened = _open(source)
     try:
+        fit_to_form = isinstance(sheet, str) and sheet.strip().lower() == FIT_SHEET
         machine = get_press(press) if isinstance(press, str) else press
-        sheet_size = paper(sheet) if sheet is not None else machine.sheet
-        machine.check_sheet(sheet_size)
+        if not fit_to_form:
+            sheet_size = paper(sheet) if sheet is not None else machine.sheet
+            machine.check_sheet(sheet_size)
         boxes = source_boxes(opened)
 
         gaps = _gutters(default_gutter(schema) if gutters is None else gutters)
@@ -268,6 +276,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
 
         plan = build_plan(schema, len(opened.pages), **options)
         plan.validate(exhaustive=schema != "steprepeat")
+        if fit_to_form:
+            machine = _form_press(
+                boxes.trim_size, plan, gutters=gaps, allowance=allowance
+            )
+            sheet_size = machine.sheet
         if chose_turned and orientation == "auto":
             orientation = "turned"
 
@@ -307,6 +320,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 targets=targets,
                 bar=patches,
                 source_rotation=boxes.rotation,
+                trim_is_sheet=fit_to_form,
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
@@ -382,6 +396,29 @@ def _fit(  # pylint: disable=too-many-arguments
             continue
         return candidate, layouts
     raise failure  # every orientation was tried and none fitted
+
+
+def _form_press(trim: Size, plan: Plan, *, gutters: Gutters, allowance: float) -> Press:
+    """A press whose sheet is exactly the form, with no margin anywhere.
+
+    Used for the first pass of a two-stage job: impose the signature onto its
+    own outer edge, then feed that to a second imposition that puts two or four
+    of them on real paper. The output is a form, not something to run.
+    """
+    width = (
+        plan.columns * trim.width
+        + (plan.columns - 1) * gutters.horizontal
+        + 2 * allowance
+    )
+    height = (
+        plan.rows * trim.height + (plan.rows - 1) * gutters.vertical + 2 * allowance
+    )
+    return Press(
+        name="form",
+        sheet=Size(width, height),
+        margins=Insets(),
+        description="The imposed form itself, for a second pass.",
+    )
 
 
 def _creep_table(

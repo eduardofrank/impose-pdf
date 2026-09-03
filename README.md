@@ -560,6 +560,38 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `creep` — fore-edge push-out compensated per sheet |
 
+## Two-stage jobs
+
+A saddle spread often uses a fraction of the sheet. A 16-page half-letter
+booklet is a 279 × 216 mm spread on a 310 × 450 mm imageable area — 43% of it,
+with 234 mm of height going to waste on every sheet.
+
+`--sheet fit` imposes the signature onto its own outer edge instead of onto
+paper, producing a *form* rather than a press sheet. That form is then imposed
+again, several to a sheet, and the blanks cut apart before nesting:
+
+```bash
+impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
+impose cutstack forms.pdf --up 1x2 --gutter 0 -o press.pdf     # 4 sheets -> 2
+```
+
+Cut and stack is the schema for the second pass, because it keeps each form's
+front and back on opposite sides of the same piece. N-up would put a form's
+front beside its own back on one surface, which is no use.
+
+**It costs sheet, though.** Each form carries its own margin, so stacking two
+doubles a margin a single pass would only need on the outside:
+
+| route | form | fits 310 × 450 |
+|---|---|---|
+| single pass, 2 spreads a sheet | 289.4 × 441.8 mm | yes, 8 mm spare |
+| two-stage, marks on the form | 299.4 × 461.8 mm | **no** |
+| two-stage, bleed only | 293.4 × 449.8 mm | yes, by 0.2 mm |
+
+So the two-stage route works and is scriptable today, but it is tight, and
+dropping the marks from the first pass costs the bindery its page trim marks.
+Imposing several spreads in one pass is the better answer and is not built yet.
+
 ## Checking artwork
 
 Imposition cannot fix a page whose ground stops short of its own TrimBox. It

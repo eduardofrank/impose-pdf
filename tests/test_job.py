@@ -377,3 +377,60 @@ class TestGutterDefault(unittest.TestCase):
         pdf.close()
         columns = result.plan.columns
         self.assertAlmostEqual(to_mm(trim[2] - trim[0]), columns * 148.0, places=3)
+
+
+class TestFitSheet(unittest.TestCase):
+    """A form sized to itself, for the first pass of a two-stage job."""
+
+    def test_the_sheet_becomes_the_form(self):
+        result, data = run(pages=8, schema="saddle", sheet="fit")
+        self.assertEqual(result.press, "form")
+        pdf = pikepdf.open(io.BytesIO(data))
+        media = [float(v) for v in pdf.pages[0].obj["/MediaBox"]]
+        pdf.close()
+        # Two A6 pages side by side, plus the mark reach on each edge.
+        self.assertAlmostEqual(to_mm(media[2] - media[0]), 210.0 + 10, places=3)
+        self.assertAlmostEqual(to_mm(media[3] - media[1]), 148.0 + 10, places=3)
+
+    def test_the_form_is_its_own_trim(self):
+        """The next pass cuts the blanks apart on this edge, so it is the trim.
+
+        Left as the spread's trim, the marks would sit outside the BleedBox and
+        the second imposition would clip them away as if they were bleed.
+        """
+        _, data = run(pages=8, schema="saddle", sheet="fit")
+        pdf = pikepdf.open(io.BytesIO(data))
+        page = pdf.pages[0]
+        media = [float(v) for v in page.obj["/MediaBox"]]
+        trim = [float(v) for v in page.obj["/TrimBox"]]
+        pdf.close()
+        self.assertEqual(media, trim)
+
+    def test_no_marks_makes_a_smaller_form(self):
+        _, with_marks = run(pages=8, schema="saddle", sheet="fit")
+        _, bare = run(pages=8, schema="saddle", sheet="fit", marks=None)
+
+        def width(data):
+            pdf = pikepdf.open(io.BytesIO(data))
+            box = [float(v) for v in pdf.pages[0].obj["/MediaBox"]]
+            pdf.close()
+            return box[2] - box[0]
+
+        self.assertGreater(width(with_marks), width(bare))
+
+    def test_the_press_is_ignored_because_this_is_not_run(self):
+        """A form may be larger than any press; it is not going on one."""
+        result, _ = run(pages=8, schema="saddle", sheet="fit", press="sra3")
+        self.assertEqual(result.press, "form")
+
+    def test_the_output_feeds_a_second_imposition(self):
+        """Stage two: cut-and-stack keeps each form's front and back paired."""
+        _, forms = run(pages=8, schema="saddle", sheet="fit", marks=None)
+        source = pikepdf.open(io.BytesIO(forms))
+        self.assertEqual(len(source.pages), 4)  # 2 spreads, front and back
+        second = io.BytesIO()
+        result = impose_document(
+            source, second, schema="cutstack", columns=1, rows=2, gutters=0
+        )
+        source.close()
+        self.assertEqual(result.sheets, 1)  # 4 forms -> 1 press sheet

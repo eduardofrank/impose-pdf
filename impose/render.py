@@ -210,6 +210,7 @@ class Renderer:
         targets: list[Target] | None = None,
         bar: list[Patch] | None = None,
         source_rotation: int = 0,
+        trim_is_sheet: bool = False,
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
         sheet = Rect.from_size(layout.sheet)
@@ -237,7 +238,7 @@ class Renderer:
         if bar:
             stream.append(_draw_patches(bar))
         page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("ascii")))
-        _set_boxes(page, sheet, layout)
+        _set_boxes(page, sheet, layout, trim_is_sheet=trim_is_sheet)
         return page
 
     def _mark_resources(self, page: pikepdf.Page) -> tuple[Name | None, Name | None]:
@@ -273,18 +274,32 @@ class Renderer:
         )
 
 
-def _set_boxes(page: pikepdf.Page, sheet: Rect, layout: SheetLayout) -> None:
+def _set_boxes(
+    page: pikepdf.Page,
+    sheet: Rect,
+    layout: SheetLayout,
+    *,
+    trim_is_sheet: bool = False,
+) -> None:
     """Describe the imposed sheet in its own page boxes.
 
     MediaBox is the sheet as it goes through the press. TrimBox is the whole
     form, so a downstream tool can see the finished area, and BleedBox is that
     plus whatever bleed survived.
+
+    With *trim_is_sheet* the trim becomes the sheet itself. That is for a form
+    made to be imposed again: the next pass cuts the blanks apart on the form's
+    own outer edge, so that edge is the finished size as far as it is
+    concerned, and the marks inside stay with the piece instead of being
+    clipped away as if they were somebody's bleed.
     """
     page.obj["/MediaBox"] = Array([sheet.x0, sheet.y0, sheet.x1, sheet.y1])
-    for name, rect in (
-        ("/TrimBox", layout.trim_bounds),
-        ("/BleedBox", layout.bleed_bounds),
-    ):
+    boxes = (
+        (("/TrimBox", sheet), ("/BleedBox", sheet))
+        if trim_is_sheet
+        else (("/TrimBox", layout.trim_bounds), ("/BleedBox", layout.bleed_bounds))
+    )
+    for name, rect in boxes:
         clipped = Rect(
             max(rect.x0, sheet.x0),
             max(rect.y0, sheet.y0),

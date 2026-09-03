@@ -126,8 +126,10 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--sheet",
         metavar="SIZE",
-        help="Sheet to run, if smaller than the press maximum. A name such as "
-        "SRA3, or WIDTHxHEIGHT such as 320mmx450mm.",
+        help="Sheet to run, if smaller than the press maximum. A name such "
+        "as SRA3, WIDTHxHEIGHT such as 320mmx450mm, or `fit` for a sheet "
+        "exactly the size of the form -- the first pass of a two-stage job, "
+        "whose output is imposed again rather than run.",
     )
     parser.add_argument(
         "--gutters",
