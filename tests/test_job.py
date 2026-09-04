@@ -487,6 +487,29 @@ class TestPageSize(unittest.TestCase):
         self.assertLess(width, 310.0)
 
 
+class TestReportedGrid(unittest.TestCase):
+    """The summary states the grid it ran, and which way the pages sit."""
+
+    def test_the_grid_is_in_the_summary(self):
+        result, _ = run(source=make_pdf(8, trim=Size(105 * MM, 148 * MM)), schema="nup")
+        self.assertEqual(result.up, result.plan.columns * result.plan.rows)
+        self.assertIn(f"at {result.up} up", result.describe())
+
+    def test_turned_pages_are_named_as_turned(self):
+        """2 x 2 of a 216 mm form reads as impossible on a 310 mm area until
+        you know the pages are on their sides."""
+        form = make_pdf(2, trim=Size(216 * MM, 139.7 * MM))
+        result, _ = run(source=form, schema="steprepeat")
+        self.assertTrue(result.pages_turned)
+        self.assertIn("(2 × 2 turned)", result.describe())
+
+    def test_upright_pages_are_named_as_upright(self):
+        half_letter = make_pdf(8, trim=Size(139.7 * MM, 215.9 * MM))
+        result, _ = run(source=half_letter, schema="nup", gutters="4mm")
+        self.assertFalse(result.pages_turned)
+        self.assertIn("(2 × 2 upright)", result.describe())
+
+
 class TestChosenGrid(unittest.TestCase):
     """Which grid gets picked when none is given."""
 

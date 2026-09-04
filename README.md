@@ -71,9 +71,11 @@ because the gripper edge is fixed with respect to the machine.
 **Pages are turned if that is what fits.** Six A6 pages will not go on an
 Indigo upright — two across by three down is 462 mm tall against a 450 mm
 imageable area — but the same six fit comfortably on their sides, at 310 × 333
-mm. `orientation="auto"` tries upright first and turns the pages if it must.
-Binding schemas are never turned automatically, because moving the fold turns a
-side-bound booklet into a top-bound one.
+mm. `orientation="auto"` tries upright first and turns the pages if it must, and
+the summary says which it settled on — `(2 × 4 turned)` against `(2 × 2
+upright)`, in the same words `impose fit` uses to predict it. Binding schemas
+are never turned automatically, because moving the fold turns a side-bound
+booklet into a top-bound one.
 
 **Gutters follow the binding.** Cut work defaults to 4 mm between pieces —
 what a guillotine needs to come down without shaving a neighbour. A folded
@@ -97,7 +99,7 @@ slug and marks, and placing those into a gutter is worse than placing nothing.
 ```bash
 impose saddle book.pdf                      # -> book-imposed.pdf
 impose nup report.pdf --up 2x2
-impose steprepeat card.pdf --up 3x4 --copies 250 --marks black
+impose steprepeat card.pdf --up 3x4 --marks black
 impose perfect novel.pdf --section-pages 16 --press indigo-7000
 ```
 
@@ -117,8 +119,10 @@ Refusals are sentences:
 
 ```
 $ impose nup report.pdf --up 4x4
-impose: The imposed form is 436 × 608 mm including bleed and marks, and the
-imageable area is 310 × 450 mm. It does not fit either way round.
+impose: The imposed form is 614 × 442 mm (trims 604 × 432 mm, 2 mm bleed per
+edge, 5 mm for marks per edge), and the imageable area is 310 × 450 mm. It does
+not fit either way round, and misses by 164 mm. Fewer pages per sheet, a
+smaller gutter, or shorter marks would each make room.
 ```
 
 Every command and option is listed below.
@@ -225,7 +229,7 @@ file will reach:
 $ impose fit book.pdf --schema nup
 book.pdf, 139.7 × 215.9 mm on indigo-5000, imageable 310 × 450 mm
   4 up, 2 × 2 upright, form 283.4 × 435.8 mm  ->  4 sheet(s), 0 wasted   <- run this
-  3 up, 1 × 3 turned, form 215.9 × 427.1 mm   ->  6 sheet(s), 2 wasted
+  3 up, 1 × 3 turned, form 215.9 × 427.1 mm  ->  6 sheet(s), 2 wasted
 ```
 
 `--schema` matters because the schemas do not all repeat the same thing. The
@@ -291,7 +295,7 @@ impose perfect novel.pdf --section-pages 16 --press indigo-7000
 impose fit 90mmx50mm -n 500
 
 # ...then run them, letting the grid be chosen
-impose steprepeat card.pdf --copies 500 --gutter 4mm --marks black
+impose steprepeat card.pdf --gutter 4mm --marks black
 
 # A6 flyers, eight up on one sheet without being told the grid
 impose nup flyers.pdf --gutter 4mm
@@ -313,7 +317,7 @@ print(result.describe())
 ```
 
 ```
-saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1),
+saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1 upright),
 page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 ```
 
@@ -328,7 +332,7 @@ impose_document(
     "cards.pdf", "cards-imposed.pdf",
     schema="steprepeat",
     press="sra3",
-    columns=3, rows=4, copies=250,
+    columns=3, rows=4,
     gutters="4mm",
     marks=MarkStyle(colour="black"),   # K only, for a digital press
 )
@@ -344,8 +348,23 @@ Refusals name the problem rather than producing an unusable sheet:
 Page 4 has a finished size of 80 × 100 mm, but page 1 is 105 × 148 mm.
 Every page must be the same size to go on one grid.
 
-The imposed form is 436 × 312 mm including bleed and marks, and the
-imageable area is 310 × 450 mm. It does not fit either way round.
+The imposed form is 614 × 442 mm (trims 604 × 432 mm, 2 mm bleed per edge,
+5 mm for marks per edge), and the imageable area is 310 × 450 mm. It does not
+fit either way round, and misses by 164 mm. Fewer pages per sheet, a smaller
+gutter, or shorter marks would each make room.
+```
+
+Asking how many fit, without imposing anything:
+
+```python
+from impose.fit import best
+from impose.job import measure, repeating_unit
+from impose.press import INDIGO_5000
+
+book = measure("book.pdf")                       # trim size, pages, bleed
+unit = repeating_unit(book.trim_size, "saddle")  # the spread, not the page
+best(unit, INDIGO_5000.imageable_area()).describe()
+# '2 up, 1 × 2 upright, form 279.4 × 435.8 mm'
 ```
 
 The pieces underneath are all public, and `impose_document` is only their
@@ -354,15 +373,15 @@ assembly — read `impose/job.py` if you want to drive `plan`, `layout`,
 
 ## How many fit
 
-Before the page order comes the question a shop asks first: how many pieces of
-this size go on a sheet, and what do the leftovers cost.
+Before the page order comes the question a shop asks first: how many pieces
+go on a sheet, and what do the leftovers cost. Ask it of a size while quoting,
+or of the file itself once there is one.
 
 ```
 $ impose fit 90mmx50mm -n 100
 90 × 50 mm on indigo-5000, imageable 310 × 450 mm
-  20 up, 5 × 4 turned, form 266 × 372 mm   ->  5 sheet(s), 0 wasted   <- run this
+  20 up, 5 × 4 turned, form 266 × 372 mm  ->  5 sheet(s), 0 wasted   <- run this
   24 up, 3 × 8 upright, form 278 × 428 mm  ->  5 sheet(s), 20 wasted
-
   24 up is denser but costs the same 5 sheet(s) and throws away 20 instead of 0.
 ```
 
@@ -373,8 +392,13 @@ Past that the denser grid starts saving sheets:
 
 ```
 $ impose fit 90mmx50mm -n 200
+90 × 50 mm on indigo-5000, imageable 310 × 450 mm
   24 up, 3 × 8 upright, form 278 × 428 mm  ->  9 sheet(s), 16 wasted   <- run this
-  20 up, 5 × 4 turned, form 266 × 372 mm   -> 10 sheet(s), 0 wasted
+  20 up, 5 × 4 turned, form 266 × 372 mm  ->  10 sheet(s), 0 wasted
+
+  16 surplus piece(s) are imaged on the last sheet and discarded, which is ink
+  spent on nothing. The sheets are already being run, so raising the order to
+  216 costs no more press time.
 ```
 
 So arrangements are ranked by sheets first and waste second, and density only
@@ -386,12 +410,18 @@ you pin it with `--up`, and every summary states the grid it ran:
 
 ```
 $ impose nup a6.pdf --gutter 4mm
-n-up: 8 pages onto 1 sheet(s) at 8 up (2 × 4), page 310 × 450 mm on indigo-5000
+n-up: 8 pages onto 1 sheet(s) at 8 up (2 × 4 turned),
+page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 ```
 
 Counting along a span allows for gutters correctly: *n* pieces have *n−1* gaps
 between them, so the gap is added to the span once before dividing rather than
 charged against every piece.
+
+Given a file rather than a size, `fit` reads the finished size off the TrimBox
+and answers for the schema you name — including the bound ones, whose grid is
+fixed by the binding but which still have a spread that may fit a sheet more
+than once. See [Fitting a document](#fitting-a-document).
 
 ## Schemas
 
@@ -605,7 +635,9 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `cli` — the `impose` command |
 | ✅ | `marks` — registration targets and colour bar |
 | ⬜ | Slug line (needs an embedded font to stay PDF/X) |
+| ⬜ | Documents whose pages differ in size or TrimBox offset — refused today |
 | ✅ | `fit` — densest grid, orientation, and run waste |
+| ✅ | `fit` from a file, and for the bound schemas' spread |
 | ✅ | `creep` — fore-edge push-out compensated per sheet |
 
 ## Two-stage jobs
@@ -650,10 +682,13 @@ How many forms fit an Indigo 5000, at 2 mm bleed:
 
 | booklet | form | per sheet |
 |---|---|---|
-| quarter letter, 108 × 139.7 mm | 220.0 × 143.7 mm | **4 up** (2 × 2 turned) |
-| half letter, 215.9 × 139.7 mm | 435.8 × 143.7 mm | 2 up |
-| half letter, 139.7 × 215.9 mm | 283.4 × 219.9 mm | 2 up |
+| quarter letter, 108 × 139.7 mm | 220 × 143.7 mm | **4 up** (2 × 2 turned) |
+| half letter, 215.9 × 139.7 mm | 435.8 × 143.7 mm | **2 up** (2 × 1 turned) |
+| half letter, 139.7 × 215.9 mm | 283.4 × 219.9 mm | **2 up** (1 × 2 upright) |
 | letter, 215.9 × 279.4 mm | 435.8 × 283.4 mm | 1 up — no saving |
+
+`impose fit BOOKLET.pdf --schema saddle` works these out for any size, and
+prints the two commands to run.
 
 Leave the marks off the first pass. Each form otherwise carries its own 5 mm
 margin, and two of those stacked need 462 mm where 450 is available.
@@ -685,7 +720,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 200 tests, no system libraries, under a second. The suite asserts geometry and
+Over 430 tests, no system libraries, under a second. The suite asserts geometry and
 structure rather than pixels: an imposition is right or wrong by where the
 trims land on the sheet, and expectations are literals from ISO 216 and ISO 217
 rather than restatements of what the code computes.

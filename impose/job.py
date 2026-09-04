@@ -99,6 +99,8 @@ class Result:  # pylint: disable=too-many-instance-attributes
     trim_size: Size
     press: str
     turned: bool
+    #: Whether the pages sit on their sides in their cells.
+    pages_turned: bool = False
     pdfx: str | None = None
     warnings: tuple[str, ...] = ()
 
@@ -116,10 +118,11 @@ class Result:  # pylint: disable=too-many-instance-attributes
         """
         turned = ", form turned to fit" if self.turned else ""
         claim = f", {self.pdfx}" if self.pdfx else ""
+        way = "turned" if self.pages_turned else "upright"
         return (
             f"{self.plan.schema}: {self.plan.pages} pages onto {self.sheets} "
             f"sheet(s) at {self.up} up ({self.plan.columns} × "
-            f"{self.plan.rows}), page {format_mm(self.sheet_size)} on "
+            f"{self.plan.rows} {way}), page {format_mm(self.sheet_size)} on "
             f"{self.press}; finished page {format_mm(self.trim_size)}"
             f"{turned}{claim}"
         )
@@ -398,6 +401,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             orientation = "turned"
 
         style = marks
+        # _fit hands back the candidate that fitted. When that is not the plan
+        # it was given, the pages were turned in their cells to make the grid
+        # fit, which is worth reporting: 2 x 2 of a 216 mm form reads as
+        # impossible on a 310 mm area until you know they are on their sides.
+        upright = plan
         plan, layouts = _fit(
             plan,
             schema=schema,
@@ -446,6 +454,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             trim_size=boxes.trim_size,
             press=machine.name,
             turned=turned,
+            pages_turned=plan is not upright,
             pdfx=identity.version,
             warnings=warnings,
         )
