@@ -41,7 +41,8 @@ def spread(*, gutters=Gutters(), bleed=BLEED, press=INDIGO_5000, rotation=0, **k
 class TestFoldAxis(unittest.TestCase):
     """Which way the fold runs, once the form has been turned."""
 
-    def layout(self, trim, *, columns=2, rows=1):
+    @staticmethod
+    def layout(trim, *, columns=2, rows=1):
         plan = build_plan("saddle", 4)
         surface = plan.surfaces[0]
         return lay_out(

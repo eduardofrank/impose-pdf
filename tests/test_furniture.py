@@ -45,7 +45,8 @@ class TestFoldMarks(unittest.TestCase):
 
     SPREAD = [Rect(0, 0, 100, 200), Rect(100, 0, 200, 200)]
 
-    def dashed(self, marks):
+    @staticmethod
+    def dashed(marks):
         return [m for m in marks if m.dashed]
 
     def test_a_vertical_fold_is_dashed_at_both_ends(self):
