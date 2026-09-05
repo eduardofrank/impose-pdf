@@ -70,6 +70,9 @@ FIT_SHEET = "fit"
 #: sheet, with the unimageable border shown as margin.
 PAGE_CHOICES = ("imageable", "sheet")
 
+#: What can be said about the pages folding. See :func:`impose_document`.
+FOLD_CHOICES = ("auto", "none", "vertical", "horizontal")
+
 
 def default_gutter(schema: str) -> float:
     """The gap to leave between pages, when the caller has not said.
@@ -292,12 +295,20 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     registration: bool = False,
     colour_bar: bool = False,
     page: str = "imageable",
+    fold: str = "auto",
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
     marks.
+
+    *fold* says whether the pages being placed fold, which decides where the
+    dashed marks go. ``"auto"`` believes the file: a form this tool made for a
+    second pass records its own folds, and nothing else claims any. ``"none"``
+    ignores that record, and ``"vertical"`` or ``"horizontal"`` say each page
+    folds down its own middle on that axis -- for a form some other program
+    made, which has no record to read.
 
     *page* decides what the output page is. ``"imageable"``, the default, makes
     it the area the press can print, so anything that fits the page will run
@@ -360,6 +371,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             bleed_insets.bottom,
             bleed_insets.top,
         )
+        source_folds = _source_folds(fold, boxes)
         chose_turned = False
         if schema not in _FIXED_GRID and not (
             options.get("columns") or options.get("rows")
@@ -423,6 +435,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         renderer = Renderer(style=style)
         turned = any(layout.turned for layout in layouts)
         for layout in layouts:
+            carried = layout.carried_folds(source_folds, boxes.rotation)
             targets, patches = (
                 furniture(
                     layout.trim_bounds,
@@ -434,13 +447,15 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 if style and (registration or colour_bar)
                 else ([], [])
             )
+            folds = _all_folds(layout, plan, carried)
             renderer.add(
                 layout,
                 opened,
-                marks=_marks(layout, plan, style),
+                marks=_marks(layout, plan, style, carried),
                 targets=targets,
                 bar=patches,
                 source_rotation=boxes.rotation,
+                folds=folds,
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
@@ -570,11 +585,50 @@ def _warnings(plan: Plan, schema: str, max_nested_sheets: int) -> tuple[str, ...
     return tuple(found)
 
 
-def _marks(layout, plan: Plan, style: MarkStyle | None) -> list[Segment] | None:
-    """Cut marks for a laid-out surface, with the schema's folds dashed."""
+def _source_folds(
+    fold: str, boxes: PageBoxes
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Where the pages being placed fold, in their own space.
+
+    ``auto`` believes the file. Only a form this tool made for a second pass
+    records a fold, so for everything else this is empty and nothing changes.
+    """
+    if fold == "auto":
+        return boxes.folds
+    if fold == "none":
+        return ((), ())
+    middle_x = (boxes.trim.x0 + boxes.trim.x1) / 2
+    middle_y = (boxes.trim.y0 + boxes.trim.y1) / 2
+    if fold == "vertical":
+        return ((middle_x,), ())
+    if fold == "horizontal":
+        return ((), (middle_y,))
+    raise ImposeError(f"Unknown fold {fold!r}; use {', '.join(FOLD_CHOICES)}.")
+
+
+def _all_folds(
+    layout, plan: Plan, carried: tuple[tuple[float, ...], tuple[float, ...]]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Every fold on a finished sheet: the schema's own, and the pages' own.
+
+    Recorded on the output so that a form of forms keeps its folds through a
+    third pass as readily as through a second.
+    """
+    own_x, own_y = layout.fold_positions(plan.fold_columns)
+    carried_x, carried_y = carried
+    return (tuple(sorted({*own_x, *carried_x})), tuple(sorted({*own_y, *carried_y})))
+
+
+def _marks(
+    layout,
+    plan: Plan,
+    style: MarkStyle | None,
+    carried: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
+) -> list[Segment] | None:
+    """Cut marks for a laid-out surface, with every fold dashed."""
     if style is None:
         return None
-    fold_x, fold_y = layout.fold_positions(plan.fold_columns)
+    fold_x, fold_y = _all_folds(layout, plan, carried)
     return trim_marks(
         [page.trim for page in layout.pages],
         style=style,

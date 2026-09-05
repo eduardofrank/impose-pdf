@@ -18,6 +18,7 @@ import dataclasses
 import re
 
 import pikepdf
+from pikepdf import Array, Dictionary
 
 from . import ImposeError
 from .geometry import Insets, Rect, Size
@@ -41,7 +42,7 @@ _ROTATED_EDGE: dict[int, dict[str, str]] = {
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class PageBoxes:
+class PageBoxes:  # pylint: disable=too-many-instance-attributes
     """The boxes of one page, in unrotated PDF user space.
 
     Rectangles are as written in the file. :attr:`rotation` is applied by the
@@ -56,6 +57,9 @@ class PageBoxes:
     rotation: int = 0
     has_explicit_trim: bool = False
     has_explicit_bleed: bool = False
+    #: Where this page folds, in its own user space, as (vertical, horizontal).
+    #: Only a page imposed by this tool carries one; everything else has none.
+    folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ())
 
     @property
     def trim_size(self) -> Size:
@@ -153,7 +157,35 @@ def read_boxes(page: pikepdf.Page) -> PageBoxes:
         rotation=_rotation(page),
         has_explicit_trim=has_trim,
         has_explicit_bleed=has_bleed,
+        folds=_read_folds(page),
     )
+
+
+def _read_folds(page: pikepdf.Page) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Fold lines this tool recorded on the page, as (vertical, horizontal).
+
+    A form produced for a second imposition notes where it folds, because its
+    own fold marks sit outside its TrimBox and the next pass clips them away.
+    The key is private and anything malformed is treated as absent: a fold
+    mark is worth having, but not worth refusing a file over.
+    """
+    record = page.obj.get("/Impose")
+    if not isinstance(record, Dictionary):
+        return ((), ())
+    folds = record.get("/Folds")
+    if not isinstance(folds, Dictionary):
+        return ((), ())
+
+    def axis(name: str) -> tuple[float, ...]:
+        values = folds.get(name)
+        if not isinstance(values, Array):
+            return ()
+        try:
+            return tuple(float(value) for value in values)
+        except (TypeError, ValueError):
+            return ()
+
+    return (axis("/X"), axis("/Y"))
 
 
 def pdfx_version(pdf: pikepdf.Pdf) -> str | None:

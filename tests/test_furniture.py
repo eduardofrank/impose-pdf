@@ -5,11 +5,15 @@
 """Registration targets and colour bars: what goes in the margin."""
 
 import io
+import pathlib
+import re
+import tempfile
 import unittest
 
 import pikepdf
 
-from impose.geometry import Rect
+from impose import ImposeError
+from impose.geometry import Rect, Size
 from impose.job import impose_document
 from impose.marks import (
     STANDARD_PATCHES,
@@ -20,7 +24,7 @@ from impose.marks import (
     trim_marks,
 )
 from impose.press import INDIGO_5000
-from impose.units import MM
+from impose.units import MM, to_mm
 
 from .support import make_pdf
 
@@ -38,6 +42,125 @@ def content(data: bytes) -> str:
     ).decode("ascii")
     pdf.close()
     return text
+
+
+class TestTwoStageFolds(unittest.TestCase):
+    """A form imposed again must still say where it folds.
+
+    The first pass's own fold mark cannot survive: it sits outside the form's
+    TrimBox and the second pass clips to it. So the fold is recorded on the
+    form and the second pass draws the mark from its own geometry.
+    """
+
+    #: Two of these go on an Indigo sheet upright, so the spine stays vertical.
+    UPRIGHT = Size(139.7 * MM, 215.9 * MM)
+    #: Four of these go on turned, so the spine comes out horizontal.
+    TURNED = Size(108 * MM, 140 * MM)
+
+    @staticmethod
+    def read(path):
+        """(vertical lines, horizontal lines, dashed count) in millimetres."""
+        with pikepdf.open(path) as pdf:
+            contents = pdf.pages[0].obj["/Contents"]
+            raw = (
+                b"".join(part.read_bytes() for part in contents)
+                if isinstance(contents, pikepdf.Array)
+                else contents.read_bytes()
+            )
+        text = raw.decode("latin-1")
+        found = re.findall(r"([-\d.]+) ([-\d.]+) m ([-\d.]+) ([-\d.]+) l", text)
+        verticals = sorted(
+            {round(to_mm(float(s[0])), 1) for s in found if s[0] == s[2]}
+        )
+        horizontals = sorted(
+            {round(to_mm(float(s[1])), 1) for s in found if s[1] == s[3]}
+        )
+        dashed = len(re.findall(r"\[[\d.]+ [\d.]+\] 0 d", text))
+        return verticals, horizontals, dashed
+
+    @staticmethod
+    def two_stage(trim, folder, **second):
+        source = folder / "book.pdf"
+        make_pdf(8, trim=trim).save(source)
+        forms, sheets = folder / "forms.pdf", folder / "sheets.pdf"
+        impose_document(source, forms, schema="saddle", sheet="fit", marks=None)
+        result = impose_document(forms, sheets, schema="steprepeat", **second)
+        return forms, sheets, result
+
+    def test_the_form_records_its_fold(self):
+        with tempfile.TemporaryDirectory() as folder:
+            forms, _, _ = self.two_stage(self.UPRIGHT, pathlib.Path(folder))
+            with pikepdf.open(forms) as pdf:
+                record = pdf.pages[0].obj["/Impose"]
+                self.assertEqual(int(record["/Version"]), 1)
+                self.assertEqual(len(record["/Folds"]["/X"]), 1)
+                self.assertEqual(len(record["/Folds"]["/Y"]), 0)
+
+    def test_the_spine_lands_midway_across_the_form(self):
+        with tempfile.TemporaryDirectory() as folder:
+            _, sheets, result = self.two_stage(self.UPRIGHT, pathlib.Path(folder))
+            self.assertFalse(result.pages_turned)
+            verticals, _, dashed = self.read(sheets)
+            self.assertEqual(dashed, 1)
+            left, middle, right = verticals
+            self.assertAlmostEqual(middle, (left + right) / 2, places=1)
+
+    def test_a_turned_form_folds_the_other_way(self):
+        """The fold goes through the same matrix as the artwork, so it turns
+        with the page rather than needing arithmetic of its own."""
+        with tempfile.TemporaryDirectory() as folder:
+            _, sheets, result = self.two_stage(self.TURNED, pathlib.Path(folder))
+            self.assertTrue(result.pages_turned)
+            _, horizontals, dashed = self.read(sheets)
+            self.assertEqual(dashed, 2)
+            # Two rows of cells: each cell's own middle is a fold.
+            bottom, first, cut_low, cut_high, second, top = horizontals
+            self.assertAlmostEqual(first, (bottom + cut_low) / 2, places=1)
+            self.assertAlmostEqual(second, (cut_high + top) / 2, places=1)
+
+    def test_without_the_record_there_is_no_fold_mark(self):
+        """What every two-stage sheet did before this: the folder was given
+        the outline and left to find the spine by measurement."""
+        with tempfile.TemporaryDirectory() as folder:
+            folder = pathlib.Path(folder)
+            _, sheets, _ = self.two_stage(self.UPRIGHT, folder, fold="none")
+            verticals, _, dashed = self.read(sheets)
+            self.assertEqual(dashed, 0)
+            self.assertEqual(len(verticals), 2)
+
+    def test_a_form_with_no_record_can_be_told(self):
+        """For a form some other program made."""
+        with tempfile.TemporaryDirectory() as folder:
+            folder = pathlib.Path(folder)
+            forms, _, _ = self.two_stage(self.UPRIGHT, folder)
+            with pikepdf.open(forms, allow_overwriting_input=True) as pdf:
+                for page in pdf.pages:
+                    del page.obj["/Impose"]
+                pdf.save(folder / "bare.pdf")
+            for fold, expected in (("auto", 0), ("vertical", 1)):
+                with self.subTest(fold=fold):
+                    out = folder / f"{fold}.pdf"
+                    impose_document(
+                        folder / "bare.pdf", out, schema="steprepeat", fold=fold
+                    )
+                    self.assertEqual(self.read(out)[2], expected)
+
+    def test_an_unknown_fold_is_refused_by_name(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = pathlib.Path(folder)
+            source = folder / "b.pdf"
+            make_pdf(8, trim=self.UPRIGHT).save(source)
+            with self.assertRaises(ImposeError) as caught:
+                impose_document(source, folder / "o.pdf", schema="nup", fold="sideways")
+            self.assertIn("sideways", str(caught.exception))
+
+    def test_a_third_pass_still_knows(self):
+        """A sheet records every fold it carries, its own and the pages'."""
+        with tempfile.TemporaryDirectory() as folder:
+            _, sheets, _ = self.two_stage(self.UPRIGHT, pathlib.Path(folder))
+            with pikepdf.open(sheets) as pdf:
+                record = pdf.pages[0].obj["/Impose"]
+                self.assertEqual(len(record["/Folds"]["/X"]), 1)
 
 
 class TestFoldMarks(unittest.TestCase):

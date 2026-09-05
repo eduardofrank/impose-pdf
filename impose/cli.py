@@ -26,6 +26,7 @@ from .fit import DEFAULT_GUTTER, arrangements, compare
 from .geometry import Size
 from .job import (
     DEFAULT_BLEED,
+    FOLD_CHOICES,
     SCHEMAS,
     build_plan,
     impose_document,
@@ -187,6 +188,16 @@ def _common(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Add a row of process-ink patches along the tail of the sheet, "
         "for reading density on press.",
+    )
+    parser.add_argument(
+        "--fold",
+        choices=FOLD_CHOICES,
+        default="auto",
+        help="Whether the pages being placed fold, which decides where the "
+        "dashed marks go. auto believes the file: a form this tool made for a "
+        "second pass records its own fold and nothing else claims one. Say "
+        "vertical or horizontal for a form some other program made, which has "
+        "no record to read. Default: %(default)s.",
     )
     parser.add_argument(
         "--orientation",
@@ -607,6 +618,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             paper_caliper=getattr(args, "paper_caliper", 0.0),
             bleed=args.bleed,
             page=args.page,
+            fold=args.fold,
             registration=args.registration,
             colour_bar=args.colour_bar,
             **_schema_options(args),

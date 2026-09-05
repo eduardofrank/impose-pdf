@@ -15,12 +15,12 @@ import unittest
 import pikepdf
 
 from impose.boxes import read_boxes
-from impose.geometry import Rect
+from impose.geometry import Rect, placement_matrix
 from impose.layout import lay_out
 from impose.marks import MarkStyle, trim_marks
 from impose.plan import BLANK, Placement, Surface
 from impose.press import INDIGO_5000
-from impose.render import Renderer, _placement_matrix
+from impose.render import Renderer
 from impose.units import to_mm
 
 from .support import make_pdf
@@ -37,7 +37,7 @@ class TestPlacementMatrix(unittest.TestCase):
     """The matrix must carry the clip exactly onto the paint rectangle."""
 
     def _check(self, rotation, clip, paint):
-        matrix = _placement_matrix(clip, paint, rotation)
+        matrix = placement_matrix(clip, paint, rotation)
         corners = [
             apply(matrix, (clip.x0, clip.y0)),
             apply(matrix, (clip.x1, clip.y0)),
@@ -64,13 +64,13 @@ class TestPlacementMatrix(unittest.TestCase):
 
     def test_nothing_is_scaled(self):
         """A finished page is the size it is; resizing artwork is destruction."""
-        matrix = _placement_matrix(Rect(0, 0, 100, 200), Rect(5, 5, 105, 205), 0)
+        matrix = placement_matrix(Rect(0, 0, 100, 200), Rect(5, 5, 105, 205), 0)
         a, b, c, d, _, _ = matrix
         self.assertEqual((abs(a) + abs(c), abs(b) + abs(d)), (1, 1))
 
     def test_rejects_partial_turn(self):
         with self.assertRaises(ValueError):
-            _placement_matrix(Rect(0, 0, 1, 1), Rect(0, 0, 1, 1), 45)
+            placement_matrix(Rect(0, 0, 1, 1), Rect(0, 0, 1, 1), 45)
 
 
 def build(marks=True, style=None, pages=4):

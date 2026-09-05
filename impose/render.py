@@ -18,7 +18,7 @@ import pikepdf
 from pikepdf import Array, Dictionary, Name
 
 from . import __version__
-from .geometry import Rect
+from .geometry import Rect, placement_matrix
 from .layout import PlacedPage, SheetLayout
 from .marks import MarkStyle, Patch, Segment, Target, circle_path
 from .pdfx import Identity, carry_over, minimum_version
@@ -49,25 +49,6 @@ def _overprint_state(pdf: pikepdf.Pdf) -> Dictionary:
     return pdf.make_indirect(Dictionary(OP=True, op=True, OPM=1))
 
 
-def _placement_matrix(clip: Rect, paint: Rect, rotation: int) -> tuple[float, ...]:
-    """The matrix carrying *clip* in source space onto *paint* on the sheet.
-
-    Rotation is clockwise, matching /Rotate. No scaling: the extents of the
-    clip and the paint rectangle are equal by construction, and if they ever
-    disagree that is a layout bug worth surfacing rather than papering over.
-    """
-    turn = rotation % 360
-    if turn == 0:
-        return (1, 0, 0, 1, paint.x0 - clip.x0, paint.y0 - clip.y0)
-    if turn == 90:
-        return (0, -1, 1, 0, paint.x0 - clip.y0, paint.y0 + clip.x1)
-    if turn == 180:
-        return (-1, 0, 0, -1, paint.x0 + clip.x1, paint.y0 + clip.y1)
-    if turn == 270:
-        return (0, 1, -1, 0, paint.x0 + clip.y1, paint.y0 - clip.x0)
-    raise ValueError(f"Rotation must be a quarter turn, got {rotation}.")
-
-
 def _numbers(*values: float) -> str:
     """Format coordinates for a content stream, without exponent notation."""
     return " ".join(f"{value:.5f}".rstrip("0").rstrip(".") or "0" for value in values)
@@ -75,7 +56,7 @@ def _numbers(*values: float) -> str:
 
 def _place(page: PlacedPage, name: Name, source_rotation: int = 0) -> str:
     """The content stream fragment that draws one placed page."""
-    matrix = _placement_matrix(page.clip, page.paint, page.rotation + source_rotation)
+    matrix = placement_matrix(page.clip, page.paint, page.rotation + source_rotation)
     return (
         "q\n"
         f"{_numbers(page.paint.x0, page.paint.y0, page.paint.width, page.paint.height)}"
@@ -210,6 +191,7 @@ class Renderer:
         targets: list[Target] | None = None,
         bar: list[Patch] | None = None,
         source_rotation: int = 0,
+        folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
         sheet = Rect.from_size(layout.sheet)
@@ -237,7 +219,7 @@ class Renderer:
         if bar:
             stream.append(_draw_patches(bar))
         page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("ascii")))
-        _set_boxes(page, sheet, layout)
+        _set_boxes(page, sheet, layout, folds)
         return page
 
     def _mark_resources(self, page: pikepdf.Page) -> tuple[Name | None, Name | None]:
@@ -273,7 +255,12 @@ class Renderer:
         )
 
 
-def _set_boxes(page: pikepdf.Page, sheet: Rect, layout: SheetLayout) -> None:
+def _set_boxes(
+    page: pikepdf.Page,
+    sheet: Rect,
+    layout: SheetLayout,
+    folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
+) -> None:
     """Describe the imposed sheet in its own page boxes.
 
     MediaBox is the sheet as it goes through the press. TrimBox is the whole
@@ -298,3 +285,29 @@ def _set_boxes(page: pikepdf.Page, sheet: Rect, layout: SheetLayout) -> None:
             min(rect.y1, sheet.y1),
         )
         page.obj[name] = Array([clipped.x0, clipped.y0, clipped.x1, clipped.y1])
+    _record_folds(page, *folds)
+
+
+def _record_folds(
+    page: pikepdf.Page, fold_x: tuple[float, ...], fold_y: tuple[float, ...]
+) -> None:
+    """Note where this sheet folds, for a pass that imposes it again.
+
+    A two-stage job puts the form through a second imposition, which sees only
+    a rectangle of artwork and has no way to know a spine runs down the middle
+    of it. The first pass's own fold marks cannot survive: they sit outside the
+    form's TrimBox and the second pass clips to it. So the fact is recorded
+    rather than the mark, and the second pass draws the mark where its own
+    geometry puts it.
+
+    The coordinates are this page's own user space, the same space as its
+    boxes, so nothing has to be rebased when they are read back. ``/Impose``
+    is a private key; PDF readers ignore what they do not know, and PDF/X
+    conformance is unaffected.
+    """
+    if not (fold_x or fold_y):
+        return
+    page.obj["/Impose"] = Dictionary(
+        Version=1,
+        Folds=Dictionary(X=Array(list(fold_x)), Y=Array(list(fold_y))),
+    )

@@ -167,6 +167,7 @@ series.
 | `--mark-width LENGTH` | `0.25pt` | stroke width |
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
+| `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
 | `-n`, `--dry-run` | off | show the page order and sheet count, write nothing |
 | `-q`, `--quiet` | off | say nothing on success; warnings still go to stderr |
@@ -502,7 +503,12 @@ Marks sit at the ends of each cut line, out beyond the form, because that is
 how a guillotine is used: the operator lines the blade up on a pair of marks at
 opposite edges of the sheet and cuts the whole way across. A mark in the middle
 of the form would be cut through; one inside the trim would be delivered to the
-customer. A fold, such as a saddle spine, is drawn dashed.
+customer.
+
+A fold, such as a saddle spine, is drawn dashed, and it is drawn whether or not
+a cut line already runs there. A spread that folds down its own middle has a
+fold and no cell boundary — which is what every two-stage form is — and it
+still has to be marked.
 
 Colour is selectable, and both answers are right somewhere:
 
@@ -678,6 +684,29 @@ is the trim, the bleed is bleed. The second pass then places it by that trim
 and the two 2 mm bleeds meet in the middle of the 4 mm gutter, so one cut
 serves both halves.
 
+### The fold survives the second pass
+
+A form is a rectangle of artwork to the pass that places it, with no way to
+know a spine runs down the middle. So the first pass **records** where it
+folds, and the second draws the mark from its own geometry:
+
+```
+$ impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
+$ impose steprepeat forms.pdf -o press.pdf
+```
+
+The finished sheets carry a dashed mark at each booklet's spine, at the head
+and the tail, alongside the cut marks at the form boundaries. The fold goes
+through the same matrix as the artwork, so a form the second pass turns has its
+spine come out running the other way, marked correctly.
+
+The record is a private `/Impose` key on the page. PDF readers ignore what they
+do not know and PDF/X conformance is unaffected; a file that has been through
+another program in between simply arrives without one. For that case — or for
+a form some other program imposed — `--fold vertical` or `--fold horizontal`
+says each piece folds down its own middle on that axis, and `--fold none`
+ignores a record that is there.
+
 How many forms fit an Indigo 5000, at 2 mm bleed:
 
 | booklet | form | per sheet |
@@ -690,8 +719,13 @@ How many forms fit an Indigo 5000, at 2 mm bleed:
 `impose fit BOOKLET.pdf --schema saddle` works these out for any size, and
 prints the two commands to run.
 
-Leave the marks off the first pass. Each form otherwise carries its own 5 mm
-margin, and two of those stacked need 462 mm where 450 is available.
+Leave the marks off the first pass. The second pass places the form by its
+TrimBox and clips to it, and a first pass's marks sit outside that box by
+definition — they would be silently discarded, leaving a file that looks
+marked and is not. `--marks none` says what actually happens.
+
+It costs nothing: the second pass draws its own cut marks in the same places,
+and the fold is carried across separately.
 
 ## Checking artwork
 

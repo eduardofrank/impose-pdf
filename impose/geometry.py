@@ -233,3 +233,35 @@ def bounds(rects: Iterable[Rect]) -> Rect:
 def approx(value: float, other: float, *, tolerance: float = 1e-6) -> bool:
     """Whether two lengths are equal to within press-irrelevant noise."""
     return math.isclose(value, other, abs_tol=tolerance)
+
+
+def placement_matrix(clip: Rect, paint: Rect, rotation: int) -> tuple[float, ...]:
+    """The matrix carrying *clip* in source space onto *paint* on the sheet.
+
+    Rotation is clockwise, matching ``/Rotate``. No scaling: the extents of the
+    clip and the paint rectangle are equal by construction, and if they ever
+    disagree that is a layout bug worth surfacing rather than papering over.
+
+    >>> placement_matrix(Rect(0, 0, 10, 20), Rect(5, 5, 15, 25), 0)
+    (1, 0, 0, 1, 5, 5)
+    """
+    turn = rotation % 360
+    if turn == 0:
+        return (1, 0, 0, 1, paint.x0 - clip.x0, paint.y0 - clip.y0)
+    if turn == 90:
+        return (0, -1, 1, 0, paint.x0 - clip.y0, paint.y0 + clip.x1)
+    if turn == 180:
+        return (-1, 0, 0, -1, paint.x0 + clip.x1, paint.y0 + clip.y1)
+    if turn == 270:
+        return (0, 1, -1, 0, paint.x0 + clip.y1, paint.y0 - clip.x0)
+    raise ValueError(f"Rotation must be a quarter turn, got {rotation}.")
+
+
+def apply_matrix(matrix: tuple[float, ...], x: float, y: float) -> tuple[float, float]:
+    """A point carried through a PDF transformation matrix.
+
+    >>> apply_matrix((0, -1, 1, 0, 0, 0), 3, 4)
+    (4, -3)
+    """
+    a, b, c, d, e, f = matrix
+    return (a * x + c * y + e, b * x + d * y + f)

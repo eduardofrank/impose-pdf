@@ -28,7 +28,15 @@ import dataclasses
 
 from . import ImposeError
 from .boxes import rotate_insets
-from .geometry import Insets, Rect, Size, bounds
+from .geometry import (
+    Insets,
+    Rect,
+    Size,
+    apply_matrix,
+    approx,
+    bounds,
+    placement_matrix,
+)
 from .plan import BLANK, Placement, Surface
 from .press import Press
 from .units import format_mm, to_mm
@@ -110,6 +118,51 @@ class SheetLayout:
                     break
         folds = tuple(positions)
         return ((), folds) if self.turned else (folds, ())
+
+    def carried_folds(  # pylint: disable=too-many-locals
+        self,
+        folds: tuple[tuple[float, ...], tuple[float, ...]],
+        source_rotation: int = 0,
+    ) -> tuple[tuple[float, ...], tuple[float, ...]]:
+        """Where the placed pages' own folds land on this sheet.
+
+        A page that is itself an imposed form folds down its middle, and the
+        sheet carrying it has to say so. The fold is a line in the source's
+        space, so it goes through the same matrix as the artwork rather than
+        through arithmetic of its own: whichever way the page was turned in its
+        cell, its fold turns with it.
+
+        Folds landing on a cell edge are dropped. That edge is already a cut
+        line, and a fold is not something to cut.
+        """
+        source_x, source_y = folds
+        if not (source_x or source_y):
+            return ((), ())
+        xs: list[float] = []
+        ys: list[float] = []
+        for page in self.printed:
+            matrix = placement_matrix(
+                page.clip, page.paint, page.rotation + source_rotation
+            )
+            lines = [((v, page.clip.y0), (v, page.clip.y1)) for v in source_x]
+            lines += [((page.clip.x0, v), (page.clip.x1, v)) for v in source_y]
+            for start, end in lines:
+                x0, y0 = apply_matrix(matrix, *start)
+                x1, y1 = apply_matrix(matrix, *end)
+                if approx(x0, x1) and page.trim.x0 < x0 < page.trim.x1:
+                    xs.append(x0)
+                elif approx(y0, y1) and page.trim.y0 < y0 < page.trim.y1:
+                    ys.append(y0)
+        return (_merge(xs), _merge(ys))
+
+
+def _merge(values: list[float]) -> tuple[float, ...]:
+    """Sorted coordinates, with near-identical ones treated as one line."""
+    result: list[float] = []
+    for value in sorted(values):
+        if not result or not approx(result[-1], value):
+            result.append(value)
+    return tuple(result)
 
 
 def _cell_size(trim: Size, rotation: int) -> Size:
