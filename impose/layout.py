@@ -91,12 +91,16 @@ class SheetLayout:
         """Pages that actually carry content."""
         return tuple(page for page in self.pages if not page.is_blank)
 
-    def fold_positions(self, fold_columns: tuple[int, ...]) -> tuple[float, ...]:
-        """Where the named column boundaries fall on the sheet.
+    def fold_positions(
+        self, fold_columns: tuple[int, ...]
+    ) -> tuple[tuple[float, ...], tuple[float, ...]]:
+        """Where the named column boundaries fall, as (vertical, horizontal).
 
-        A boundary is the right-hand trim edge of the column before it. If the
-        form was turned to fit, those boundaries are now horizontal, and the
-        marks for them are handled as such by the caller.
+        A boundary is the right-hand trim edge of the column before it. A form
+        turned to fit the sheet has those boundaries running the other way, so
+        which of the two tuples they land in depends on the turn. Returning
+        both keeps the axis with the number instead of leaving the caller to
+        remember it -- getting that wrong marks a spine as a cut line.
         """
         positions = []
         for boundary in fold_columns:
@@ -104,7 +108,8 @@ class SheetLayout:
                 if page.column == boundary - 1:
                     positions.append(page.trim.y1 if self.turned else page.trim.x1)
                     break
-        return tuple(positions)
+        folds = tuple(positions)
+        return ((), folds) if self.turned else (folds, ())
 
 
 def _cell_size(trim: Size, rotation: int) -> Size:

@@ -8,6 +8,7 @@ import unittest
 
 from impose import ImposeError
 from impose.geometry import Insets, Rect, Size
+from impose.job import build_plan
 from impose.layout import Gutters, lay_out
 from impose.plan import Placement, Surface
 from impose.press import INDIGO_5000, custom
@@ -35,6 +36,45 @@ def spread(*, gutters=Gutters(), bleed=BLEED, press=INDIGO_5000, rotation=0, **k
         press=press,
         **kw,
     )
+
+
+class TestFoldAxis(unittest.TestCase):
+    """Which way the fold runs, once the form has been turned."""
+
+    def layout(self, trim, *, columns=2, rows=1):
+        plan = build_plan("saddle", 4)
+        surface = plan.surfaces[0]
+        return lay_out(
+            surface,
+            columns=columns,
+            rows=rows,
+            trim=trim,
+            trim_origin=Rect(0, 0, trim.width, trim.height),
+            press=INDIGO_5000,
+            sheet=INDIGO_5000.sheet,
+        )
+
+    def test_an_upright_form_folds_vertically(self):
+        vertical, horizontal = self.layout(Size(105 * MM, 210 * MM)).fold_positions(
+            (1,)
+        )
+        self.assertEqual(len(vertical), 1)
+        self.assertEqual(horizontal, ())
+
+    def test_a_turned_form_folds_horizontally(self):
+        """The spine runs the other way once the form is turned. Reporting it
+        as a vertical position matched no cut line, and the spine was marked
+        as somewhere to put the knife."""
+        layout = self.layout(Size(210 * MM, 105 * MM))
+        self.assertTrue(layout.turned)
+        vertical, horizontal = layout.fold_positions((1,))
+        self.assertEqual(vertical, ())
+        self.assertEqual(len(horizontal), 1)
+
+    def test_no_fold_columns_means_no_folds(self):
+        self.assertEqual(
+            self.layout(Size(105 * MM, 210 * MM)).fold_positions(()), ((), ())
+        )
 
 
 class TestGrid(unittest.TestCase):

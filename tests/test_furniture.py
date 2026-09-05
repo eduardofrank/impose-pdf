@@ -17,6 +17,7 @@ from impose.marks import (
     colour_bar,
     furniture,
     registration_targets,
+    trim_marks,
 )
 from impose.press import INDIGO_5000
 from impose.units import MM
@@ -37,6 +38,49 @@ def content(data: bytes) -> str:
     ).decode("ascii")
     pdf.close()
     return text
+
+
+class TestFoldMarks(unittest.TestCase):
+    """A fold is not a cut, and saying so is the whole point of the mark."""
+
+    SPREAD = [Rect(0, 0, 100, 200), Rect(100, 0, 200, 200)]
+
+    def dashed(self, marks):
+        return [m for m in marks if m.dashed]
+
+    def test_a_vertical_fold_is_dashed_at_both_ends(self):
+        marks = trim_marks(self.SPREAD, fold_x=(100.0,))
+        self.assertEqual(len(self.dashed(marks)), 2)
+        self.assertTrue(all(m.x0 == m.x1 == 100.0 for m in self.dashed(marks)))
+
+    def test_a_horizontal_fold_is_dashed_at_both_ends(self):
+        """A form turned to fit has its spine running the other way. Matching
+        folds against vertical lines only left it drawn as a cut line, which
+        tells the bindery to guillotine the book down the spine."""
+        marks = trim_marks(
+            [Rect(0, 0, 200, 100), Rect(0, 100, 200, 200)], fold_y=(100.0,)
+        )
+        self.assertEqual(len(self.dashed(marks)), 2)
+        self.assertTrue(all(m.y0 == m.y1 == 100.0 for m in self.dashed(marks)))
+
+    def test_cut_lines_are_not_dashed(self):
+        marks = trim_marks(self.SPREAD, fold_x=(100.0,))
+        outer = [m for m in marks if m.x0 in (0.0, 200.0) and m.x0 == m.x1]
+        self.assertTrue(outer)
+        self.assertFalse(any(m.dashed for m in outer))
+
+    def test_a_fold_that_is_not_a_cut_line_is_still_marked(self):
+        """A spread that folds down its own middle has a fold there and no
+        cell boundary. Two-stage jobs are entirely made of these."""
+        single = [Rect(0, 0, 200, 200)]
+        without = trim_marks(single)
+        withfold = trim_marks(single, fold_x=(100.0,))
+        self.assertEqual(len(withfold) - len(without), 2)
+        self.assertEqual(len(self.dashed(withfold)), 2)
+
+    def test_folds_on_both_axes_at_once(self):
+        marks = trim_marks([Rect(0, 0, 200, 200)], fold_x=(100.0,), fold_y=(100.0,))
+        self.assertEqual(len(self.dashed(marks)), 4)
 
 
 class TestTargets(unittest.TestCase):

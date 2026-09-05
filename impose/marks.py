@@ -175,13 +175,26 @@ def trim_marks(
     trims: list[Rect],
     *,
     style: MarkStyle | None = None,
-    folds: tuple[float, ...] = (),
+    fold_x: tuple[float, ...] = (),
+    fold_y: tuple[float, ...] = (),
 ) -> list[Segment]:
     """Marks at both ends of every cut line through the form.
 
-    *folds* names vertical cut lines that are folds rather than cuts -- a
-    saddle-stitched spine, say. Those are drawn dashed, so the folder is not
-    invited to cut the book in half.
+    *fold_x* and *fold_y* name lines that are folds rather than cuts -- a
+    saddle-stitched spine, say. They are drawn dashed, so the folder is not
+    invited to cut the book in half, and they are drawn whether or not they
+    are also cut lines: a spread that folds down its own middle has a fold
+    there and no cell boundary, and it still has to be marked.
+
+    Both axes are named because a form turned to fit the sheet has its spine
+    running the other way. A fold given on the wrong axis would not match any
+    cut line, and the spine would be marked as somewhere to put the knife.
+
+    >>> spread = [Rect(0, 0, 100, 200), Rect(100, 0, 200, 200)]
+    >>> sum(1 for m in trim_marks(spread, fold_x=(100.0,)) if m.dashed)
+    2
+    >>> sum(1 for m in trim_marks(spread, fold_y=(100.0,)) if m.dashed)
+    2
     """
     style = style or MarkStyle()
     if not trims:
@@ -190,10 +203,12 @@ def trim_marks(
     for trim in trims[1:]:
         form = form.union(trim)
     verticals, horizontals = cut_lines(trims)
+    verticals = _distinct([*verticals, *fold_x])
+    horizontals = _distinct([*horizontals, *fold_y])
 
     marks: list[Segment] = []
     for x in verticals:
-        dashed = any(approx(x, fold) for fold in folds)
+        dashed = any(approx(x, fold) for fold in fold_x)
         marks.append(
             Segment(
                 x, form.y0 - style.offset, x, form.y0 - style.reach, style.width, dashed
@@ -205,11 +220,16 @@ def trim_marks(
             )
         )
     for y in horizontals:
+        dashed = any(approx(y, fold) for fold in fold_y)
         marks.append(
-            Segment(form.x0 - style.offset, y, form.x0 - style.reach, y, style.width)
+            Segment(
+                form.x0 - style.offset, y, form.x0 - style.reach, y, style.width, dashed
+            )
         )
         marks.append(
-            Segment(form.x1 + style.offset, y, form.x1 + style.reach, y, style.width)
+            Segment(
+                form.x1 + style.offset, y, form.x1 + style.reach, y, style.width, dashed
+            )
         )
     return marks
 

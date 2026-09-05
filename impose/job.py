@@ -574,10 +574,12 @@ def _marks(layout, plan: Plan, style: MarkStyle | None) -> list[Segment] | None:
     """Cut marks for a laid-out surface, with the schema's folds dashed."""
     if style is None:
         return None
+    fold_x, fold_y = layout.fold_positions(plan.fold_columns)
     return trim_marks(
         [page.trim for page in layout.pages],
         style=style,
-        folds=layout.fold_positions(plan.fold_columns),
+        fold_x=fold_x,
+        fold_y=fold_y,
     )
 
 
