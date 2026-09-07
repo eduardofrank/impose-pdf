@@ -201,13 +201,28 @@ series.
 | option | schemas | default | what it does |
 |---|---|---|---|
 | `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
-| `--sides N` | `steprepeat` | from the page count | 1 or 2 sides per item |
+| `--sides N` | `nup`, `cutstack`, `steprepeat` | 2, or from the page count for `steprepeat` | 1 for fronts only, 2 for a front and a back |
+| `--flip {long-edge,short-edge}` | `cutstack`, `steprepeat` | `long-edge` | which way the press turns the sheet for the back |
 | `--section-pages N` | `perfect` | `4` | pages per gathered section, a multiple of 4 |
 | `--paper-caliper LENGTH` | `saddle`, `perfect` | off | one sheet's thickness; turns on creep |
 | `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
 
 `saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
-asking for another grid is refused rather than quietly ignored.
+asking for another grid is refused rather than quietly ignored. They have no
+`--sides` either — a bound book is printed both sides — and no `--flip`, since
+their sheets are folded rather than cut apart.
+
+`--sides` reads the same at the terminal for all three, and means two things
+underneath. `steprepeat` counts the sides of an **item**, which is how it tells
+a two-page document of one card from a one-page document of two. `nup` and
+`cutstack` count the sides of the **sheet**: `--sides 1` prints fronts only,
+which is what single-sided work on a duplex press needs if it is not to waste
+half the sheets.
+
+`nup` has no `--flip`. Its sheet is read as a stack and never cut, so both
+sides are laid out in plain reading order and the press does the turning;
+offering a choice would imply the back has to be mirrored, which is exactly the
+mistake that backs every page against the wrong neighbour.
 
 ### `impose fit`
 
@@ -469,7 +484,27 @@ back in the PDF would be doing the press's job twice, and would back every page
 against the wrong neighbour with nothing looking wrong until the job is cut.
 
 `cutstack` and `steprepeat` really are cut, so each finished piece takes its
-reverse from the *mirrored* cell of the back surface.
+reverse from the *mirrored* cell of the back surface. Which cell that is
+depends on how the press turns the sheet, so `--flip` has to match the duplex
+setting on the machine:
+
+```
+$ impose cutstack manual.pdf --up 2x2 --flip long-edge --dry-run
+sheet 1 back
+     6    2
+    14   10
+
+$ impose cutstack manual.pdf --up 2x2 --flip short-edge --dry-run
+sheet 1 back
+    10   14
+     2    6
+```
+
+Long-edge turns the sheet about its long axis, so the columns swap; short-edge
+turns it about the short axis, so the rows do. Set the wrong one and every
+piece is backed with a neighbour's — a whole job, and nothing looks wrong until
+it is cut and collated. `long-edge` is the common default; read it off the
+press rather than assuming.
 
 ## Creep
 

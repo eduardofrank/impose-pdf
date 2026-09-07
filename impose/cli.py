@@ -37,6 +37,7 @@ from .job import (
 from .marks import MarkStyle
 from .press import get as get_press
 from .press import press_names
+from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .units import format_mm, length, paper
 
@@ -45,6 +46,15 @@ _GRID_SCHEMAS = ("nup", "cutstack", "steprepeat")
 
 #: Schemas that repeat a two-page spread rather than a single page.
 _SPREAD_SCHEMAS = ("saddle", "perfect")
+
+#: Schemas whose sidedness is the operator's to choose. A bound book is
+#: printed both sides by definition; flat work need not be.
+_SIDED_SCHEMAS = ("nup", "cutstack", "steprepeat")
+
+#: Schemas whose backs are mirrored, so the duplex unit's turn matters. n-up
+#: is not among them: its sheet is read as a stack, never cut, so the back is
+#: laid out in plain reading order and the press does the turning.
+_MIRRORED_SCHEMAS = ("cutstack", "steprepeat")
 
 
 def _grid(text: str) -> tuple[int, int]:
@@ -282,16 +292,33 @@ def build_parser() -> argparse.ArgumentParser:
                 help="Pages per gathered section, a multiple of 4. "
                 "Default: %(default)s, one folded sheet per section.",
             )
-        if name == "steprepeat":
+        if name in _SIDED_SCHEMAS:
             schema.add_argument(
                 "--sides",
                 type=int,
                 choices=(1, 2),
                 default=None,
                 metavar="N",
-                help="Sides per item: 1 for single-sided, 2 for a front and a "
-                "back. Taken from the page count when left out -- an even "
-                "document is read as front-and-back pairs.",
+                help=(
+                    "Sides per item: 1 for single-sided, 2 for a front and a "
+                    "back. Taken from the page count when left out -- an even "
+                    "document is read as front-and-back pairs."
+                    if name == "steprepeat"
+                    else "Sides printed: 1 for fronts only, 2 for a front and "
+                    "a back. Default: 2. Single-sided work on a duplex press "
+                    "wastes half the sheets if this is left alone."
+                ),
+            )
+        if name in _MIRRORED_SCHEMAS:
+            schema.add_argument(
+                "--flip",
+                choices=FLIP_CHOICES,
+                default=None,
+                help="Which way the press turns the sheet to print the back: "
+                "long-edge or short-edge. This sheet is cut apart, so each "
+                "piece must meet its own reverse; set the wrong one and every "
+                "piece is backed with a neighbour's. Read it off the duplex "
+                "setting on the press. Default: long-edge.",
             )
 
     fit = subcommands.add_parser(
@@ -383,14 +410,27 @@ def _style(args: argparse.Namespace) -> MarkStyle | None:
 
 
 def _schema_options(args: argparse.Namespace) -> dict:
-    """Options belonging to the chosen schema."""
+    """Options belonging to the chosen schema.
+
+    Sidedness is one question at the terminal and two in the schemas: step and
+    repeat counts the sides of an *item*, which is how it tells a two-page
+    document of one card from a one-page document of two. The schemas that
+    deal a document across the cells count the sides of the *sheet*. Asking it
+    once and translating here keeps that distinction out of the operator's way.
+    """
     options: dict = {}
     if getattr(args, "up", None) is not None:
         options["columns"], options["rows"] = args.up
     if getattr(args, "section_pages", None) is not None:
         options["section_pages"] = args.section_pages
-    if getattr(args, "sides", None) is not None:
-        options["sides"] = args.sides
+    if getattr(args, "flip", None) is not None:
+        options["flip"] = args.flip
+    sides = getattr(args, "sides", None)
+    if sides is not None:
+        if args.command == "steprepeat":
+            options["sides"] = sides
+        else:
+            options["duplex"] = sides == 2
     return options
 
 

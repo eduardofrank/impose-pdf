@@ -268,6 +268,118 @@ class TestFit(unittest.TestCase):
         self.assertIn("indigo-12000", text)
 
 
+class TestSidednessAndFlip(unittest.TestCase):
+    """Two options the schemas have always had, with no way in from the
+    terminal. One of them decides whether the job is scrap."""
+
+    @staticmethod
+    def surface(text, name):
+        """The rows of one named surface from a --dry-run listing."""
+        rows: list[list[str]] = []
+        collecting = False
+        for line in text.splitlines():
+            if line.startswith("sheet "):
+                if rows:
+                    break
+                collecting = line.strip() == name
+                continue
+            if collecting and line.strip():
+                rows.append(line.split())
+        return rows
+
+    def dry_run(self, *extra, pages=16):
+        with workspace(pages=pages) as source:
+            status, text, err = run(*extra[:1], str(source), *extra[1:], "--dry-run")
+            self.assertEqual(status, 0, err)
+            return text
+
+    def test_flip_decides_which_piece_gets_which_back(self):
+        """The sheet is cut apart, so each piece must meet its own reverse. A
+        press set to the other flip backs every piece with a neighbour's."""
+        long_edge = self.dry_run("cutstack", "--up", "2x2", "--flip", "long-edge")
+        short_edge = self.dry_run("cutstack", "--up", "2x2", "--flip", "short-edge")
+        self.assertNotEqual(
+            self.surface(long_edge, "sheet 1 back"),
+            self.surface(short_edge, "sheet 1 back"),
+        )
+
+    def test_the_two_flips_differ_by_the_axis_they_mirror(self):
+        """Long-edge turns the sheet about its long axis, so the columns swap;
+        short-edge turns it about the short axis, so the rows do. One is the
+        other with both axes reversed, which is the check that each is doing
+        its own thing rather than both doing the same thing."""
+        long_edge = self.surface(
+            self.dry_run("cutstack", "--up", "2x2", "--flip", "long-edge"),
+            "sheet 1 back",
+        )
+        short_edge = self.surface(
+            self.dry_run("cutstack", "--up", "2x2", "--flip", "short-edge"),
+            "sheet 1 back",
+        )
+        self.assertEqual(short_edge, [row[::-1] for row in long_edge][::-1])
+
+    def test_the_default_flip_is_long_edge(self):
+        self.assertEqual(
+            self.surface(self.dry_run("cutstack", "--up", "2x2"), "sheet 1 back"),
+            self.surface(
+                self.dry_run("cutstack", "--up", "2x2", "--flip", "long-edge"),
+                "sheet 1 back",
+            ),
+        )
+
+    def test_sides_one_prints_fronts_only(self):
+        for schema in ("nup", "cutstack", "steprepeat"):
+            with self.subTest(schema=schema), workspace(pages=16) as source:
+                out = str(source.with_name("o.pdf"))
+                _, duplex, _ = run(schema, str(source), "-o", out)
+                _, simplex, _ = run(schema, str(source), "-o", out, "--sides", "1")
+                self.assertNotIn("back", self.dry_sides(schema, source, "1"))
+                self.assertNotEqual(duplex.split("onto")[1], simplex.split("onto")[1])
+
+    @staticmethod
+    def dry_sides(schema, source, sides):
+        _, text, _ = run(schema, str(source), "--sides", sides, "--dry-run")
+        return text
+
+    def test_sides_two_is_the_default_for_the_dealing_schemas(self):
+        for schema in ("nup", "cutstack"):
+            with self.subTest(schema=schema), workspace(pages=16) as source:
+                out = str(source.with_name("o.pdf"))
+                _, plain, _ = run(schema, str(source), "-o", out)
+                _, two, _ = run(schema, str(source), "-o", out, "--sides", "2")
+                self.assertEqual(plain, two)
+
+    def test_step_and_repeat_still_counts_the_sides_of_an_item(self):
+        """Its --sides means something different, and keeps meaning it: a
+        16-page document is 8 two-sided items, or 16 one-sided ones."""
+        with workspace(pages=16) as source:
+            out = str(source.with_name("o.pdf"))
+            _, pairs, _ = run("steprepeat", str(source), "-o", out)
+            _, singles, _ = run("steprepeat", str(source), "-o", out, "--sides", "1")
+            self.assertIn("onto 8 sheet(s)", pairs)
+            self.assertIn("onto 16 sheet(s)", singles)
+
+    def test_n_up_is_offered_no_flip(self):
+        """Its sheet is read as a stack, never cut, so the back is laid out in
+        plain reading order and the press does the turning."""
+        with workspace(pages=8) as source:
+            status, _, err = run("nup", str(source), "--flip", "short-edge")
+            self.assertEqual(status, 2)
+            self.assertIn("--flip", err)
+
+    def test_the_bound_schemas_are_offered_neither(self):
+        for schema, flag in (
+            ("saddle", "--sides"),
+            ("perfect", "--sides"),
+            ("saddle", "--flip"),
+        ):
+            with self.subTest(schema=schema, flag=flag), workspace(pages=8) as source:
+                value = "1" if flag == "--sides" else "short-edge"
+                status, _, err = run(schema, str(source), flag, value)
+                self.assertEqual(status, 2)
+                self.assertIn(flag, err)
+
+
 class TestAssumedTrimWarning(unittest.TestCase):
     """A file that never said its finished size still gets imposed, and the
     operator is told what size was used instead of finding out at the knife."""

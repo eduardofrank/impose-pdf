@@ -21,6 +21,9 @@ from typing import Literal
 #: neighbour, and the error is invisible until the job is cut.
 Flip = Literal["long-edge", "short-edge"]
 
+#: The ways a duplex unit can turn a sheet, for anything offering the choice.
+FLIP_CHOICES: tuple[str, ...] = ("long-edge", "short-edge")
+
 #: Column indices of a two-page spread, named so the binding schemas read as
 #: what they are rather than as arithmetic.
 LEFT = 0
