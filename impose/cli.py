@@ -431,6 +431,8 @@ class _Subject:
     allowance: float
     #: Sheets one bound copy takes, when the subject is a bound document.
     forms: int = 0
+    #: What is worth saying about the measurement, chiefly an assumed trim.
+    warnings: tuple[str, ...] = ()
 
 
 def _fit_subject(args: argparse.Namespace) -> _Subject:
@@ -474,7 +476,7 @@ def _fit_subject(args: argparse.Namespace) -> _Subject:
     if schema in _SPREAD_SCHEMAS:
         label += f" spread ({format_mm(measured.trim_size)} page)"
         forms = build_plan(schema, measured.pages).sheets
-    return _Subject(unit, label, max(0, quantity), allowance, forms)
+    return _Subject(unit, label, max(0, quantity), allowance, forms, measured.warnings)
 
 
 def _two_stage_advice(args: argparse.Namespace, arrangement) -> str:
@@ -496,7 +498,9 @@ def _two_stage_advice(args: argparse.Namespace, arrangement) -> str:
     )
 
 
-def _fit(args: argparse.Namespace, out) -> int:  # pylint: disable=too-many-locals
+def _fit(  # pylint: disable=too-many-locals,too-many-branches
+    args: argparse.Namespace, out
+) -> int:
     """Answer how many fit, and what a given order wastes."""
     press = get_press(args.press)
     sheet = paper(args.sheet) if args.sheet else press.sheet
@@ -552,6 +556,9 @@ def _fit(args: argparse.Namespace, out) -> int:  # pylint: disable=too-many-loca
                 f"{subject.forms} × ceil(N ÷ {options[0].up}) sheets.",
                 file=out,
             )
+
+    for warning in subject.warnings:
+        print(f"impose: warning: {warning}", file=sys.stderr)
 
     if quantity:
         advice = runs[0].advice()

@@ -268,6 +268,59 @@ class TestFit(unittest.TestCase):
         self.assertIn("indigo-12000", text)
 
 
+class TestAssumedTrimWarning(unittest.TestCase):
+    """A file that never said its finished size still gets imposed, and the
+    operator is told what size was used instead of finding out at the knife."""
+
+    def test_imposing_warns_and_still_runs(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            output = source.with_name("out.pdf")
+            status, _, err = run("nup", str(source), "-o", str(output))
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertIn("no TrimBox", err)
+            self.assertIn("MediaBox", err)
+
+    def test_the_warned_size_is_the_one_imposed(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            _, text, err = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
+            size = text.splitlines()[0].split("finished page ")[1].strip()
+            self.assertIn(size, err)
+
+    def test_a_declared_trim_warns_about_nothing(self):
+        with workspace(pages=8) as source:
+            _, _, err = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
+            self.assertNotIn("TrimBox", err)
+
+    def test_it_is_a_warning_and_not_a_refusal(self):
+        """A plain PDF is often its own trim; refusing would block ordinary
+        work. Only a PDF/X file, which promised a TrimBox, is refused."""
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            status, _, _ = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
+            self.assertEqual(status, 0)
+
+    def test_quiet_does_not_silence_it(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            _, text, err = run(
+                "nup", str(source), "-o", str(source.with_name("o.pdf")), "-q"
+            )
+            self.assertEqual(text, "")
+            self.assertIn("no TrimBox", err)
+
+    def test_fit_warns_too(self):
+        """fit answers how many fit from the same assumed size, so it owes the
+        same warning."""
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            status, text, err = run("fit", str(source), "--schema", "nup")
+            self.assertEqual(status, 0)
+            self.assertIn("no TrimBox", err)
+            self.assertIn("up,", text)
+
+    def test_fit_on_a_typed_size_warns_about_nothing(self):
+        _, _, err = run("fit", "A6")
+        self.assertEqual(err, "")
+
+
 class TestFitFromADocument(unittest.TestCase):
     """Fit answered from a file rather than a typed size."""
 

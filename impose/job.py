@@ -24,7 +24,13 @@ from typing import IO, Any
 import pikepdf
 
 from . import ImposeError
-from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
+from .boxes import (
+    PageBoxes,
+    assumed_trim_warning,
+    pdfx_version,
+    read_boxes,
+    require_trim,
+)
 from .fit import DEFAULT_GUTTER, best
 from .geometry import Insets, Size, approx
 from .layout import Gutters, lay_out
@@ -202,6 +208,8 @@ class Measurement:
     pages: int
     bleed_insets: Insets
     pdfx: str | None = None
+    #: What is worth saying about the measurement, chiefly an assumed trim.
+    warnings: tuple[str, ...] = ()
 
 
 def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
@@ -214,8 +222,13 @@ def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
     pdf = _open(source)
     try:
         boxes = source_boxes(pdf)
+        assumed = assumed_trim_warning(boxes)
         return Measurement(
-            boxes.trim_size, len(pdf.pages), boxes.bleed_insets, pdfx_version(pdf)
+            boxes.trim_size,
+            len(pdf.pages),
+            boxes.bleed_insets,
+            pdfx_version(pdf),
+            () if assumed is None else (assumed,),
         )
     finally:
         if pdf is not source:
@@ -459,7 +472,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
-        warnings = _warnings(plan, schema, max_nested_sheets)
+        warnings = _warnings(plan, schema, max_nested_sheets, boxes)
 
         return Result(
             plan=plan,
@@ -575,9 +588,14 @@ def _creep_table(
     return lambda sheet: (sheet % per_section) * caliper
 
 
-def _warnings(plan: Plan, schema: str, max_nested_sheets: int) -> tuple[str, ...]:
+def _warnings(
+    plan: Plan, schema: str, max_nested_sheets: int, boxes: PageBoxes
+) -> tuple[str, ...]:
     """Things worth saying about a job that is otherwise imposable."""
     found = []
+    assumed = assumed_trim_warning(boxes)
+    if assumed:
+        found.append(assumed)
     if schema == "saddle":
         warning = saddle.nesting_warning(plan.sheets, max_nested_sheets)
         if warning:

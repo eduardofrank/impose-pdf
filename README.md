@@ -88,6 +88,30 @@ keeps its 1; artwork with none stays with none, because bleed that is not in
 the file cannot be manufactured. On a small sheet the difference is real estate
 the job gets instead.
 
+**A size that was assumed is said out loud.** TrimBox is the finished page, and
+a file that carries none has not told us the one measurement imposition depends
+on. The specification's defaults still yield a rectangle — CropBox, and
+MediaBox behind that — so the job runs, but that rectangle is whatever the
+artwork was drawn on, which on a file carrying bleed or a slug is bigger than
+the finished page. So `impose` names the size it used and the box it came
+from, and leaves the judgement to the operator:
+
+```
+$ impose nup client-artwork.pdf
+impose: warning: Page 1 carries no TrimBox, so its finished size was taken
+from the MediaBox: 123 × 166 mm. If the artwork carries bleed or a slug, that
+is bigger than the finished page and the marks will be placed around the
+artwork instead. Add a TrimBox to say what the finished size is.
+n-up: 8 pages onto 1 sheet(s) at 4 up (2 × 2 upright), page 310 × 450 mm on
+indigo-5000; finished page 123 × 166 mm
+```
+
+A file that declares a BleedBox and no TrimBox is told more plainly, because
+then the size taken is definitely the bleed rather than merely possibly it.
+A PDF/X file is refused outright: it promised a TrimBox. A plain PDF is often
+its own trim, so refusing it would block ordinary work — the warning goes to
+stderr, `--quiet` does not silence it, and the exit code stays 0.
+
 **Bleed is not invented.** Where two pages meet at a spine they share one cut
 line, so bleed is shaved to nothing there and the two trims are snapped onto
 one coordinate. Where a file declares no BleedBox, the answer is no bleed — the
@@ -277,8 +301,10 @@ least waste.
 | `1` | the job cannot be done: file missing, unknown press, form will not fit |
 | `2` | the arguments do not parse |
 
-Warnings — a book too thick to staple, say — go to stderr and do **not** change
-the exit code. The job still runs; it is your press and your stapler.
+Warnings — a book too thick to staple, a finished size that had to be assumed
+— go to stderr and do **not** change the exit code. The job still runs; it is
+your press and your stapler. `--quiet` suppresses the summary, never a
+warning.
 
 ### Worked examples
 

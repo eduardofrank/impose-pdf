@@ -22,6 +22,7 @@ from pikepdf import Array, Dictionary
 
 from . import ImposeError
 from .geometry import Insets, Rect, Size
+from .units import format_mm
 
 # Boxes other than MediaBox and CropBox are not inheritable page attributes
 # (ISO 32000-1 table 30), so an explicit TrimBox is one written on the page.
@@ -57,9 +58,23 @@ class PageBoxes:  # pylint: disable=too-many-instance-attributes
     rotation: int = 0
     has_explicit_trim: bool = False
     has_explicit_bleed: bool = False
+    has_explicit_crop: bool = False
     #: Where this page folds, in its own user space, as (vertical, horizontal).
     #: Only a page imposed by this tool carries one; everything else has none.
     folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ())
+
+    @property
+    def trim_source(self) -> str:
+        """The box the finished size was actually taken from.
+
+        A page with no TrimBox has not said what its finished size is, so the
+        specification's defaults answer instead -- CropBox, and MediaBox behind
+        that. Naming which one answered is the difference between a size that
+        was declared and a size that was assumed.
+        """
+        if self.has_explicit_trim:
+            return "TrimBox"
+        return "CropBox" if self.has_explicit_crop else "MediaBox"
 
     @property
     def trim_size(self) -> Size:
@@ -145,6 +160,7 @@ def read_boxes(page: pikepdf.Page) -> PageBoxes:
     crop = _intersect(_rect(page.cropbox), media, what="CropBox")
     has_trim = "/TrimBox" in page.obj
     has_bleed = "/BleedBox" in page.obj
+    has_crop = "/CropBox" in page.obj
     trim = _intersect(_rect(page.trimbox), media, what="TrimBox") if has_trim else crop
     bleed = (
         _intersect(_rect(page.bleedbox), media, what="BleedBox") if has_bleed else crop
@@ -157,6 +173,7 @@ def read_boxes(page: pikepdf.Page) -> PageBoxes:
         rotation=_rotation(page),
         has_explicit_trim=has_trim,
         has_explicit_bleed=has_bleed,
+        has_explicit_crop=has_crop,
         folds=_read_folds(page),
     )
 
@@ -219,6 +236,40 @@ def has_output_intent(pdf: pikepdf.Pdf) -> bool:
     """Whether the document declares an OutputIntent -- the printing condition."""
     intents = pdf.Root.get("/OutputIntents")
     return bool(intents) and len(intents) > 0
+
+
+def assumed_trim_warning(boxes: PageBoxes) -> str | None:
+    """What to say when the finished size had to be assumed.
+
+    A page with no TrimBox has not told us the one measurement imposition
+    depends on. The specification's defaults still yield a rectangle, so the
+    job runs -- but that rectangle is whatever the artwork was drawn on, which
+    on a file carrying bleed or a slug is bigger than the finished page. The
+    marks then go around the artwork instead of around the page, and nothing
+    about the output looks wrong until it is cut.
+
+    Only PDF/X files are refused outright, by :func:`require_trim`; a plain PDF
+    is often its own trim and refusing it would block ordinary work. So this is
+    a warning, and it names the size and the box it came from so the operator
+    can see at a glance whether it is the size they expected.
+    """
+    if boxes.has_explicit_trim:
+        return None
+    size = format_mm(boxes.trim_size)
+    if boxes.has_explicit_bleed:
+        return (
+            f"Page 1 declares a BleedBox but no TrimBox, so its finished size "
+            f"was taken from the {boxes.trim_source}: {size}. That is the "
+            f"bleed, not the page, and the marks will be placed around it. "
+            f"Add a TrimBox to say what the finished size is."
+        )
+    return (
+        f"Page 1 carries no TrimBox, so its finished size was taken from the "
+        f"{boxes.trim_source}: {size}. If the artwork carries bleed or a slug, "
+        f"that is bigger than the finished page and the marks will be placed "
+        f"around the artwork instead. Add a TrimBox to say what the finished "
+        f"size is."
+    )
 
 
 def require_trim(boxes: PageBoxes, *, page_number: int, pdfx: str | None) -> None:

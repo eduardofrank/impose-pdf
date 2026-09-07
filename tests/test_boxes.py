@@ -12,6 +12,7 @@ import pikepdf
 from impose import ImposeError
 from impose.boxes import (
     PageBoxes,
+    assumed_trim_warning,
     has_output_intent,
     pdfx_version,
     read_boxes,
@@ -19,7 +20,7 @@ from impose.boxes import (
     rotate_insets,
 )
 from impose.geometry import Insets, Rect, Size
-from impose.units import MM, to_mm
+from impose.units import MM, format_mm, to_mm
 
 from .support import declare_pdfx, make_pdf
 
@@ -147,6 +148,59 @@ class TestRotation(unittest.TestCase):
 def dataclasses_replace_rotation(boxes: PageBoxes, rotation: int) -> PageBoxes:
     """A copy of *boxes* turned, without rebuilding the fixture."""
     return dataclasses.replace(boxes, rotation=rotation)
+
+
+class TestAssumedTrim(unittest.TestCase):
+    """A file that never said what its finished size is.
+
+    Only a PDF/X file is refused for it. A plain PDF is often its own trim and
+    refusing it would block ordinary work -- but the size was assumed, and an
+    operator who is not told cannot tell the difference between a size the file
+    declared and one the specification's defaults supplied.
+    """
+
+    @staticmethod
+    def boxes(**kwargs):
+        pdf = make_pdf(1, **kwargs)
+        return read_boxes(pdf.pages[0])
+
+    def test_a_declared_trim_says_nothing(self):
+        self.assertIsNone(assumed_trim_warning(self.boxes()))
+        self.assertEqual(self.boxes().trim_source, "TrimBox")
+
+    def test_without_a_trimbox_the_size_is_named_and_so_is_its_box(self):
+        boxes = self.boxes(with_trimbox=False, with_bleedbox=False)
+        self.assertEqual(boxes.trim_source, "MediaBox")
+        warning = assumed_trim_warning(boxes)
+        self.assertIn("no TrimBox", warning)
+        self.assertIn("MediaBox", warning)
+        self.assertIn(format_mm(boxes.trim_size), warning)
+
+    def test_a_bleedbox_without_a_trimbox_is_said_more_plainly(self):
+        """The file has declared bleed and not declared a page, so the size
+        taken is definitely the bleed rather than merely possibly it."""
+        boxes = self.boxes(with_trimbox=False)
+        self.assertTrue(boxes.has_explicit_bleed)
+        warning = assumed_trim_warning(boxes)
+        self.assertIn("BleedBox", warning)
+        self.assertIn("bleed, not the page", warning)
+
+    def test_a_cropbox_is_named_when_it_is_the_one_that_answered(self):
+        pdf = make_pdf(1, with_trimbox=False, with_bleedbox=False)
+        for page in pdf.pages:
+            media = [float(v) for v in page.obj["/MediaBox"]]
+            page.obj["/CropBox"] = pikepdf.Array(
+                [media[0] + 6, media[1] + 6, media[2] - 6, media[3] - 6]
+            )
+        boxes = read_boxes(pdf.pages[0])
+        self.assertEqual(boxes.trim_source, "CropBox")
+        self.assertIn("CropBox", assumed_trim_warning(boxes))
+
+    def test_the_size_named_is_the_size_used(self):
+        """The whole value of the warning: it is checkable at a glance."""
+        boxes = self.boxes(with_trimbox=False, with_bleedbox=False)
+        self.assertIn(format_mm(boxes.trim_size), assumed_trim_warning(boxes))
+        self.assertNotEqual(boxes.trim_size, Size(105 * MM, 148 * MM))
 
 
 class TestPdfX(unittest.TestCase):
