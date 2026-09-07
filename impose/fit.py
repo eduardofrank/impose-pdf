@@ -61,17 +61,25 @@ class Arrangement:
             self.rows * self.cell.height + (self.rows - 1) * self.gutter,
         )
 
-    def describe(self) -> str:
+    def describe(self, unit: str = "up") -> str:
         """A line for an operator choosing a layout.
+
+        *unit* names what is being counted. It defaults to "up", which
+        everywhere else in this tool means finished pages on one surface. When
+        the thing being fitted is a whole bound job the count is booklets, not
+        pages, and calling that "up" too would put two meanings of the word in
+        outputs an operator reads side by side.
 
         >>> from .units import MM
         >>> a = Arrangement(2, 4, True, Size(148 * MM, 105 * MM), 4 * MM)
         >>> a.describe()
         '8 up, 2 × 4 turned, form 300 × 432 mm'
+        >>> a.describe("booklets per sheet")
+        '8 booklets per sheet, 2 × 4 turned, form 300 × 432 mm'
         """
         way = "turned" if self.turned else "upright"
         return (
-            f"{self.up} up, {self.columns} × {self.rows} {way}, "
+            f"{self.up} {unit}, {self.columns} × {self.rows} {way}, "
             f"form {format_mm(self.form)}"
         )
 

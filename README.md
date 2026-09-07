@@ -8,8 +8,8 @@ BleedBox is the margin that gets trimmed away — and targets a named press whos
 sheet size and imageable area it knows.
 
 > **Status: complete for the five schemas it covers.** Library and command line
-> both work end to end. Still to come: a slug line, and documents whose pages
-> differ in size. See [Roadmap](#roadmap).
+> both work end to end. Still to come: a slug line, and native multi-up for the
+> bound schemas. See [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -87,6 +87,32 @@ default is 2 mm. Artwork arriving with 5 mm is shaved to 2; artwork with 1 mm
 keeps its 1; artwork with none stays with none, because bleed that is not in
 the file cannot be manufactured. On a small sheet the difference is real estate
 the job gets instead.
+
+**Every page the same size and the same way up.** A grid has one cell size, so
+a publication that mixes finished sizes, orientations or TrimBox offsets is not
+imposed — it is named and refused. This is an artwork acceptance test, not a
+limitation waiting to be lifted: a landscape table dropped into a portrait
+booklet, or a gatefold twice the width, is a different product and belongs on
+its own sheet. The refusal says which page and what is wrong with it, in terms
+that can go back to whoever supplied the file:
+
+```
+Page 4 has a finished size of 148 × 105 mm and page 1 has 105 × 148 mm -- the
+same size turned the other way. Every page must be the same size and the same
+way up to go on one grid.
+
+Page 3 has a finished size of 148 × 105 mm and page 1 has 105 × 148 mm -- the
+same size, but page 3 carries /Rotate 90 and page 1 carries 0, so they read
+the other way up from each other.
+
+Page 3 is the right size, 105 × 148 mm, but its TrimBox sits at a different
+place on the sheet than page 1 -- 2 × 2 mm away.
+```
+
+Sizes are compared to a hundredth of a point. PDF writes coordinates to six
+decimal places, so a width obtained by subtracting two of them carries rounding
+— comparing exactly once reported two identical pages as different sizes and
+hid the real fault behind it.
 
 **A size that was assumed is said out loud.** TrimBox is the finished page, and
 a file that carries none has not told us the one measurement imposition depends
@@ -281,8 +307,8 @@ not the page.
 ```
 $ impose fit book.pdf --schema saddle
 book.pdf, 279.4 × 215.9 mm spread (139.7 × 215.9 mm page) on indigo-5000, imageable 310 × 450 mm
-  2 up, 1 × 2 upright, form 279.4 × 435.8 mm
-  1 up, 1 × 1 turned, form 215.9 × 279.4 mm
+  2 booklets per sheet, 1 × 2 upright, form 279.4 × 435.8 mm
+  1 booklets per sheet, 1 × 1 turned, form 215.9 × 279.4 mm
 
   2 booklets fit one sheet. The binding fixes the grid, so run it in two passes:
     impose saddle book.pdf --sheet fit --marks none -o forms.pdf
@@ -702,7 +728,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `cli` — the `impose` command |
 | ✅ | `marks` — registration targets and colour bar |
 | ⬜ | Slug line (needs an embedded font to stay PDF/X) |
-| ⬜ | Documents whose pages differ in size or TrimBox offset — refused today |
+| ✅ | Uniform-page gate — mixed sizes, orientations and offsets refused by name |
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `fit` from a file, and for the bound schemas' spread |
 | ✅ | `creep` — fore-edge push-out compensated per sheet |

@@ -487,6 +487,88 @@ class TestPageSize(unittest.TestCase):
         self.assertLess(width, 310.0)
 
 
+class TestUniformityGate(unittest.TestCase):
+    """Every page the same size and the same way up.
+
+    This is not a limitation waiting to be lifted -- it is the artwork
+    acceptance test. A publication that mixes sizes or orientations is sent
+    back, so what the refusal has to do is say precisely what is wrong with the
+    file, in terms that can be passed to whoever supplied it.
+    """
+
+    A6 = Size(105 * MM, 148 * MM)
+
+    @staticmethod
+    def joined(first, second):
+        first.pages.extend(second.pages)
+        return first
+
+    def complaint(self, pdf):
+        with self.assertRaises(ImposeError) as caught:
+            source_boxes(pdf)
+        return str(caught.exception)
+
+    def test_a_uniform_document_passes(self):
+        self.assertIsNotNone(source_boxes(make_pdf(8, trim=self.A6)))
+
+    def test_a_turned_page_is_named_as_turned(self):
+        """The commonest fault, and the one an operator can act on fastest."""
+        document = self.joined(
+            make_pdf(3, trim=self.A6), make_pdf(1, trim=self.A6.swapped())
+        )
+        text = self.complaint(document)
+        self.assertIn("Page 4", text)
+        self.assertIn("148 × 105 mm", text)
+        self.assertIn("105 × 148 mm", text)
+        self.assertIn("turned the other way", text)
+
+    def test_a_rotate_key_is_named_as_the_cause(self):
+        """Same TrimBox, but /Rotate makes it read the other way up. Saying
+        which key did it saves hunting for a size difference that is not
+        there."""
+        document = make_pdf(4, trim=self.A6)
+        document.pages[2].obj["/Rotate"] = 90
+        text = self.complaint(document)
+        self.assertIn("/Rotate 90", text)
+
+    def test_a_plainly_different_size_says_only_that(self):
+        document = self.joined(
+            make_pdf(3, trim=self.A6), make_pdf(1, trim=Size(210 * MM, 148 * MM))
+        )
+        text = self.complaint(document)
+        self.assertIn("210 × 148 mm", text)
+        self.assertNotIn("turned", text)
+
+    def test_a_rounding_difference_is_not_a_size_difference(self):
+        """PDF writes coordinates to six decimals, so a width obtained by
+        subtracting two of them carries rounding. Comparing exactly reported
+        two identical sizes as different -- 'a finished size of 105 x 148 mm
+        and page 1 has 105 x 148 mm' -- and hid the real fault behind it."""
+        document = self.joined(
+            make_pdf(2, trim=self.A6, bleed=3 * MM),
+            make_pdf(2, trim=self.A6, bleed=5 * MM),
+        )
+        text = self.complaint(document)
+        self.assertIn("is the right size", text)
+        self.assertIn("TrimBox sits at a different place", text)
+
+    def test_a_shifted_trimbox_says_how_far(self):
+        document = make_pdf(4, trim=self.A6)
+        edges = [float(v) for v in document.pages[2].obj["/TrimBox"]]
+        document.pages[2].obj["/TrimBox"] = pikepdf.Array(
+            [edges[0] + 10, edges[1], edges[2] + 10, edges[3]]
+        )
+        text = self.complaint(document)
+        self.assertIn("3.53", text)
+
+    def test_the_page_at_fault_is_named(self):
+        for at in (2, 5, 8):
+            with self.subTest(page=at):
+                document = make_pdf(8, trim=self.A6)
+                document.pages[at - 1].obj["/Rotate"] = 90
+                self.assertIn(f"Page {at}", self.complaint(document))
+
+
 class TestReportedGrid(unittest.TestCase):
     """The summary states the grid it ran, and which way the pages sit."""
 

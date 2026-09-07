@@ -577,8 +577,13 @@ def _fit(  # pylint: disable=too-many-locals,too-many-branches
         f"{subject.label} on {press.name}, imageable {format_mm(area.size)}",
         file=out,
     )
+    # A bound job's arrangements count whole booklets, not pages. Saying "up"
+    # for both would put two meanings of the word beside each other: `fit
+    # --schema saddle` answers 4 where imposing the same file reports 2 up,
+    # and both are right about different things.
+    unit = "booklets per sheet" if args.schema in _SPREAD_SCHEMAS else "up"
     for index, arrangement in enumerate(options):
-        line = f"  {arrangement.describe()}"
+        line = f"  {arrangement.describe(unit)}"
         if quantity:
             run = runs[index]
             line += f"  ->  {run.sheets} sheet(s), {run.waste} wasted"

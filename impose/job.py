@@ -150,27 +150,78 @@ def source_boxes(pdf: pikepdf.Pdf) -> PageBoxes:
     for number, page in enumerate(pdf.pages, start=1):
         boxes = read_boxes(page)
         require_trim(boxes, page_number=number, pdfx=version)
-        if boxes.trim_size != first.trim_size:
-            raise ImposeError(
-                f"Page {number} has a finished size of "
-                f"{format_mm(boxes.trim_size)}, but page 1 is "
-                f"{format_mm(first.trim_size)}. Every page must be the same "
-                f"size to go on one grid."
-            )
-        if not _same_rect(boxes.trim, first.trim):
-            raise ImposeError(
-                f"Page {number} has its TrimBox in a different place on the "
-                f"sheet than page 1. Imposing pages whose boxes sit at "
-                f"different offsets is not supported yet."
-            )
+        complaint = _uniformity_complaint(number, boxes, first)
+        if complaint:
+            raise ImposeError(complaint)
     return first
+
+
+#: How far apart two coordinates may be and still describe the same page.
+#: PDF writes coordinates to six decimal places, so a width obtained by
+#: subtracting two of them carries up to 2e-6 pt of rounding -- which is
+#: enough to make two identical pages compare unequal. A hundredth of a point
+#: is three microns, far below anything a press can hold and far above the
+#: rounding.
+SAME_PAGE_TOLERANCE = 0.01
 
 
 def _same_rect(a, b) -> bool:
     """Whether two boxes are the same to within press-irrelevant noise."""
     return all(
-        approx(getattr(a, edge), getattr(b, edge)) for edge in ("x0", "y0", "x1", "y1")
+        approx(getattr(a, edge), getattr(b, edge), tolerance=SAME_PAGE_TOLERANCE)
+        for edge in ("x0", "y0", "x1", "y1")
     )
+
+
+def _same_size(a: Size, b: Size) -> bool:
+    """Whether two finished sizes are the same page size."""
+    return approx(a.width, b.width, tolerance=SAME_PAGE_TOLERANCE) and approx(
+        a.height, b.height, tolerance=SAME_PAGE_TOLERANCE
+    )
+
+
+def _uniformity_complaint(
+    number: int, boxes: PageBoxes, first: PageBoxes
+) -> str | None:
+    """Why page *number* cannot share a grid with page 1, if it cannot.
+
+    A grid has one cell size, so every page has to agree on its finished size
+    and on where that finished page sits on the sheet it was drawn on. A
+    document that does not agree is not something to impose part of: it is
+    artwork to send back, and this is the sentence that says why.
+    """
+    if not _same_size(boxes.trim_size, first.trim_size):
+        turned = _same_size(boxes.trim_size, first.trim_size.swapped())
+        if turned and boxes.rotation != first.rotation:
+            reason = (
+                f" -- the same size, but page {number} carries /Rotate "
+                f"{boxes.rotation} and page 1 carries {first.rotation}, so "
+                f"they read the other way up from each other"
+            )
+        elif turned:
+            reason = " -- the same size turned the other way"
+        else:
+            reason = ""
+        return (
+            f"Page {number} has a finished size of "
+            f"{format_mm(boxes.trim_size)} and page 1 has "
+            f"{format_mm(first.trim_size)}{reason}. Every page must be the "
+            f"same size and the same way up to go on one grid."
+        )
+    if not _same_rect(boxes.trim, first.trim):
+        return (
+            f"Page {number} is the right size, {format_mm(boxes.trim_size)}, "
+            f"but its TrimBox sits at a different place on the sheet than "
+            f"page 1 -- {format_mm(_origin_offset(boxes, first))} away. Every "
+            f"page must carry its finished area in the same place, because "
+            f"that offset is what positions the artwork in its cell."
+        )
+    return None
+
+
+def _origin_offset(boxes: PageBoxes, first: PageBoxes) -> Size:
+    """How far one page's TrimBox origin sits from another's."""
+    return Size(abs(boxes.trim.x0 - first.trim.x0), abs(boxes.trim.y0 - first.trim.y0))
 
 
 def build_plan(schema: str, pages: int, **options: Any) -> Plan:

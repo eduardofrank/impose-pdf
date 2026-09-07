@@ -447,6 +447,18 @@ class TestFitFromADocument(unittest.TestCase):
             self.assertIn("105 × 148 mm", text)
             self.assertIn(source.name, text)
 
+    def test_a_bound_job_counts_booklets_and_says_so(self):
+        """`fit --schema saddle` answers 4 where imposing the same file
+        reports 2 up. Both are right about different things, so the word has
+        to differ or the two outputs read as a contradiction."""
+        with workspace(pages=16, trim=Size(108 * MM, 140 * MM)) as source:
+            _, bound, _ = run("fit", str(source), "--schema", "saddle")
+            self.assertIn("booklets per sheet", self.leading(bound))
+            self.assertNotIn(" up,", self.leading(bound))
+            _, flat, _ = run("fit", str(source), "--schema", "steprepeat")
+            self.assertIn(" up,", self.leading(flat))
+            self.assertNotIn("booklets", self.leading(flat))
+
     def test_a_bound_schema_fits_the_spread_not_the_page(self):
         """Two booklets share a sheet when the pair fits twice, not the page."""
         with workspace(pages=16, trim=Size(139.7 * MM, 215.9 * MM)) as source:
@@ -516,7 +528,7 @@ class TestFitFromADocument(unittest.TestCase):
         ):
             with self.subTest(trim=trim), workspace(pages=16, trim=trim) as source:
                 _, text, _ = run("fit", str(source), "--schema", "saddle")
-                self.assertIn(f"{expected} up", self.leading(text))
+                self.assertIn(f"{expected} booklets per sheet", self.leading(text))
 
                 forms = source.with_name("forms.pdf")
                 sheets = source.with_name("sheets.pdf")
