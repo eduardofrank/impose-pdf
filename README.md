@@ -510,7 +510,12 @@ back in the PDF would be doing the press's job twice, and would back every page
 against the wrong neighbour with nothing looking wrong until the job is cut.
 
 `cutstack` and `steprepeat` really are cut, so each finished piece takes its
-reverse from the *mirrored* cell of the back surface. Which cell that is
+reverse from the *mirrored* cell of the back surface.
+
+**Two-sided N-up work is cut-and-stack.** If the sheet carries several pages a
+side, is printed both sides, and is then cut apart into consecutive pieces,
+`cutstack` is the schema — whatever the job ticket calls it. `nup` is for the
+sheet that stays whole, or that is cut but printed one side only. Which cell that is
 depends on how the press turns the sheet, so `--flip` has to match the duplex
 setting on the machine:
 

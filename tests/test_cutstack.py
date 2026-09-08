@@ -64,6 +64,46 @@ class TestAssembly(unittest.TestCase):
             assemble(plan, duplex=True, flip="short-edge"), list(range(16))
         )
 
+    def test_every_shape_the_shop_runs(self):
+        """A sweep, because this schema carries the two-sided N-up work.
+
+        The failure it guards against is not a crash. A cut-and-stack sheet
+        that assembles wrongly looks perfect on the press and on the proof; it
+        is discovered when a customer opens the finished job and finds page 40
+        after page 1. So the check is the bindery operation itself, over every
+        shape rather than a few.
+        """
+        shapes = ((2, 1), (2, 2), (3, 2), (4, 2), (1, 2), (5, 5))
+        for pages in (4, 8, 12, 16, 24, 32, 48, 100):
+            for columns, rows in shapes:
+                for flip in ("long-edge", "short-edge"):
+                    for duplex in (False, True):
+                        if not duplex and flip == "short-edge":
+                            continue  # nothing is turned, so there is no flip
+                        with self.subTest(
+                            pages=pages, grid=(columns, rows), flip=flip, duplex=duplex
+                        ):
+                            plan = impose(
+                                pages,
+                                columns=columns,
+                                rows=rows,
+                                duplex=duplex,
+                                flip=flip,
+                            )
+                            plan.validate()
+                            self.assertEqual(
+                                assemble(plan, duplex=duplex, flip=flip),
+                                list(range(pages)),
+                            )
+
+    def test_padding_lands_after_the_last_page(self):
+        """Blanks belong at the end of the last stack. Anywhere else and they
+        fall inside the document once the stacks are set on each other."""
+        for pages in (5, 7, 13, 17):
+            with self.subTest(pages=pages):
+                plan = impose(pages, columns=2, rows=2)
+                self.assertEqual(assemble(plan, duplex=True), list(range(pages)))
+
 
 class TestOrdering(unittest.TestCase):
     def test_each_cell_carries_a_consecutive_block(self):
