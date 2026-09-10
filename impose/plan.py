@@ -103,6 +103,11 @@ class Plan:
     cuts: ``(1,)`` means the line between column 0 and column 1 is a crease.
     Only the schema knows this -- a fold and a butt cut are the same geometry,
     and telling them apart from the rectangles alone is not possible.
+
+    ``fold_rows`` says the same of the row boundaries. A sheet folded once has
+    only the one crease down the spine; a signature folded again across the
+    sheet has a second, and the bindery has to be told which lines to fold and
+    which to cut.
     """
 
     columns: int
@@ -111,6 +116,7 @@ class Plan:
     pages: int
     schema: str = ""
     fold_columns: tuple[int, ...] = ()
+    fold_rows: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if self.columns < 1 or self.rows < 1:
