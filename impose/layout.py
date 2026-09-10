@@ -100,24 +100,49 @@ class SheetLayout:
         return tuple(page for page in self.pages if not page.is_blank)
 
     def fold_positions(
-        self, fold_columns: tuple[int, ...]
+        self, fold_columns: tuple[int, ...], fold_rows: tuple[int, ...] = ()
     ) -> tuple[tuple[float, ...], tuple[float, ...]]:
-        """Where the named column boundaries fall, as (vertical, horizontal).
+        """Where the named boundaries fall, as (vertical, horizontal).
 
-        A boundary is the right-hand trim edge of the column before it. A form
-        turned to fit the sheet has those boundaries running the other way, so
-        which of the two tuples they land in depends on the turn. Returning
-        both keeps the axis with the number instead of leaving the caller to
-        remember it -- getting that wrong marks a spine as a cut line.
+        A boundary is the line between two neighbouring cells, and where it
+        lands is read off the two cells themselves rather than worked out from
+        the grid. A form turned to fit the sheet has its column boundaries
+        running horizontally; a signature folded across the sheet has row
+        boundaries as well. Measuring the gap between the two cells covers both
+        without the caller having to remember which case it is in -- getting
+        that wrong marks a fold as a cut line, which tells the bindery to
+        guillotine the book down its own spine.
         """
-        positions = []
+        vertical: list[float] = []
+        horizontal: list[float] = []
         for boundary in fold_columns:
-            for page in self.pages:
-                if page.column == boundary - 1:
-                    positions.append(page.trim.y1 if self.turned else page.trim.x1)
-                    break
-        folds = tuple(positions)
-        return ((), folds) if self.turned else (folds, ())
+            self._between(
+                lambda page, b=boundary: page.column == b - 1,
+                lambda page, b=boundary: page.column == b,
+                vertical,
+                horizontal,
+            )
+        for boundary in fold_rows:
+            self._between(
+                lambda page, b=boundary: page.row == b - 1,
+                lambda page, b=boundary: page.row == b,
+                vertical,
+                horizontal,
+            )
+        return (tuple(sorted(vertical)), tuple(sorted(horizontal)))
+
+    def _between(self, before, after, vertical, horizontal) -> None:
+        """Add the line dividing the first matching pair of cells."""
+        first = next((page for page in self.pages if before(page)), None)
+        second = next((page for page in self.pages if after(page)), None)
+        if first is None or second is None:
+            return
+        one, other = sorted((first.trim, second.trim), key=lambda r: (r.x0, r.y0))
+        if other.x0 >= one.x1 - 1e-6:
+            vertical.append((one.x1 + other.x0) / 2)
+        else:
+            one, other = sorted((first.trim, second.trim), key=lambda r: r.y0)
+            horizontal.append((one.y1 + other.y0) / 2)
 
     def carried_folds(  # pylint: disable=too-many-locals
         self,

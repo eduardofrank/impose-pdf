@@ -380,6 +380,75 @@ class TestSidednessAndFlip(unittest.TestCase):
                 self.assertIn(flag, err)
 
 
+class TestSignatureCommand(unittest.TestCase):
+    """One sheet folded more than once, which is how a book is made."""
+
+    def test_folding_again_halves_the_sheets(self):
+        with workspace(pages=16) as source:
+            out = str(source.with_name("o.pdf"))
+            _, once, _ = run("signature", str(source), "--up", "2x1", "-o", out)
+            _, twice, _ = run("signature", str(source), "--up", "2x2", "-o", out)
+            self.assertIn("onto 4 sheet(s)", once)
+            self.assertIn("onto 2 sheet(s)", twice)
+
+    def test_a_grid_that_cannot_be_folded_is_refused_in_a_sentence(self):
+        with workspace(pages=16) as source:
+            status, _, err = run(
+                "signature",
+                str(source),
+                "--up",
+                "3x2",
+                "-o",
+                str(source.with_name("o.pdf")),
+            )
+            self.assertEqual(status, 1)
+            self.assertIn("power of two", err)
+
+    def test_the_head_to_head_turn_reaches_the_sheet(self):
+        with workspace(pages=8) as source:
+            _, text, _ = run("signature", str(source), "--up", "2x2", "--dry-run")
+            top, bottom = text.splitlines()[1], text.splitlines()[2]
+            self.assertIn("*", top)  # the row that folds over is inverted
+            self.assertNotIn("*", bottom)
+
+    def test_foot_to_foot_turns_the_other_row(self):
+        with workspace(pages=8) as source:
+            _, text, _ = run(
+                "signature",
+                str(source),
+                "--up",
+                "2x2",
+                "--fold-style",
+                "foot-to-foot",
+                "--dry-run",
+            )
+            top, bottom = text.splitlines()[1], text.splitlines()[2]
+            self.assertNotIn("*", top)
+            self.assertIn("*", bottom)
+
+    def test_a_single_fold_matches_perfect_binding(self):
+        """The listing is the same because the imposition is the same."""
+        with workspace(pages=16) as source:
+            _, folded, _ = run("signature", str(source), "--up", "2x1", "--dry-run")
+            _, bound, _ = run("perfect", str(source), "--dry-run")
+            self.assertEqual(
+                folded.replace("signature", ""), bound.replace("perfect-bound", "")
+            )
+
+    def test_the_pages_are_never_turned_a_quarter_to_fit(self):
+        """That would move both folds, which is a different product."""
+        with workspace(pages=8, trim=Size(105 * MM, 148 * MM)) as source:
+            _, text, _ = run(
+                "signature",
+                str(source),
+                "--up",
+                "2x2",
+                "-o",
+                str(source.with_name("o.pdf")),
+            )
+            self.assertIn("(2 × 2 upright)", text)
+
+
 class TestAssumedTrimWarning(unittest.TestCase):
     """A file that never said its finished size still gets imposed, and the
     operator is told what size was used instead of finding out at the knife."""

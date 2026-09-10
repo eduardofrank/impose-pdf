@@ -90,9 +90,10 @@ class TestSchemas(unittest.TestCase):
     def test_build_plan_defaults_the_grid_for_open_schemas(self):
         self.assertEqual(build_plan("nup", 8).grid, (2, 1))
 
-    def test_registry_matches_the_documented_five(self):
+    def test_registry_matches_the_documented_schemas(self):
         self.assertEqual(
-            set(SCHEMAS), {"saddle", "perfect", "nup", "cutstack", "steprepeat"}
+            set(SCHEMAS),
+            {"saddle", "perfect", "nup", "cutstack", "steprepeat", "signature"},
         )
 
 

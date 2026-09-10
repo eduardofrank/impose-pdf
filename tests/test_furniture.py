@@ -44,6 +44,72 @@ def content(data: bytes) -> str:
     return text
 
 
+class TestSignatureFoldMarks(unittest.TestCase):
+    """A signature creases on both axes, and neither is a cut line.
+
+    The head fold is the dangerous one: it runs between two rows of pages and
+    looks exactly like the cut line between two rows of anything else. Marked
+    as a cut, it tells the bindery to guillotine the signature in half.
+    """
+
+    @staticmethod
+    def marks(path):
+        """Every mark, with the dash state that was in force when it was drawn."""
+        with pikepdf.open(path) as pdf:
+            contents = pdf.pages[0].obj["/Contents"]
+            raw = (
+                b"".join(part.read_bytes() for part in contents)
+                if isinstance(contents, pikepdf.Array)
+                else contents.read_bytes()
+            )
+        dashed, found = False, []
+        for line in raw.decode("latin-1").splitlines():
+            stripped = line.strip()
+            if re.fullmatch(r"\[[\d.]+ [\d.]+\] 0 d", stripped):
+                dashed = True
+            elif stripped == "[] 0 d":
+                dashed = False
+            drawn = re.match(r"([-\d.]+) ([-\d.]+) m ([-\d.]+) ([-\d.]+) l", stripped)
+            if drawn:
+                x0, y0, x1, _ = (to_mm(float(v)) for v in drawn.groups())
+                axis = "vertical" if abs(x0 - x1) < 0.01 else "horizontal"
+                found.append((axis, round(x0 if axis == "vertical" else y0, 1), dashed))
+        return found
+
+    def impose(self, folder, **options):
+        source = folder / "book.pdf"
+        make_pdf(16, trim=Size(105 * MM, 148 * MM)).save(source)
+        out = folder / "sheets.pdf"
+        impose_document(source, out, schema="signature", **options)
+        return self.marks(out)
+
+    def test_both_creases_are_dashed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            found = self.impose(pathlib.Path(folder), columns=2, rows=2)
+            folds = {(axis, at) for axis, at, dashed in found if dashed}
+            self.assertEqual(len({axis for axis, _ in folds}), 2)
+
+    def test_the_head_fold_is_not_a_cut_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            found = self.impose(pathlib.Path(folder), columns=2, rows=2)
+            horizontals = sorted({at for axis, at, _ in found if axis == "horizontal"})
+            middle = horizontals[len(horizontals) // 2]
+            dashed_at = {at for axis, at, d in found if axis == "horizontal" and d}
+            self.assertEqual(dashed_at, {middle})
+
+    def test_the_outer_trims_stay_cuts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            found = self.impose(pathlib.Path(folder), columns=2, rows=2)
+            cuts = {(axis, at) for axis, at, dashed in found if not dashed}
+            self.assertEqual(len(cuts), 4)
+
+    def test_a_singly_folded_signature_creases_once(self):
+        with tempfile.TemporaryDirectory() as folder:
+            found = self.impose(pathlib.Path(folder), columns=2, rows=1)
+            folds = {(axis, at) for axis, at, dashed in found if dashed}
+            self.assertEqual({axis for axis, _ in folds}, {"vertical"})
+
+
 class TestTwoStageFolds(unittest.TestCase):
     """A form imposed again must still say where it folds.
 

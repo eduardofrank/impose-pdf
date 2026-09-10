@@ -38,7 +38,7 @@ from .marks import MarkStyle, Segment, furniture, trim_marks
 from .plan import Plan
 from .press import Press
 from .press import get as get_press
-from .schemas import cutstack, nup, perfect, saddle, steprepeat
+from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .units import format_mm, length, paper
 
 #: Schemas by the name a person would type.
@@ -48,6 +48,7 @@ SCHEMAS: dict[str, Callable[..., Plan]] = {
     "nup": nup.impose,
     "cutstack": cutstack.impose,
     "steprepeat": steprepeat.impose,
+    "signature": signature.impose,
 }
 
 #: Schemas whose grid is fixed by the binding rather than chosen.
@@ -56,8 +57,9 @@ _FIXED_GRID = frozenset({"saddle", "perfect"})
 #: Schemas where turning the pages would change the product. A saddle-stitched
 #: booklet folds down the middle of its spread: turn the pages a quarter and
 #: the fold runs the other way, which is a top-bound book, not the one that was
-#: asked for. The flat schemas are cut apart, so orientation is free.
-_BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect"})
+#: asked for. A signature has folds on both axes and the same applies twice
+#: over. The flat schemas are cut apart, so orientation is free.
+_BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect", "signature"})
 
 #: The most bleed to place, capping whatever the artwork arrived with. Two
 #: millimetres is enough for any guillotine to cut into and leaves the rest of
@@ -683,7 +685,7 @@ def _all_folds(
     Recorded on the output so that a form of forms keeps its folds through a
     third pass as readily as through a second.
     """
-    own_x, own_y = layout.fold_positions(plan.fold_columns)
+    own_x, own_y = layout.fold_positions(plan.fold_columns, plan.fold_rows)
     carried_x, carried_y = carried
     return (tuple(sorted({*own_x, *carried_x})), tuple(sorted({*own_y, *carried_y})))
 

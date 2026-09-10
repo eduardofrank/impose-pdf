@@ -23,6 +23,8 @@ from collections.abc import Sequence
 
 from . import ImposeError, __version__
 from .fit import DEFAULT_GUTTER, arrangements, compare
+from .fold import HEAD_TO_HEAD
+from .fold import STYLES as FOLD_STYLES
 from .geometry import Size
 from .job import (
     DEFAULT_BLEED,
@@ -42,7 +44,7 @@ from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
-_GRID_SCHEMAS = ("nup", "cutstack", "steprepeat")
+_GRID_SCHEMAS = ("nup", "cutstack", "steprepeat", "signature")
 
 #: Schemas that repeat a two-page spread rather than a single page.
 _SPREAD_SCHEMAS = ("saddle", "perfect")
@@ -54,7 +56,7 @@ _SIDED_SCHEMAS = ("nup", "cutstack", "steprepeat")
 #: Schemas whose backs are mirrored, so the duplex unit's turn matters. n-up
 #: is not among them: its sheet is read as a stack, never cut, so the back is
 #: laid out in plain reading order and the press does the turning.
-_MIRRORED_SCHEMAS = ("cutstack", "steprepeat")
+_MIRRORED_SCHEMAS = ("cutstack", "steprepeat", "signature")
 
 
 def _grid(text: str) -> tuple[int, int]:
@@ -247,6 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
         "nup": "Consecutive pages on a grid, read as a stack.",
         "cutstack": "Cut into stacks that reassemble in order.",
         "steprepeat": "One item repeated to fill the sheet. Cards, labels.",
+        "signature": "One sheet folded twice or more, sections gathered. Books.",
     }
     for name in SCHEMAS:
         schema = subcommands.add_parser(
@@ -259,8 +262,24 @@ def build_parser() -> argparse.ArgumentParser:
                 type=_grid,
                 default=None,
                 metavar="COLUMNSxROWS",
-                help="How many pages across and down. Omit it and the densest "
-                "grid that fits the press is chosen for you.",
+                help=(
+                    "Cells across and down the sheet before folding. Each "
+                    "fold halves the sheet, so both are powers of two: 2x1 is "
+                    "a sheet folded once and 8 pages, 2x2 folded twice and 16."
+                    if name == "signature"
+                    else "How many pages across and down. Omit it and the "
+                    "densest grid that fits the press is chosen for you."
+                ),
+            )
+        if name == "signature":
+            schema.add_argument(
+                "--fold-style",
+                choices=FOLD_STYLES,
+                default=HEAD_TO_HEAD,
+                help="Which way the sheet folds across itself, and so whether "
+                "the two rows of pages meet head to head or foot to foot at "
+                "the fold that gets trimmed. This belongs to the folding "
+                "machine, not to the document. Default: %(default)s.",
             )
         if name == "saddle":
             schema.add_argument(
@@ -425,6 +444,8 @@ def _schema_options(args: argparse.Namespace) -> dict:
         options["section_pages"] = args.section_pages
     if getattr(args, "flip", None) is not None:
         options["flip"] = args.flip
+    if getattr(args, "fold_style", None) is not None:
+        options["style"] = args.fold_style
     sides = getattr(args, "sides", None)
     if sides is not None:
         if args.command == "steprepeat":
