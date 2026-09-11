@@ -31,7 +31,7 @@ from .boxes import (
     read_boxes,
     require_trim,
 )
-from .fit import DEFAULT_GUTTER, best
+from .fit import DEFAULT_GUTTER, best, largest_signature
 from .geometry import Insets, Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, furniture, trim_marks
@@ -308,6 +308,28 @@ def repeating_unit(trim: Size, schema: str) -> Size:
     return trim
 
 
+def choose_signature(
+    trim: Size, press: Press, sheet: Size, *, allowance: float
+) -> tuple[int, int]:
+    """The biggest signature that fits the press.
+
+    Bigger is simply better. Every doubling of the grid halves the sheets the
+    book takes, and unlike a flat job there is nothing to weigh that against:
+    a signature holds what it holds however many books are wanted.
+    """
+    arrangement = largest_signature(
+        trim, press.imageable_area(sheet), allowance=allowance
+    )
+    if arrangement is None:
+        raise ImposeError(
+            f"A finished size of {format_mm(trim)} does not fold into a "
+            f"signature on {press.name}: even two pages side by side need "
+            f"more than the {format_mm(press.imageable_area(sheet).size)} it "
+            f"can image."
+        )
+    return arrangement.columns, arrangement.rows
+
+
 def choose_grid(  # pylint: disable=too-many-arguments
     trim: Size,
     press: Press,
@@ -439,9 +461,12 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         )
         source_folds = _source_folds(fold, boxes)
         chose_turned = False
-        if schema not in _FIXED_GRID and not (
-            options.get("columns") or options.get("rows")
-        ):
+        wants_grid = not (options.get("columns") or options.get("rows"))
+        if schema == "signature" and wants_grid:
+            options["columns"], options["rows"] = choose_signature(
+                boxes.trim_size, machine, sheet_size, allowance=allowance
+            )
+        elif schema not in _FIXED_GRID and wants_grid:
             columns, rows, chose_turned = choose_grid(
                 boxes.trim_size,
                 machine,

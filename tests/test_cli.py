@@ -391,6 +391,27 @@ class TestSignatureCommand(unittest.TestCase):
             self.assertIn("onto 4 sheet(s)", once)
             self.assertIn("onto 2 sheet(s)", twice)
 
+    def test_the_grid_is_chosen_when_not_given(self):
+        """The biggest signature the press can fold, without being told."""
+        for trim, expected in (
+            (Size(139.7 * MM, 215.9 * MM), "(2 × 2"),
+            (Size(108 * MM, 140 * MM), "(4 × 2"),
+        ):
+            with self.subTest(trim=trim), workspace(pages=16, trim=trim) as source:
+                status, text, err = run(
+                    "signature", str(source), "-o", str(source.with_name("o.pdf"))
+                )
+                self.assertEqual(status, 0, err)
+                self.assertIn(expected, text)
+
+    def test_a_page_too_big_to_fold_says_so(self):
+        with workspace(pages=8, trim=Size(400 * MM, 400 * MM)) as source:
+            status, _, err = run(
+                "signature", str(source), "-o", str(source.with_name("o.pdf"))
+            )
+            self.assertEqual(status, 1)
+            self.assertIn("does not fold into a signature", err)
+
     def test_a_grid_that_cannot_be_folded_is_refused_in_a_sentence(self):
         with workspace(pages=16) as source:
             status, _, err = run(

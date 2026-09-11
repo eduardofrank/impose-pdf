@@ -31,6 +31,7 @@ from __future__ import annotations
 import dataclasses
 import math
 
+from .fold import PAGES_PER_LEAF
 from .geometry import Rect, Size
 from .units import format_mm
 
@@ -176,6 +177,73 @@ def arrangements(
     # only makes the sheet harder to read on the stacker.
     found.sort(key=lambda a: (-a.up, a.turned))
     return found
+
+
+def signature_arrangements(
+    trim: Size,
+    area: Size | Rect,
+    *,
+    allowance: float = 0.0,
+    limit: int = 32,
+) -> list[Arrangement]:
+    """Every grid a folded signature can use, most pages first.
+
+    Each fold halves the sheet, so the grid is a power of two each way and
+    nothing in between is available: a sheet folds into 2 x 2 or 4 x 2, never
+    3 x 2. Pages are never turned in their cells either, because that would
+    move the folds and make a different product -- but the finished form may
+    be turned as a whole to fit the sheet, so both ways round are tried.
+
+    The grid is always at least two cells across, because the vertical fold is
+    the spine and a grid one cell wide has none.
+
+    *limit* caps the pages a signature may hold. Thirty-two is as many as
+    ordinary folding equipment manages.
+
+    >>> from .units import MM
+    >>> from .press import INDIGO_5000
+    >>> a5 = Size(148 * MM, 210 * MM)
+    >>> for option in signature_arrangements(a5, INDIGO_5000.imageable_area()):
+    ...     print(option.up * 2, "pages,", option.columns, "x", option.rows)
+    8 pages, 2 x 2
+    4 pages, 2 x 1
+    """
+    usable = area.size if isinstance(area, Rect) else area
+    width = usable.width - 2 * allowance
+    height = usable.height - 2 * allowance
+
+    found: list[Arrangement] = []
+    # At least two columns: the vertical fold is the spine, and a grid one
+    # cell wide has none. That folds at the head instead and gives a top-bound
+    # pad, which is a different product from a book.
+    columns = 2
+    while columns * PAGES_PER_LEAF <= limit:
+        rows = 1
+        while columns * rows * PAGES_PER_LEAF <= limit:
+            form = Size(columns * trim.width, rows * trim.height)
+            upright = form.width <= width and form.height <= height
+            turned = form.height <= width and form.width <= height
+            if upright or turned:
+                found.append(Arrangement(columns, rows, False, trim, 0.0))
+            rows *= 2
+        columns *= 2
+    # Most pages first; on a tie the squarer form, which wastes less of the
+    # sheet and is the shape a folder is happiest with.
+    found.sort(key=lambda a: (-a.up, abs(a.columns - a.rows)))
+    return found
+
+
+def largest_signature(
+    trim: Size, area: Size | Rect, *, allowance: float = 0.0, limit: int = 32
+) -> Arrangement | None:
+    """The biggest signature that fits, or ``None`` if even one page will not.
+
+    Bigger is simply better here: every doubling of the grid halves the sheets
+    the book takes, and unlike a flat job there is no quantity to weigh it
+    against -- a signature holds what it holds.
+    """
+    found = signature_arrangements(trim, area, allowance=allowance, limit=limit)
+    return found[0] if found else None
 
 
 def rank(runs: list[Run]) -> list[Run]:

@@ -12,7 +12,9 @@ from impose.fit import (
     best,
     compare,
     count_along,
+    largest_signature,
     plan_run,
+    signature_arrangements,
 )
 from impose.geometry import Size
 from impose.press import INDIGO_5000
@@ -23,6 +25,71 @@ CARD = Size(90 * MM, 55 * MM)
 AREA = INDIGO_5000.imageable_area()
 GUTTER = 4 * MM
 ALLOWANCE = 5 * MM
+
+
+class TestSignatureGrids(unittest.TestCase):
+    """Which signatures a sheet can be folded into."""
+
+    AREA = INDIGO_5000.imageable_area()
+
+    def options(self, w, h, allowance=5 * MM):
+        return signature_arrangements(
+            Size(w * MM, h * MM), self.AREA, allowance=allowance
+        )
+
+    def test_every_grid_is_a_power_of_two(self):
+        """Each fold halves the sheet, so nothing in between is available."""
+        for option in self.options(108, 140):
+            with self.subTest(grid=(option.columns, option.rows)):
+                for count in (option.columns, option.rows):
+                    self.assertEqual(count & (count - 1), 0)
+
+    def test_the_grid_always_has_a_spine(self):
+        """One cell across folds at the head instead, which is a top-bound
+        pad rather than a book."""
+        for option in self.options(108, 140):
+            self.assertGreaterEqual(option.columns, 2)
+
+    def test_pages_are_never_turned_in_their_cells(self):
+        """That would move the folds and make a different product."""
+        self.assertTrue(all(not o.turned for o in self.options(108, 140)))
+
+    def test_biggest_first(self):
+        found = self.options(108, 140)
+        self.assertEqual(
+            [o.up for o in found], sorted((o.up for o in found), reverse=True)
+        )
+
+    def test_a_form_may_be_turned_as_a_whole_to_fit(self):
+        """Four quarter-letter cells across is 432 mm and will not fit
+        upright, but the finished form turned is 280 x 432 and does."""
+        biggest = largest_signature(
+            Size(108 * MM, 140 * MM), self.AREA, allowance=5 * MM
+        )
+        self.assertEqual((biggest.columns, biggest.rows), (4, 2))
+
+    def test_a_bigger_page_folds_fewer_times(self):
+        for size, expected in (
+            ((108, 140), (4, 2)),
+            ((139.7, 215.9), (2, 2)),
+            ((215.9, 279.4), (2, 1)),
+        ):
+            with self.subTest(size=size):
+                biggest = largest_signature(
+                    Size(size[0] * MM, size[1] * MM), self.AREA, allowance=5 * MM
+                )
+                self.assertEqual((biggest.columns, biggest.rows), expected)
+
+    def test_a_page_too_big_to_fold_at_all_has_no_answer(self):
+        self.assertIsNone(
+            largest_signature(Size(400 * MM, 400 * MM), self.AREA, allowance=5 * MM)
+        )
+
+    def test_the_limit_caps_the_signature(self):
+        big = signature_arrangements(
+            Size(50 * MM, 50 * MM), self.AREA, allowance=5 * MM, limit=8
+        )
+        self.assertTrue(all(o.up * 2 <= 8 for o in big))
 
 
 class TestCountAlong(unittest.TestCase):
