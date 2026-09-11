@@ -303,14 +303,34 @@ def build_parser() -> argparse.ArgumentParser:
                 "creep while its outer ones do not, on the same sheet. "
                 "Measure it: a micrometer on twenty sheets, divided by twenty.",
             )
-        if name == "perfect":
+        if name in ("perfect", "signature"):
             schema.add_argument(
                 "--section-pages",
                 type=int,
-                default=4,
+                default=4 if name == "perfect" else None,
                 metavar="N",
-                help="Pages per gathered section, a multiple of 4. "
-                "Default: %(default)s, one folded sheet per section.",
+                help=(
+                    "Pages per gathered section, a multiple of 4. Sections are "
+                    "made of sheets folded once and nested inside each other. "
+                    "For sections made by folding one sheet several times -- "
+                    "which is what a binder means by a 16-page signature -- "
+                    "add --folded. Default: %(default)s."
+                    if name == "perfect"
+                    else "Pages one folded sheet carries: 8 is a sheet folded "
+                    "twice, 16 folded three times. An alternative to --up, "
+                    "which says the same thing as a grid; the arrangement that "
+                    "delivers this many is worked out from the page and the "
+                    "press."
+                ),
+            )
+        if name == "perfect":
+            schema.add_argument(
+                "--folded",
+                action="store_true",
+                help="Make each section by folding one sheet rather than by "
+                "nesting several. This is what a book is normally made of, "
+                "and it is the same imposition as the signature schema -- so "
+                "the job reports itself as one.",
             )
         if name in _SIDED_SCHEMAS:
             schema.add_argument(
@@ -429,7 +449,7 @@ def _style(args: argparse.Namespace) -> MarkStyle | None:
     )
 
 
-def _schema_options(args: argparse.Namespace) -> dict:
+def _schema_options(args: argparse.Namespace, schema: str | None = None) -> dict:
     """Options belonging to the chosen schema.
 
     Sidedness is one question at the terminal and two in the schemas: step and
@@ -449,7 +469,7 @@ def _schema_options(args: argparse.Namespace) -> dict:
         options["style"] = args.fold_style
     sides = getattr(args, "sides", None)
     if sides is not None:
-        if args.command == "steprepeat":
+        if (schema or args.command) == "steprepeat":
             options["sides"] = sides
         else:
             options["duplex"] = sides == 2
@@ -648,8 +668,12 @@ def _options(args: argparse.Namespace) -> dict:
     Shared so that a dry run and the real job cannot drift apart: they are the
     same call with one flag different.
     """
+    # Perfect binding with folded sections is the signature schema: same
+    # ordering, same geometry, same folds. Routing rather than reimplementing
+    # keeps one answer to the question rather than two that can drift.
+    schema = "signature" if getattr(args, "folded", False) else args.command
     return {
-        "schema": args.command,
+        "schema": schema,
         "press": args.press,
         "sheet": args.sheet,
         "gutters": args.gutters,
@@ -662,7 +686,7 @@ def _options(args: argparse.Namespace) -> dict:
         "fold": args.fold,
         "registration": args.registration,
         "colour_bar": args.colour_bar,
-        **_schema_options(args),
+        **_schema_options(args, schema),
     }
 
 

@@ -380,6 +380,150 @@ class TestSidednessAndFlip(unittest.TestCase):
                 self.assertIn(flag, err)
 
 
+class TestFitSheetWithAChosenGrid(unittest.TestCase):
+    """--sheet fit on a schema that chooses its own grid.
+
+    The sheet is the form, the form needs a plan, the plan needs a grid, and
+    the grid was being chosen against the sheet -- which crashed with a
+    traceback rather than a sentence. The press maximum breaks the circle.
+    """
+
+    def test_every_grid_schema_survives_a_form_sized_sheet(self):
+        for schema in ("nup", "cutstack", "steprepeat", "signature"):
+            with self.subTest(schema=schema), workspace(pages=16) as source:
+                output = source.with_name("o.pdf")
+                status, text, err = run(
+                    schema, str(source), "--sheet", "fit", "-o", str(output)
+                )
+                self.assertEqual(status, 0, err)
+                self.assertIn("on form", text)
+                self.assertTrue(output.exists())
+
+    def test_the_bound_schemas_still_work_too(self):
+        for schema in ("saddle", "perfect"):
+            with self.subTest(schema=schema), workspace(pages=16) as source:
+                status, text, err = run(
+                    schema,
+                    str(source),
+                    "--sheet",
+                    "fit",
+                    "-o",
+                    str(source.with_name("o.pdf")),
+                )
+                self.assertEqual(status, 0, err)
+                self.assertIn("on form", text)
+
+
+class TestSectionsInPages(unittest.TestCase):
+    """A binder asks for a 16-page signature, not for a four-by-two grid."""
+
+    QUARTER = Size(108 * MM, 140 * MM)
+    HALF = Size(139.7 * MM, 215.9 * MM)
+
+    def test_the_grid_is_worked_out_from_the_page_count(self):
+        for section, grid in ((4, "(2 × 1"), (8, "(2 × 2"), (16, "(4 × 2")):
+            with (
+                self.subTest(section=section),
+                workspace(pages=16, trim=self.QUARTER) as source,
+            ):
+                status, text, err = run(
+                    "signature",
+                    str(source),
+                    "--section-pages",
+                    str(section),
+                    "-o",
+                    str(source.with_name("o.pdf")),
+                )
+                self.assertEqual(status, 0, err)
+                self.assertIn(grid, text)
+
+    def test_bigger_sections_take_fewer_sheets(self):
+        counts = []
+        for section in (4, 8, 16):
+            with workspace(pages=16, trim=self.QUARTER) as source:
+                _, text, _ = run(
+                    "signature",
+                    str(source),
+                    "--section-pages",
+                    str(section),
+                    "-o",
+                    str(source.with_name("o.pdf")),
+                )
+                counts.append(int(text.split("onto ")[1].split(" ")[0]))
+        self.assertEqual(counts, sorted(counts, reverse=True))
+        self.assertEqual(counts, [4, 2, 1])
+
+    def test_a_section_too_big_to_fit_says_what_does_fit(self):
+        with workspace(pages=16, trim=self.HALF) as source:
+            status, _, err = run(
+                "signature",
+                str(source),
+                "--section-pages",
+                "16",
+                "-o",
+                str(source.with_name("o.pdf")),
+            )
+            self.assertEqual(status, 1)
+            self.assertIn("16-page signature", err)
+            self.assertIn("largest that fits is 8 pages", err)
+
+    def test_pages_and_a_grid_together_are_refused(self):
+        with workspace(pages=16, trim=self.QUARTER) as source:
+            status, _, err = run(
+                "signature",
+                str(source),
+                "--section-pages",
+                "8",
+                "--up",
+                "2x2",
+                "-o",
+                str(source.with_name("o.pdf")),
+            )
+            self.assertEqual(status, 1)
+            self.assertIn("not both", err)
+
+
+class TestPerfectBindingFolded(unittest.TestCase):
+    """Perfect binding whose sections are folded rather than nested.
+
+    Both make a section of the same page count and both gather it, so the book
+    is the same book. What differs is the press: one folded sheet does the work
+    of two nested ones.
+    """
+
+    QUARTER = Size(108 * MM, 140 * MM)
+
+    def sheets(self, *extra, pages=12):
+        with workspace(pages=pages, trim=self.QUARTER) as source:
+            status, text, err = run(
+                "perfect", str(source), "-o", str(source.with_name("o.pdf")), *extra
+            )
+            self.assertEqual(status, 0, err)
+            return int(text.split("onto ")[1].split(" ")[0]), text
+
+    def test_folding_halves_the_sheets(self):
+        nested, _ = self.sheets("--section-pages", "8")
+        folded, _ = self.sheets("--section-pages", "8", "--folded")
+        self.assertEqual((nested, folded), (4, 2))
+
+    def test_nesting_is_still_the_default(self):
+        plain, _ = self.sheets("--section-pages", "8")
+        nested, _ = self.sheets("--section-pages", "8")
+        self.assertEqual(plain, nested)
+
+    def test_it_reports_itself_as_the_signature_it_is(self):
+        """Routing rather than reimplementing, so it says so."""
+        _, text = self.sheets("--section-pages", "8", "--folded")
+        self.assertIn("signature:", text)
+
+    def test_a_folded_section_puts_half_its_pages_upside_down(self):
+        with workspace(pages=8, trim=self.QUARTER) as source:
+            _, text, _ = run(
+                "perfect", str(source), "--section-pages", "8", "--folded", "--dry-run"
+            )
+            self.assertIn("*", text)
+
+
 class TestDryRunMatchesTheRealRun(unittest.TestCase):
     """A dry run exists to show the job you are about to send.
 

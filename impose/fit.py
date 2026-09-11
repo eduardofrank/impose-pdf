@@ -234,15 +234,26 @@ def signature_arrangements(
 
 
 def largest_signature(
-    trim: Size, area: Size | Rect, *, allowance: float = 0.0, limit: int = 32
+    trim: Size,
+    area: Size | Rect,
+    *,
+    allowance: float = 0.0,
+    limit: int = 32,
+    pages: int | None = None,
 ) -> Arrangement | None:
-    """The biggest signature that fits, or ``None`` if even one page will not.
+    """The biggest signature that fits, or ``None`` if none does.
 
     Bigger is simply better here: every doubling of the grid halves the sheets
     the book takes, and unlike a flat job there is no quantity to weigh it
     against -- a signature holds what it holds.
+
+    With *pages*, only a signature of exactly that many is considered. A binder
+    asks for a sixteen-page signature, not for a four-by-two grid, and which
+    grid delivers sixteen depends on the page and the press.
     """
     found = signature_arrangements(trim, area, allowance=allowance, limit=limit)
+    if pages is not None:
+        found = [option for option in found if option.up * PAGES_PER_LEAF == pages]
     return found[0] if found else None
 
 

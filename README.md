@@ -199,6 +199,7 @@ series.
 | `impose nup` | none; read as a stack | yours, or chosen |
 | `impose cutstack` | none; cut into stacks | yours, or chosen |
 | `impose steprepeat` | none; cut apart | yours, or chosen |
+| `impose signature` | one sheet folded twice or more, gathered | powers of two, or chosen |
 
 ### Options every schema takes
 
@@ -229,8 +230,10 @@ series.
 | `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
 | `--sides N` | `nup`, `cutstack`, `steprepeat` | 2, or from the page count for `steprepeat` | 1 for fronts only, 2 for a front and a back |
 | `--flip {long-edge,short-edge}` | `cutstack`, `steprepeat` | `long-edge` | which way the press turns the sheet for the back |
-| `--section-pages N` | `perfect` | `4` | pages per gathered section, a multiple of 4 |
-| `--paper-caliper LENGTH` | `saddle`, `perfect` | off | one sheet's thickness; turns on creep |
+| `--section-pages N` | `perfect`, `signature` | `4` for perfect | pages per section; on `signature`, an alternative to `--up` |
+| `--folded` | `perfect` | off | make each section by folding one sheet rather than nesting several |
+| `--fold-style {head-to-head,foot-to-foot}` | `signature` | `head-to-head` | which way the sheet folds across itself |
+| `--paper-caliper LENGTH` | `saddle`, `perfect`, `signature` | off | one sheet's thickness; turns on creep |
 | `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
 
 `saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
@@ -537,6 +540,68 @@ piece is backed with a neighbour's — a whole job, and nothing looks wrong unti
 it is cut and collated. `long-edge` is the common default; read it off the
 press rather than assuming.
 
+## Signatures
+
+A signature is one sheet folded more than once. Each fold halves the sheet and
+doubles the leaves, so a sheet folded twice carries eight pages and one folded
+three times carries sixteen — from a single pass through the press. This is how
+a book is made; stacks of singly-folded sheets are the exception.
+
+```
+$ impose signature book.pdf --section-pages 16
+signature: 12 pages onto 1 sheet(s) at 8 up (4 × 2 upright), page 310 × 450 mm
+on indigo-5000; finished page 108 × 140 mm, form turned to fit
+```
+
+Say the section in pages, as a binder does, or pin the grid with `--up 4x2`.
+Omit both and the largest signature the press can fold is chosen. On an Indigo
+5000 a half-letter book reaches 8 pages a sheet and a quarter-letter one 16 —
+against 4 for a sheet folded once.
+
+**Folding across the sheet turns half the pages upside down.** That is not a
+convention to pick; it is what the paper does. Fold a sheet, fold it again, and
+the half that went over comes back the other way up:
+
+```
+$ impose signature book.pdf --up 2x2 --dry-run
+sheet 1 front        * marks a page imposed upside down
+     5*    4*
+     8    1
+sheet 1 back
+     3*    6*
+     2    7
+```
+
+The two rows meet **head to head** at the fold, which is trimmed off. Some
+folders want foot to foot instead; `--fold-style` says which, because it
+belongs to the machine rather than to the document. Both creases are marked as
+folds, not cuts — the one across the sheet especially, since it runs between
+two rows of pages and looks exactly like the cut line between two rows of
+anything else.
+
+The ordering is derived rather than tabulated. `impose/fold.py` models the
+sheet as physical cells, applies the folds, and reads the finished pile the way
+a person reads the booklet. The check that it is right is that a signature
+folded *once* comes out identical to what perfect binding has always produced,
+surface for surface.
+
+### Perfect binding with folded sections
+
+`perfect` gathers sections; how a section is made is the choice. By default it
+nests several singly-folded sheets. `--folded` makes each section one sheet
+folded instead, which is the same imposition as `signature` — so the job
+reports itself as one:
+
+```
+$ impose perfect book.pdf --section-pages 8            # two nested sheets
+perfect-bound: 12 pages onto 4 sheet(s) at 2 up (2 × 1 upright)
+
+$ impose perfect book.pdf --section-pages 8 --folded   # one folded sheet
+signature: 12 pages onto 2 sheet(s) at 4 up (2 × 2 upright)
+```
+
+Same book, same 8-page sections, half the sheets.
+
 ## Creep
 
 Nested sheets push out. An inner sheet's fold sits further toward the opening,
@@ -741,6 +806,8 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `pdfx` — OutputIntent and conformance keys carried through |
 | ✅ | `cli` — the `impose` command |
 | ✅ | `marks` — registration targets and colour bar |
+| ✅ | `fold` — signature folding derived, head to head or foot to foot |
+| ✅ | `schemas.signature` — one sheet folded twice or more, sections gathered |
 | ⬜ | Slug line (needs an embedded font to stay PDF/X) |
 | ✅ | Uniform-page gate — mixed sizes, orientations and offsets refused by name |
 | ✅ | `fit` — densest grid, orientation, and run waste |

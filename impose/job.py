@@ -308,26 +308,46 @@ def repeating_unit(trim: Size, schema: str) -> Size:
     return trim
 
 
-def choose_signature(
-    trim: Size, press: Press, sheet: Size, *, allowance: float
+def choose_signature(  # pylint: disable=too-many-arguments
+    trim: Size,
+    press: Press,
+    sheet: Size,
+    *,
+    allowance: float,
+    section_pages: int | None = None,
 ) -> tuple[int, int]:
-    """The biggest signature that fits the press.
+    """The signature to fold, as a grid.
 
-    Bigger is simply better. Every doubling of the grid halves the sheets the
-    book takes, and unlike a flat job there is nothing to weigh that against:
-    a signature holds what it holds however many books are wanted.
+    Without *section_pages* this is the biggest that fits, because bigger is
+    simply better: every doubling of the grid halves the sheets the book takes,
+    and unlike a flat job there is nothing to weigh that against.
+
+    With it, the section is the size the binder asked for -- a sixteen-page
+    signature, not a four-by-two grid -- and which grid delivers sixteen is
+    worked out from the page and the press.
     """
+    area = press.imageable_area(sheet)
     arrangement = largest_signature(
-        trim, press.imageable_area(sheet), allowance=allowance
+        trim, area, allowance=allowance, pages=section_pages
     )
-    if arrangement is None:
+    if arrangement is not None:
+        return arrangement.columns, arrangement.rows
+    if section_pages is None:
         raise ImposeError(
             f"A finished size of {format_mm(trim)} does not fold into a "
             f"signature on {press.name}: even two pages side by side need "
-            f"more than the {format_mm(press.imageable_area(sheet).size)} it "
-            f"can image."
+            f"more than the {format_mm(area.size)} it can image."
         )
-    return arrangement.columns, arrangement.rows
+    biggest = largest_signature(trim, area, allowance=allowance)
+    fits = (
+        f"The largest that fits is {biggest.up * 2} pages."
+        if biggest is not None
+        else "Not even four pages fit."
+    )
+    raise ImposeError(
+        f"A {section_pages}-page signature of {format_mm(trim)} does not fit "
+        f"the {format_mm(area.size)} {press.name} can image. {fits}"
+    )
 
 
 def choose_grid(  # pylint: disable=too-many-arguments
@@ -365,6 +385,61 @@ def choose_grid(  # pylint: disable=too-many-arguments
             f"({format_mm(press.imageable_area(sheet).size)}) even one up."
         )
     return arrangement.columns, arrangement.rows, arrangement.turned
+
+
+def _resolve_grid(  # pylint: disable=too-many-arguments
+    schema: str,
+    options: dict,
+    *,
+    boxes: PageBoxes,
+    press: Press,
+    sheet: Size,
+    gutters: Gutters,
+    allowance: float,
+    pages: int,
+) -> bool:
+    """Settle the grid in *options*, and say whether the pages were turned.
+
+    A grid the caller gave is left alone. Otherwise it is chosen, and how
+    depends on the schema: a signature folds, so its grid is a power of two and
+    its pages are never turned, while a flat job is weighed against the page
+    count and may be turned to fit.
+    """
+    wants_grid = not (options.get("columns") or options.get("rows"))
+    if schema == "signature":
+        section_pages = options.pop("section_pages", None)
+        if wants_grid:
+            options["columns"], options["rows"] = choose_signature(
+                boxes.trim_size,
+                press,
+                sheet,
+                allowance=allowance,
+                section_pages=section_pages,
+            )
+        elif section_pages is not None:
+            raise ImposeError(
+                "Give a signature its size in pages or its grid, not both: "
+                "--section-pages says how many pages one sheet carries and "
+                "--up says how they are arranged, and the grid already decides "
+                "the count."
+            )
+        return False
+    if schema in _FIXED_GRID or not wants_grid:
+        return False
+    columns, rows, turned = choose_grid(
+        boxes.trim_size,
+        press,
+        sheet,
+        gutters=gutters,
+        allowance=allowance,
+        # Step and repeat makes one sheet per item whatever the grid, so
+        # nothing is being divided and denser is simply better. The schemas
+        # that spread a document across the cells are weighed against the page
+        # count instead.
+        quantity=None if schema == "steprepeat" else pages,
+    )
+    options["columns"], options["rows"] = columns, rows
+    return turned
 
 
 def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
@@ -447,6 +522,12 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     try:
         fit_to_form = isinstance(sheet, str) and sheet.strip().lower() == FIT_SHEET
         machine = get_press(press) if isinstance(press, str) else press
+        # A form-sized sheet is not known until the plan is, and the plan needs
+        # a grid, and the grid needs a sheet to be chosen against. The press
+        # maximum breaks the circle: it is the largest the first pass could
+        # ever run on, so it is what the grid is weighed against, and the real
+        # sheet replaces it once the form exists.
+        sheet_size = machine.sheet
         if not fit_to_form:
             sheet_size = paper(sheet) if sheet is not None else machine.sheet
             machine.check_sheet(sheet_size)
@@ -466,33 +547,30 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             bleed_insets.top,
         )
         source_folds = _source_folds(fold, boxes)
-        chose_turned = False
-        wants_grid = not (options.get("columns") or options.get("rows"))
-        if schema == "signature" and wants_grid:
-            options["columns"], options["rows"] = choose_signature(
-                boxes.trim_size, machine, sheet_size, allowance=allowance
-            )
-        elif schema not in _FIXED_GRID and wants_grid:
-            columns, rows, chose_turned = choose_grid(
-                boxes.trim_size,
-                machine,
-                sheet_size,
-                gutters=gaps,
-                allowance=allowance,
-                # Step and repeat makes one sheet per item whatever the grid,
-                # so nothing is being divided and denser is simply better. The
-                # schemas that spread a document across the cells are weighed
-                # against the page count instead.
-                quantity=None if schema == "steprepeat" else len(opened.pages),
-            )
-            options["columns"], options["rows"] = columns, rows
-
+        chose_turned = _resolve_grid(
+            schema,
+            options,
+            boxes=boxes,
+            press=machine,
+            sheet=sheet_size,
+            gutters=gaps,
+            allowance=allowance,
+            pages=len(opened.pages),
+        )
         plan = build_plan(schema, len(opened.pages), **options)
         plan.validate(exhaustive=schema != "steprepeat")
+        if chose_turned and orientation == "auto":
+            orientation = "turned"
         if fit_to_form:
-            machine = _form_press(
-                boxes.trim_size, plan, gutters=gaps, allowance=allowance
+            # The form is made of cells, and a turned page has a cell the
+            # other way round. Building it from the upright size gives a form
+            # the layout then cannot fit into.
+            cell = (
+                boxes.trim_size.swapped()
+                if orientation == "turned"
+                else boxes.trim_size
             )
+            machine = _form_press(cell, plan, gutters=gaps, allowance=allowance)
             sheet_size = machine.sheet
         elif page == "imageable":
             # The page becomes the printable area itself. Nothing about the
@@ -506,9 +584,6 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 margins=Insets(),
                 description=f"{machine.name} imageable area",
             )
-        if chose_turned and orientation == "auto":
-            orientation = "turned"
-
         style = marks
         # _fit hands back the candidate that fitted. When that is not the plan
         # it was given, the pages were turned in their cells to make the grid
