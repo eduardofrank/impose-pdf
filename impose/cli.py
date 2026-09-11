@@ -34,7 +34,6 @@ from .job import (
     impose_document,
     measure,
     repeating_unit,
-    source_boxes,
 )
 from .marks import MarkStyle
 from .press import get as get_press
@@ -641,21 +640,49 @@ def _fit(  # pylint: disable=too-many-locals,too-many-branches
     return 0
 
 
-def _dry_run(args: argparse.Namespace, out) -> int:
-    """Show the ordering and the sheet count without writing anything."""
-    import pikepdf  # pylint: disable=import-outside-toplevel
+def _options(args: argparse.Namespace) -> dict:
+    """Everything imposing takes, from the parsed command line.
 
-    with pikepdf.open(args.input) as source:
-        boxes = source_boxes(source)
-        plan = build_plan(args.command, len(source.pages), **_schema_options(args))
-        plan.validate(exhaustive=args.command != "steprepeat")
-        print(plan.describe(), file=out)
-        print(
-            f"\n  {plan.pages} pages, {plan.sheets} sheet(s), "
-            f"{len(plan)} surface(s); finished page "
-            f"{format_mm(boxes.trim_size)}",
-            file=out,
-        )
+    Shared so that a dry run and the real job cannot drift apart: they are the
+    same call with one flag different.
+    """
+    return {
+        "schema": args.command,
+        "press": args.press,
+        "sheet": args.sheet,
+        "gutters": args.gutters,
+        "marks": _style(args),
+        "orientation": args.orientation,
+        "max_nested_sheets": getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
+        "paper_caliper": getattr(args, "paper_caliper", 0.0),
+        "bleed": args.bleed,
+        "page": args.page,
+        "fold": args.fold,
+        "registration": args.registration,
+        "colour_bar": args.colour_bar,
+        **_schema_options(args),
+    }
+
+
+def _dry_run(args: argparse.Namespace, out) -> int:
+    """Show the ordering and the sheet count without writing anything.
+
+    The point of a dry run is to see the job you are about to send, so it goes
+    through the same code the real job does and stops just before rendering.
+    Working the plan out separately here is how it came to report four sheets
+    for a job that runs two: the grid is chosen while imposing, and a dry run
+    that skips the choosing is describing a different job.
+    """
+    result = impose_document(
+        args.input,
+        args.output or _default_output(args.input),
+        plan_only=True,
+        **_options(args),
+    )
+    print(result.plan.describe(), file=out)
+    print(f"\n  {result.describe()}", file=out)
+    for warning in result.warnings:
+        print(f"impose: warning: {warning}", file=sys.stderr)
     return 0
 
 
@@ -681,20 +708,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = impose_document(
             args.input,
             args.output or _default_output(args.input),
-            schema=args.command,
-            press=args.press,
-            sheet=args.sheet,
-            gutters=args.gutters,
-            marks=_style(args),
-            orientation=args.orientation,
-            max_nested_sheets=getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
-            paper_caliper=getattr(args, "paper_caliper", 0.0),
-            bleed=args.bleed,
-            page=args.page,
-            fold=args.fold,
-            registration=args.registration,
-            colour_bar=args.colour_bar,
-            **_schema_options(args),
+            **_options(args),
         )
         if not args.quiet:
             print(result.describe(), file=out)

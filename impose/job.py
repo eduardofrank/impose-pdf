@@ -384,12 +384,18 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     colour_bar: bool = False,
     page: str = "imageable",
     fold: str = "auto",
+    plan_only: bool = False,
     **options: Any,
 ) -> Result:
     """Impose *source* onto press sheets and write it to *output*.
 
     Pass ``marks=None`` for no marks at all; the default is registration crop
     marks.
+
+    *plan_only* stops after working out the ordering and the geometry and
+    returns the :class:`Result` without writing anything. It is what ``--dry
+    run`` needs: the same grid, the same sheet count and the same refusals as
+    the real job, because it is the same code up to the point of rendering.
 
     *fold* says whether the pages being placed fold, which decides where the
     dashed marks go. ``"auto"`` believes the file: a form this tool made for a
@@ -523,8 +529,23 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 schema, length(paper_caliper), options.get("section_pages", 4)
             ),
         )
-        renderer = Renderer(style=style)
         turned = any(layout.turned for layout in layouts)
+        warnings = _warnings(plan, schema, max_nested_sheets, boxes)
+        if plan_only:
+            return Result(
+                plan=plan,
+                sheets=plan.sheets,
+                surfaces=len(plan),
+                sheet_size=sheet_size,
+                trim_size=boxes.trim_size,
+                press=machine.name,
+                turned=turned,
+                pages_turned=plan is not upright,
+                pdfx=pdfx_version(opened),
+                warnings=warnings,
+            )
+
+        renderer = Renderer(style=style)
         for layout in layouts:
             carried = layout.carried_folds(source_folds, boxes.rotation)
             targets, patches = (
@@ -550,7 +571,6 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
-        warnings = _warnings(plan, schema, max_nested_sheets, boxes)
 
         return Result(
             plan=plan,

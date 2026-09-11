@@ -380,6 +380,56 @@ class TestSidednessAndFlip(unittest.TestCase):
                 self.assertIn(flag, err)
 
 
+class TestDryRunMatchesTheRealRun(unittest.TestCase):
+    """A dry run exists to show the job you are about to send.
+
+    It used to work the plan out separately from imposing, so for every schema
+    that chooses its own grid it described a different job: four sheets where
+    n-up and signature both run two.
+    """
+
+    @staticmethod
+    def summary(text):
+        return [line for line in text.splitlines() if "sheet(s)" in line][0].strip()
+
+    def test_the_summaries_agree(self):
+        for schema in ("nup", "cutstack", "steprepeat", "signature", "saddle"):
+            with self.subTest(schema=schema), workspace(pages=16) as source:
+                _, real, err = run(
+                    schema, str(source), "-o", str(source.with_name("o.pdf"))
+                )
+                _, dry, _ = run(schema, str(source), "--dry-run")
+                self.assertEqual(self.summary(dry), self.summary(real), err)
+
+    def test_a_dry_run_writes_nothing(self):
+        with workspace(pages=8) as source:
+            output = source.with_name("o.pdf")
+            status, _, _ = run("nup", str(source), "-o", str(output), "--dry-run")
+            self.assertEqual(status, 0)
+            self.assertFalse(output.exists())
+
+    def test_a_dry_run_refuses_what_the_real_run_refuses(self):
+        with workspace(pages=8) as source:
+            dry, _, dry_err = run("nup", str(source), "--up", "4x4", "--dry-run")
+            real, _, real_err = run(
+                "nup", str(source), "--up", "4x4", "-o", str(source.with_name("o.pdf"))
+            )
+            self.assertEqual(dry, 1)
+            self.assertEqual(real, 1)
+            self.assertEqual(dry_err, real_err)
+
+    def test_a_dry_run_warns_about_what_the_real_run_warns_about(self):
+        with workspace(pages=64) as source:
+            _, _, err = run("saddle", str(source), "--dry-run")
+            self.assertIn("staple cleanly", err)
+
+    def test_it_still_shows_the_page_order(self):
+        with workspace(pages=8) as source:
+            _, text, _ = run("saddle", str(source), "--dry-run")
+            self.assertIn("sheet 1 front", text)
+            self.assertIn("sheet 1 back", text)
+
+
 class TestSignatureCommand(unittest.TestCase):
     """One sheet folded more than once, which is how a book is made."""
 
