@@ -317,20 +317,27 @@ def _unrotate_vector(vector: tuple[float, float], rotation: int) -> tuple[float,
 
 
 def _creep_shift(
-    column: int, fold_columns: tuple[int, ...], creep: float
+    placement: Placement, fold_columns: tuple[int, ...], caliper: float
 ) -> tuple[float, float]:
     """Which way, and how far, this cell's image slides toward its spine.
 
-    A page to the left of a fold has its spine on the right, so its image
-    moves right; one to the right of the fold moves left. A cell with no fold
-    beside it does not creep at all.
+    How far is the placement's own depth in the nest times the thickness of a
+    sheet: what displaces a leaf's fold is everything wrapping it. Depth is
+    per placement rather than per sheet because a folded signature carries
+    leaves at several depths at once -- its outer pair does not creep and its
+    inner pair does, on the same piece of paper.
+
+    Which way is decided by the fold: a page to the left of one has its spine
+    on the right, so its image moves right, and a page to the right moves
+    left. A cell with no fold beside it does not creep at all.
     """
+    creep = placement.depth * caliper
     if creep <= 0 or not fold_columns:
         return (0.0, 0.0)
     for boundary in fold_columns:
-        if column == boundary - 1:
+        if placement.column == boundary - 1:
             return (creep, 0.0)
-        if column == boundary:
+        if placement.column == boundary:
             return (-creep, 0.0)
     return (0.0, 0.0)
 
@@ -355,7 +362,7 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     sheet: Size | None = None,
     mark_allowance: float = 0.0,
     trim_origin: Rect,
-    creep: float = 0.0,
+    caliper: float = 0.0,
     fold_columns: tuple[int, ...] = (),
 ) -> SheetLayout:
     """Place one surface on a sheet.
@@ -402,7 +409,7 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
                     source_trim,
                     kept,
                     placement.rotation,
-                    _creep_shift(placement.column, fold_columns, creep),
+                    _creep_shift(placement, fold_columns, caliper),
                 ),
                 rotation=placement.rotation,
                 butts=butts,

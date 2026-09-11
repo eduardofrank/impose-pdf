@@ -8,10 +8,12 @@ import io
 import unittest
 
 from impose.boxes import read_boxes
-from impose.job import _creep_table, impose_document
-from impose.layout import lay_out
+from impose.geometry import Size
+from impose.job import impose_document
+from impose.layout import _creep_shift, lay_out
 from impose.plan import Placement, Surface
 from impose.press import INDIGO_5000
+from impose.schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from impose.units import MM, to_mm
 
 from .support import make_pdf
@@ -19,13 +21,22 @@ from .support import make_pdf
 CALIPER = 0.1 * MM
 
 
-def spread(creep=0.0, rotation=0):
-    """One saddle spread, with the fold between the two columns."""
+def spread(shift=0.0, rotation=0, depth=1):
+    """One saddle spread, with the fold between the two columns.
+
+    *shift* is how far the images should move, which the layout now reaches by
+    multiplying the caliper by the leaf's own depth in the nest.
+    """
     source = make_pdf(4)
     boxes = read_boxes(source.pages[0])
     return lay_out(
         Surface(
-            0, "front", (Placement(3, 0, 0, rotation), Placement(0, 1, 0, rotation))
+            0,
+            "front",
+            (
+                Placement(3, 0, 0, rotation, depth),
+                Placement(0, 1, 0, rotation, depth),
+            ),
         ),
         columns=2,
         rows=1,
@@ -33,7 +44,7 @@ def spread(creep=0.0, rotation=0):
         trim_origin=boxes.trim,
         bleed=boxes.bleed_insets,
         press=INDIGO_5000,
-        creep=creep,
+        caliper=shift / depth if depth else 0.0,
         fold_columns=(1,),
     )
 
@@ -82,17 +93,17 @@ class TestDirection(unittest.TestCase):
         source = make_pdf(4)
         boxes = read_boxes(source.pages[0])
         flat = lay_out(
-            Surface(0, "front", (Placement(0, 0, 0), Placement(1, 1, 0))),
+            Surface(0, "front", (Placement(0, 0, 0, 0, 1), Placement(1, 1, 0, 0, 1))),
             columns=2,
             rows=1,
             trim=boxes.trim_size,
             trim_origin=boxes.trim,
             press=INDIGO_5000,
-            creep=1 * MM,
+            caliper=1 * MM,
             fold_columns=(),
         )
         plain = lay_out(
-            Surface(0, "front", (Placement(0, 0, 0), Placement(1, 1, 0))),
+            Surface(0, "front", (Placement(0, 0, 0, 0, 1), Placement(1, 1, 0, 0, 1))),
             columns=2,
             rows=1,
             trim=boxes.trim_size,
@@ -104,30 +115,148 @@ class TestDirection(unittest.TestCase):
 
 
 class TestDepth(unittest.TestCase):
+    """How deep a page sits in the nest, which is the schema's to say.
+
+    Depth used to be worked out per sheet from the schema name. A folded
+    signature carries leaves at several depths on one piece of paper, so it
+    belongs to the placement instead, and the caliper says what a depth costs.
+    """
+
+    @staticmethod
+    def depths(plan):
+        return [
+            sorted({p.depth for p in surface.placements}) for surface in plan.surfaces
+        ]
+
     def test_the_outermost_sheet_does_not_creep(self):
         """Nothing wraps it, so its fold is not displaced."""
-        self.assertEqual(_creep_table("saddle", CALIPER, 4)(0), 0.0)
+        plan = saddle.impose(16)
+        self.assertEqual(sorted({p.depth for p in plan.surfaces[0].placements}), [0])
 
-    def test_shift_grows_with_depth_in_the_nest(self):
-        table = _creep_table("saddle", CALIPER, 4)
-        self.assertAlmostEqual(to_mm(table(1)), 0.1, places=6)
-        self.assertAlmostEqual(to_mm(table(14)), 1.4, places=6)
+    def test_depth_grows_with_the_nest(self):
+        self.assertEqual(
+            self.depths(saddle.impose(16)), [[0], [0], [1], [1], [2], [2], [3], [3]]
+        )
 
     def test_depth_restarts_with_each_gathered_section(self):
         """Sections are stacked, not nested, so each starts again at zero."""
-        table = _creep_table("perfect", CALIPER, 16)
         self.assertEqual(
-            [round(to_mm(table(n)), 3) for n in range(8)],
-            [0.0, 0.1, 0.2, 0.3, 0.0, 0.1, 0.2, 0.3],
+            self.depths(perfect.impose(32, section_pages=8)),
+            [[0], [0], [1], [1]] * 4,  # 32 pages is four 8-page sections
         )
 
+    def test_a_signature_carries_two_depths_on_one_sheet(self):
+        """Cut the bolts and it is a nest: the outer pair of leaves does not
+        creep and the inner pair does, on the same piece of paper."""
+        plan = signature.impose(8, columns=2, rows=2)
+        self.assertEqual(self.depths(plan), [[0, 1], [0, 1]])
+
+    def test_a_bigger_signature_nests_deeper(self):
+        plan = signature.impose(16, columns=4, rows=2)
+        self.assertEqual(self.depths(plan), [[0, 1, 2, 3], [0, 1, 2, 3]])
+
     def test_flat_schemas_never_creep(self):
-        for schema in ("nup", "cutstack", "steprepeat"):
+        for schema, plan in (
+            ("nup", nup.impose(16, columns=2, rows=2)),
+            ("cutstack", cutstack.impose(16, columns=2, rows=2)),
+            ("steprepeat", steprepeat.impose(2, columns=2, rows=2)),
+        ):
             with self.subTest(schema=schema):
-                self.assertEqual(_creep_table(schema, CALIPER, 4)(5), 0.0)
+                self.assertEqual(
+                    {p.depth for s in plan.surfaces for p in s.placements}, {0}
+                )
 
     def test_no_caliper_is_no_creep(self):
-        self.assertEqual(_creep_table("saddle", 0.0, 4)(5), 0.0)
+        plain, zero = spread(), spread(0.0)
+        for a, b in zip(plain.pages, zero.pages):
+            self.assertEqual(a.clip, b.clip)
+
+    def test_depth_cannot_be_negative(self):
+        with self.assertRaises(ValueError):
+            Placement(0, 0, 0, 0, -1)
+
+
+class TestSheetSpaceDirection(unittest.TestCase):
+    """Which way the image goes, measured before rotation muddies it.
+
+    _creep_shift answers in sheet space and layout expresses that in the
+    source page's own axes, so an upside-down cell's clip window moves the
+    opposite way while its image still travels toward the spine. Checking the
+    clip alone reads as a bug; checking the sheet-space vector does not.
+    """
+
+    FOLD = (1,)
+
+    def shift(self, column, depth, caliper=CALIPER):
+        return _creep_shift(Placement(0, column, 0, 0, depth), self.FOLD, caliper)
+
+    def test_a_page_left_of_the_fold_moves_right(self):
+        x, y = self.shift(column=0, depth=1)
+        self.assertAlmostEqual(x, CALIPER)
+        self.assertEqual(y, 0.0)
+
+    def test_a_page_right_of_the_fold_moves_left(self):
+        x, _ = self.shift(column=1, depth=1)
+        self.assertAlmostEqual(x, -CALIPER)
+
+    def test_the_outer_leaf_does_not_move(self):
+        self.assertEqual(self.shift(column=0, depth=0), (0.0, 0.0))
+
+    def test_distance_is_depth_times_thickness(self):
+        for depth in range(5):
+            with self.subTest(depth=depth):
+                x, _ = self.shift(column=0, depth=depth)
+                self.assertAlmostEqual(x, depth * CALIPER)
+
+    def test_no_thickness_is_no_shift(self):
+        self.assertEqual(self.shift(column=0, depth=3, caliper=0.0), (0.0, 0.0))
+
+    def test_a_cell_with_no_fold_beside_it_does_not_move(self):
+        placement = Placement(0, 0, 0, 0, 3)
+        self.assertEqual(_creep_shift(placement, (), CALIPER), (0.0, 0.0))
+
+
+class TestSignatureCreep(unittest.TestCase):
+    """A folded signature nests within itself, so one sheet creeps unevenly."""
+
+    @staticmethod
+    def clips(caliper):
+        source = make_pdf(16, trim=Size(105 * MM, 148 * MM))
+        boxes = read_boxes(source.pages[0])
+        plan = signature.impose(16, columns=2, rows=2)
+        layout = lay_out(
+            plan.surfaces[0],
+            columns=2,
+            rows=2,
+            trim=boxes.trim_size,
+            trim_origin=boxes.trim,
+            press=INDIGO_5000,
+            caliper=caliper,
+            fold_columns=plan.fold_columns,
+        )
+        depth = {(p.column, p.row): p.depth for p in plan.surfaces[0].placements}
+        return {
+            (p.column, p.row): (depth[(p.column, p.row)], p.clip.x0)
+            for p in layout.pages
+        }
+
+    def test_the_outer_pair_stays_and_the_inner_pair_moves(self):
+        plain, crept = self.clips(0.0), self.clips(CALIPER)
+        for cell, (depth, position) in crept.items():
+            with self.subTest(cell=cell, depth=depth):
+                moved = abs(position - plain[cell][1])
+                self.assertAlmostEqual(moved, depth * CALIPER, places=9)
+
+    def test_both_depths_are_present_on_one_sheet(self):
+        self.assertEqual({d for d, _ in self.clips(CALIPER).values()}, {0, 1})
+
+    def test_the_two_halves_of_a_row_move_opposite_ways(self):
+        """Each toward its own spine, which is on opposite sides."""
+        plain, crept = self.clips(0.0), self.clips(CALIPER)
+        left = crept[(0, 0)][1] - plain[(0, 0)][1]
+        right = crept[(1, 0)][1] - plain[(1, 0)][1]
+        self.assertAlmostEqual(left, -right)
+        self.assertNotAlmostEqual(left, 0.0)
 
 
 class TestEndToEnd(unittest.TestCase):

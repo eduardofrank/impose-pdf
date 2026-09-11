@@ -73,8 +73,8 @@ def impose(pages: int, *, section_pages: int = 4) -> Plan:
                     sheet,
                     "front",
                     (
-                        Placement(_source(left, pages), LEFT, 0),
-                        Placement(_source(right, pages), RIGHT, 0),
+                        Placement(_source(left, pages), LEFT, 0, depth=within),
+                        Placement(_source(right, pages), RIGHT, 0, depth=within),
                     ),
                 )
             )
@@ -83,8 +83,8 @@ def impose(pages: int, *, section_pages: int = 4) -> Plan:
                     sheet,
                     "back",
                     (
-                        Placement(_source(right + 1, pages), LEFT, 0),
-                        Placement(_source(left - 1, pages), RIGHT, 0),
+                        Placement(_source(right + 1, pages), LEFT, 0, depth=within),
+                        Placement(_source(left - 1, pages), RIGHT, 0, depth=within),
                     ),
                 )
             )

@@ -119,6 +119,7 @@ def _sheet(  # pylint: disable=too-many-arguments
                 face.column,
                 face.row,
                 face.rotation,
+                face.depth,
             )
         )
     return [Surface(sheet, side, tuple(placed[side])) for side in ("front", "back")]

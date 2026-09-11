@@ -556,6 +556,15 @@ divided by twenty, is how a shop gets that number. The outermost sheet has
 nothing wrapping it and does not creep at all; depth restarts with each section
 of a perfect-bound book, since sections are gathered rather than nested.
 
+**Depth belongs to the page, not the sheet.** A folded signature is a nest
+inside one piece of paper: cut its bolts and the first leaf pairs with the
+last, the second with the second last, and so on inward. So its outer leaves
+sit at depth 0 and do not creep while its inner leaves do — on the same sheet,
+through the same press pass. The plan carries each page's depth in the nest and
+`--paper-caliper` says what one step of depth costs, which is the only model
+that describes a saddle sheet, a gathered section and a folded signature at
+once.
+
 What moves is the **image inside its cell**, never the cell. The fold is where
 the fold is, and sliding both halves of a spread toward it would only overlap
 them.

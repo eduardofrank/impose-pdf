@@ -40,8 +40,15 @@ class Placement:
     column: int
     row: int
     rotation: int = 0
+    #: Leaves wrapping this one in the fold. Zero is the outside of the nest,
+    #: which does not creep; each step inward is one sheet's thickness of
+    #: push-out at the fore edge. Only the schema knows it, because it is a
+    #: fact about the binding and not about the rectangles.
+    depth: int = 0
 
     def __post_init__(self) -> None:
+        if self.depth < 0:
+            raise ValueError(f"Depth in the nest cannot be negative, got {self.depth}.")
         if self.rotation % 90:
             raise ValueError(f"Rotation must be a quarter turn, got {self.rotation}.")
         if self.column < 0 or self.row < 0:

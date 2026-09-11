@@ -94,16 +94,16 @@ def _sheet(sheet: int, *, first: int, last: int, pages: int) -> list[Surface]:
             sheet,
             "front",
             (
-                Placement(_source(outer_left, pages), LEFT, 0),
-                Placement(_source(outer_right, pages), RIGHT, 0),
+                Placement(_source(outer_left, pages), LEFT, 0, depth=sheet),
+                Placement(_source(outer_right, pages), RIGHT, 0, depth=sheet),
             ),
         ),
         Surface(
             sheet,
             "back",
             (
-                Placement(_source(outer_right + 1, pages), LEFT, 0),
-                Placement(_source(outer_left - 1, pages), RIGHT, 0),
+                Placement(_source(outer_right + 1, pages), LEFT, 0, depth=sheet),
+                Placement(_source(outer_left - 1, pages), RIGHT, 0, depth=sheet),
             ),
         ),
     ]

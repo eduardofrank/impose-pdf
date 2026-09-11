@@ -525,9 +525,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             press=machine,
             sheet=sheet_size,
             allowance=allowance,
-            creep=_creep_table(
-                schema, length(paper_caliper), options.get("section_pages", 4)
-            ),
+            caliper=length(paper_caliper),
         )
         turned = any(layout.turned for layout in layouts)
         warnings = _warnings(plan, schema, max_nested_sheets, boxes)
@@ -615,7 +613,7 @@ def _fit(  # pylint: disable=too-many-arguments
     press: Press,
     sheet: Size,
     allowance: float,
-    creep: Callable[[int], float] = lambda _sheet: 0.0,
+    caliper: float = 0.0,
 ) -> tuple[Plan, list]:
     """Lay every surface out, turning the pages if that is what fits."""
     failure: ImposeError | None = None
@@ -633,7 +631,7 @@ def _fit(  # pylint: disable=too-many-arguments
                     press=press,
                     sheet=sheet,
                     mark_allowance=allowance,
-                    creep=creep(surface.sheet),
+                    caliper=caliper,
                     fold_columns=candidate.fold_columns,
                 )
                 for surface in candidate
@@ -666,24 +664,6 @@ def _form_press(trim: Size, plan: Plan, *, gutters: Gutters, allowance: float) -
         margins=Insets(),
         description="The imposed form itself, for a second pass.",
     )
-
-
-def _creep_table(
-    schema: str, caliper: float, section_pages: int
-) -> Callable[[int], float]:
-    """How far sheet *n*'s image slides toward the spine.
-
-    A sheet's fold is displaced by the thickness of everything wrapping it, so
-    the shift is its depth in the nest times the caliper. Depth restarts with
-    each section of a perfect-bound book, since sections are gathered rather
-    than nested, and the outermost sheet of any nest does not creep at all.
-    """
-    if caliper <= 0 or schema not in ("saddle", "perfect"):
-        return lambda sheet: 0.0
-    if schema == "saddle":
-        return lambda sheet: sheet * caliper
-    per_section = max(1, section_pages // saddle.PAGES_PER_SHEET)
-    return lambda sheet: (sheet % per_section) * caliper
 
 
 def _warnings(

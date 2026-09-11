@@ -77,6 +77,10 @@ class Face:
     column: int
     row: int
     rotation: int = 0
+    #: Leaves wrapping this one. A folded signature is a nest once its bolts
+    #: are cut, so its inner leaves push out at the fore edge exactly as the
+    #: inner sheets of a saddle-stitched booklet do.
+    depth: int = 0
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -127,7 +131,11 @@ def leaves(
     (pile,) = stacks.values()
 
     faces: list[Face] = []
-    for cell in reversed(pile):  # the top of the pile is read first
+    for position, cell in enumerate(reversed(pile)):  # the top reads first
+        # Cut the bolts and a signature is a nest of folded sheets: the first
+        # leaf pairs with the last, the second with the second last, and so on
+        # inward. How many wrap a leaf is how far it pushes out.
+        depth = min(position, len(pile) - 1 - position)
         up = "back" if cell.turned % 2 else "front"
         for side in (up, "front" if up == "back" else "back"):
             column, row = (
@@ -135,7 +143,7 @@ def leaves(
                 if side == "front"
                 else backing_cell(cell.column, cell.row, columns, rows, flip)
             )
-            faces.append(Face(side, column, row, cell.rotation))
+            faces.append(Face(side, column, row, cell.rotation, depth))
     return tuple(faces)
 
 

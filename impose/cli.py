@@ -290,15 +290,17 @@ def build_parser() -> argparse.ArgumentParser:
                 "Default: %(default)s, which holds for bond and coated up to "
                 "about 150 gsm. Heavier stock staples fewer.",
             )
-        if name in ("saddle", "perfect"):
+        if name in ("saddle", "perfect", "signature"):
             schema.add_argument(
                 "--paper-caliper",
                 type=_length,
                 default=0.0,
                 metavar="LENGTH",
                 help="Thickness of one sheet of the stock, which turns on "
-                "creep compensation. Nested sheets push out at the fore edge, "
-                "and each sheet's image is slid toward the spine to match. "
+                "creep compensation. Nested leaves push out at the fore edge, "
+                "and each leaf's image is slid toward the spine to match. A "
+                "folded signature nests within itself, so its inner leaves "
+                "creep while its outer ones do not, on the same sheet. "
                 "Measure it: a micrometer on twenty sheets, divided by twenty.",
             )
         if name == "perfect":
