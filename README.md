@@ -7,9 +7,10 @@ boxes a print-ready PDF already carries — TrimBox is the finished page,
 BleedBox is the margin that gets trimmed away — and targets a named press whose
 sheet size and imageable area it knows.
 
-> **Status: complete for the five schemas it covers.** Library and command line
-> both work end to end. Still to come: a slug line, and native multi-up for the
-> bound schemas. See [Roadmap](#roadmap).
+> **Status: complete for the six schemas it covers.** Library and command line
+> both work end to end. Still to come: a slug line, and putting several copies
+> of a bound job on one sheet in a single pass — which
+> [two-stage jobs](#two-stage-jobs) already do in two. See [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -75,7 +76,9 @@ mm. `orientation="auto"` tries upright first and turns the pages if it must, and
 the summary says which it settled on — `(2 × 4 turned)` against `(2 × 2
 upright)`, in the same words `impose fit` uses to predict it. Binding schemas
 are never turned automatically, because moving the fold turns a side-bound
-booklet into a top-bound one.
+booklet into a top-bound one — and a signature, which folds on both axes, has
+twice the reason. The whole **form** may still be turned on the sheet, which
+moves nothing relative to the folds.
 
 **Gutters follow the binding.** Cut work defaults to 4 mm between pieces —
 what a guillotine needs to come down without shaving a neighbour. A folded
@@ -359,8 +362,14 @@ impose saddle magazine.pdf --paper-caliper 0.1mm
 # Check the page order before committing anything
 impose saddle magazine.pdf --dry-run
 
-# A paperback in 16-page sections on the larger press
-impose perfect novel.pdf --section-pages 16 --press indigo-7000
+# A paperback in 16-page sections, each one sheet folded three times
+impose perfect novel.pdf --section-pages 16 --folded
+
+# The same thing said as a fold grid
+impose signature novel.pdf --up 4x2
+
+# ...or with the biggest signature the press can fold, chosen for you
+impose signature novel.pdf --paper-caliper 0.1mm
 
 # Business cards: how many fit, and what 500 wastes
 impose fit 90mmx50mm -n 500
@@ -409,15 +418,32 @@ impose_document(
 )
 ```
 
+A book in sixteen-page signatures, with the fold grid worked out from the
+section size:
+
+```python
+result = impose_document(
+    "novel.pdf", "novel-imposed.pdf",
+    schema="signature",
+    section_pages=16,
+    paper_caliper="0.1mm",       # inner leaves creep, outer ones do not
+)
+print(result.describe())
+# signature: 16 pages onto 1 sheet(s) at 8 up (4 × 2 upright),
+# page 310 × 450 mm on indigo-5000; finished page 108 × 140 mm,
+# form turned to fit
+```
+
 The schema's own options pass straight through: `columns` and `rows` for the
-grid schemas, `section_pages` for perfect binding, `sides` for step and
-repeat. `marks=None` draws none.
+grid schemas, `section_pages` for perfect binding and for signatures, `sides`
+for step and repeat, `style` and `flip` for signatures. `marks=None` draws
+none, and `plan_only=True` works everything out and writes nothing.
 
 Refusals name the problem rather than producing an unusable sheet:
 
 ```
-Page 4 has a finished size of 80 × 100 mm, but page 1 is 105 × 148 mm.
-Every page must be the same size to go on one grid.
+Page 4 has a finished size of 80 × 100 mm and page 1 has 105 × 148 mm.
+Every page must be the same size and the same way up to go on one grid.
 
 The imposed form is 614 × 442 mm (trims 604 × 432 mm, 2 mm bleed per edge,
 5 mm for marks per edge), and the imageable area is 310 × 450 mm. It does not
@@ -503,6 +529,7 @@ than once. See [Fitting a document](#fitting-a-document).
 | `nup` | read as a stack, not cut | consecutive, reading order |
 | `cutstack` | guillotined into stacks, stacks set on each other | each cell holds a consecutive block |
 | `steprepeat` | cut apart | one artwork, repeated |
+| `signature` | one sheet folded twice or more, sections gathered | nested within the fold, sequential between |
 
 The dividing line between them is whether the sheet gets **cut**, because that
 decides whether it matters which page lands physically behind which.
@@ -610,7 +637,7 @@ more off the inside than the outside. Left alone, the fore-edge margin shrinks
 page by page as you work inward — visible by the middle of a thick booklet.
 
 Give `impose` the thickness of one sheet and it compensates, sliding each
-sheet's image toward the spine by as much as its own fold has been displaced:
+leaf's image toward the spine by as much as its own fold has been displaced:
 
 ```bash
 impose saddle book.pdf --paper-caliper 0.1mm
@@ -812,7 +839,9 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | Uniform-page gate — mixed sizes, orientations and offsets refused by name |
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `fit` from a file, and for the bound schemas' spread |
-| ✅ | `creep` — fore-edge push-out compensated per sheet |
+| ✅ | `fit` for signatures — biggest fold that fits, or a named section size |
+| ✅ | `creep` — fore-edge push-out compensated per leaf, not per sheet |
+| ⬜ | Several copies of a bound job on one sheet in a single pass |
 
 ## Two-stage jobs
 
@@ -922,10 +951,10 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 430 tests, no system libraries, under a second. The suite asserts geometry and
-structure rather than pixels: an imposition is right or wrong by where the
-trims land on the sheet, and expectations are literals from ISO 216 and ISO 217
-rather than restatements of what the code computes.
+Over 560 tests, no system libraries, under two seconds. The suite asserts
+geometry and structure rather than pixels: an imposition is right or wrong by
+where the trims land on the sheet, and expectations are literals from ISO 216
+and ISO 217 rather than restatements of what the code computes.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the
@@ -935,6 +964,15 @@ cut the plan into stacks, set them on each other, read the pages. A page-order
 bug is invisible in a rendered sheet and obvious the moment the pages are
 turned, which is why the old codebase's image-comparison tests could not see
 them.
+
+Where two parts of the code can answer the same question, the strongest check
+is that they agree. A signature folded once is the ordinary folded sheet, so
+`signature.impose(pages, columns=2, rows=1)` must come out identical to
+`perfect.impose(pages, section_pages=4)` — surface for surface, page for page.
+Those two were written from different starting points, so the agreement says
+the folding model is right rather than merely self-consistent. The same holds
+for `impose fit`, which predicts a grid that imposing then has to reach, and
+for `--dry-run`, which is the real call with one flag changed.
 
 ## Licence
 
