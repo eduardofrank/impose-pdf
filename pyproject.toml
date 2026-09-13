@@ -11,7 +11,9 @@ description = "Imposition for commercial print: saddle stitch, perfect bound, n-
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
 license = "MIT"
-license-files = ["LICENSE"]
+# The bundled font is OFL 1.1, which is compatible with MIT and keeps its own
+# terms; both licences are shipped.
+license-files = ["LICENSE", "impose/fonts/LICENSE-OFL.txt"]
 authors = [{name = "Eduardo Frank"}]
 keywords = ["pdf", "imposition", "prepress", "print", "indigo", "saddle-stitch"]
 classifiers = [
@@ -42,6 +44,12 @@ repository = "https://github.com/eduardofrank/impose-pdf.git"
 
 [tool.setuptools.packages.find]
 include = ["impose*"]
+
+[tool.setuptools.package-data]
+# The slug line's font has to ship with the wheel: PDF/X requires every font
+# embedded, so a font that is only present in a source checkout would mean
+# imposed sheets that conform from one install and not from another.
+"impose.fonts" = ["*.ttf", "LICENSE-OFL.txt"]
 
 [tool.black]
 line-length = 88
