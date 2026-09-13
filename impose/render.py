@@ -18,11 +18,14 @@ import pikepdf
 from pikepdf import Array, Dictionary, Name
 
 from . import __version__
+from .font import embed as embed_font
+from .font import load as load_font
 from .geometry import Rect, placement_matrix
 from .layout import PlacedPage, SheetLayout
 from .marks import MarkStyle, Patch, Segment, Target, circle_path
 from .pdfx import Identity, carry_over, minimum_version
 from .pdfx import read as read_identity
+from .slug import Slug
 
 
 def _registration_colorspace(pdf: pikepdf.Pdf) -> Array:
@@ -65,6 +68,34 @@ def _place(page: PlacedPage, name: Name, source_rotation: int = 0) -> str:
         f"{name} Do\n"
         "Q\n"
     )
+
+
+def _draw_slug(slug: Slug, name: Name) -> str:
+    """The content stream fragment that sets the slug line.
+
+    K-only, always. A slug is information for a person, not a device for
+    registering plates, so putting it in registration colour would lay 400 per
+    cent ink in the margin for nothing. The text matrix is a quarter turn
+    counter-clockwise, which is what makes it read up the sheet.
+    """
+    return (
+        "q\n"
+        "/DeviceGray cs 0 sc\n"
+        f"BT\n{name} {_numbers(slug.size)} Tf\n"
+        f"0 1 -1 0 {_numbers(slug.x, slug.y)} Tm\n"
+        f"{_pdf_string(slug.text)} Tj\nET\n"
+        "Q\n"
+    )
+
+
+def _pdf_string(text: str) -> str:
+    """*text* as a PDF literal string, WinAnsi encoded and escaped."""
+    escaped = bytearray()
+    for byte in load_font().encode(text):
+        if byte in b"()\\":
+            escaped.append(0x5C)
+        escaped.append(byte)
+    return "(" + escaped.decode("latin-1") + ")"
 
 
 def _draw_marks(
@@ -160,6 +191,7 @@ class Renderer:
         self.style = style or MarkStyle()
         self._colorspace: Name | None = None
         self._state: Name | None = None
+        self._font = None
         self._min_version = "1.4"
 
     def carry_over(self, source: pikepdf.Pdf) -> Identity:
@@ -192,6 +224,7 @@ class Renderer:
         bar: list[Patch] | None = None,
         source_rotation: int = 0,
         folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
+        slug: Slug | None = None,
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
         sheet = Rect.from_size(layout.sheet)
@@ -218,9 +251,20 @@ class Renderer:
                 stream.append(_draw_targets(targets, *resources))
         if bar:
             stream.append(_draw_patches(bar))
-        page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("ascii")))
+        if slug is not None:
+            stream.append(_draw_slug(slug, self._slug_font(page)))
+        # latin-1 rather than ascii: a content stream is bytes, and a slug
+        # carrying a job called Catálogo puts 0xE1 in a string literal. Every
+        # other fragment here is ASCII, which latin-1 encodes identically.
+        page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("latin-1")))
         _set_boxes(page, sheet, layout, folds)
         return page
+
+    def _slug_font(self, page: pikepdf.Page) -> Name:
+        """The embedded font, added to the document once and shared."""
+        if self._font is None:
+            self._font = embed_font(self.pdf, load_font())
+        return page.add_resource(self._font, Name.Font)
 
     def _mark_resources(self, page: pikepdf.Page) -> tuple[Name | None, Name | None]:
         """Colour space and graphics state for marks, added to *page*."""

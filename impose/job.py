@@ -32,13 +32,15 @@ from .boxes import (
     require_trim,
 )
 from .fit import DEFAULT_GUTTER, best, largest_signature
-from .geometry import Insets, Size, approx
+from .font import load as load_font
+from .geometry import Insets, Rect, Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, furniture, trim_marks
-from .plan import Plan
+from .plan import Plan, Surface
 from .press import Press
 from .press import get as get_press
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
+from .slug import Slug, compose, place
 from .units import format_mm, length, paper
 
 #: Schemas by the name a person would type.
@@ -459,6 +461,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     colour_bar: bool = False,
     page: str = "imageable",
     fold: str = "auto",
+    slug: bool = False,
     plan_only: bool = False,
     **options: Any,
 ) -> Result:
@@ -619,7 +622,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             )
 
         renderer = Renderer(style=style)
-        for layout in layouts:
+        name = _source_name(source)
+        for surface, layout in zip(plan.surfaces, layouts):
             carried = layout.carried_folds(source_folds, boxes.rotation)
             targets, patches = (
                 furniture(
@@ -641,6 +645,14 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 bar=patches,
                 source_rotation=boxes.rotation,
                 folds=folds,
+                slug=_slug(
+                    slug,
+                    surface,
+                    plan=plan,
+                    layout=layout,
+                    press=machine,
+                    name=name,
+                ),
             )
         identity = renderer.carry_over(opened)
         renderer.save(output)
@@ -754,6 +766,42 @@ def _warnings(
         if warning:
             found.append(warning)
     return tuple(found)
+
+
+def _source_name(source: pikepdf.Pdf | str | pathlib.Path) -> str:
+    """What to call the job on the slug: the file's own name."""
+    if isinstance(source, pikepdf.Pdf):
+        return pathlib.Path(source.filename).name if source.filename else "(in memory)"
+    return pathlib.Path(source).name
+
+
+def _slug(  # pylint: disable=too-many-arguments
+    wanted: bool,
+    surface: Surface,
+    *,
+    plan: Plan,
+    layout,
+    press: Press,
+    name: str,
+) -> Slug | None:
+    """The slug for one surface, or None when it is off or will not fit."""
+    if not wanted:
+        return None
+    return place(
+        compose(
+            source=name,
+            sheet=surface.sheet,
+            side=surface.side,
+            sheets=plan.sheets,
+            schema=plan.schema,
+            grid=plan.grid,
+            press=press.name,
+        ),
+        page=Rect.from_size(layout.sheet),
+        form=layout.trim_bounds,
+        reach=DEFAULT_MARKS.reach,
+        font=load_font(),
+    )
 
 
 def _source_folds(

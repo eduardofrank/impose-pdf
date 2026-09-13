@@ -201,6 +201,15 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "for reading density on press.",
     )
     parser.add_argument(
+        "--slug",
+        action="store_true",
+        help="Print a line in the side margin saying what the sheet is: the "
+        "file, the sheet and side, the schema and grid, the press and the "
+        "time. Set vertically in space the sheet already has spare, so it "
+        "costs the artwork nothing, and left off where the margin has no room "
+        "rather than made to fit.",
+    )
+    parser.add_argument(
         "--fold",
         choices=FOLD_CHOICES,
         default="auto",
@@ -686,6 +695,7 @@ def _options(args: argparse.Namespace) -> dict:
         "fold": args.fold,
         "registration": args.registration,
         "colour_bar": args.colour_bar,
+        "slug": args.slug,
         **_schema_options(args, schema),
     }
 
