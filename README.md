@@ -8,9 +8,9 @@ BleedBox is the margin that gets trimmed away — and targets a named press whos
 sheet size and imageable area it knows.
 
 > **Status: complete for the six schemas it covers.** Library and command line
-> both work end to end. Still to come: a slug line, and putting several copies
-> of a bound job on one sheet in a single pass — which
-> [two-stage jobs](#two-stage-jobs) already do in two. See [Roadmap](#roadmap).
+> both work end to end. Still to come: putting several copies of a bound job on
+> one sheet in a single pass — which [two-stage jobs](#two-stage-jobs) already
+> do in two. See [Roadmap](#roadmap).
 
 ## Why this exists
 
@@ -221,6 +221,7 @@ series.
 | `--mark-width LENGTH` | `0.25pt` | stroke width |
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
+| `--slug` | off | a line in the side margin saying what the sheet is |
 | `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
 | `-n`, `--dry-run` | off | show the page order and sheet count, write nothing |
@@ -381,7 +382,7 @@ impose steprepeat card.pdf --gutter 4mm --marks black
 impose nup flyers.pdf --gutter 4mm
 
 # Full press furniture for a proofing sheet
-impose nup artwork.pdf --registration --colour-bar
+impose nup artwork.pdf --registration --colour-bar --slug
 
 # A long document cut into stacks that reassemble in order
 impose cutstack manual.pdf --up 2x2 --gutter 3mm
@@ -747,6 +748,62 @@ This is a working bar, not a standardised one. Fogra, Ugra and GATF wedges are
 specified objects with their own patch geometry; a job that needs one of those
 needs the real thing rather than an approximation of it.
 
+### The slug line
+
+A press sheet that has left the prepress desk carries no record of where it
+came from. `--slug` is that record, set vertically in the side margin and cut
+away when the job is trimmed:
+
+```
+$ impose saddle book.pdf --slug
+book.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000 · 2026-09-14 09:31
+```
+
+The file, then the sheet and side, then what it was imposed for, then when.
+Sheet and side come first after the name because that is what someone holding a
+stack is trying to settle; the press and the grid are there to catch a sheet
+imposed for one machine being run on another.
+
+**Where it goes is decided by what it must not cost.** Every millimetre of
+margin is a millimetre not available to the artwork, so the slug is not allowed
+to enlarge the allowance — it lives in space the sheet already has spare. On an
+Indigo 5000 that is the sides, 8 to 18 mm across the jobs measured, because a
+form on a press whose sheet is taller than it is wide runs out of width first.
+The head and tail can come down to half a millimetre on a full sheet.
+
+Two places it is deliberately not put. **Not in the bleed**: that band is the
+artwork running past the trim so the knife has tolerance, and it is exactly
+where the cut is allowed to wander — ink there can be delivered on the finished
+piece. **Not in the crop-mark band**: 10 pt needs 4.59 mm from ascender to
+descender and the band is 3 mm.
+
+Where the margin has no room the line is left off rather than shrunk or moved
+inward, the same rule the colour bar follows. `--sheet fit` makes the page the
+form, so those jobs get none — and the font is then not embedded at all.
+
+If the line is too long for the form it is shortened by dropping whole fields
+from the end, in the order they are written, so the least useful goes first:
+
+```
+250 mm of form   Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000 · 2026-09-14 09:31
+200 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000
+120 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front
+ 80 mm           Catálogo-primavera… · sheet 1/4 front
+ 40 mm           sheet 1/4 front
+```
+
+The name is shortened last, and from its end, because the beginning of a name
+is what identifies it.
+
+**The font is bundled and embedded**, because PDF/X requires every font
+embedded and a font found on the machine would mean sheets that conform from
+one install and not from another. It is IBM Plex Mono Regular under the SIL
+Open Font License, in `impose/fonts/`, and the reasons for that particular face
+are written down beside it. It costs about 58 kB in the output, and only when a
+slug is actually drawn. The line is set K-only: it is information for a person,
+not a device for registering plates, so registration colour would put 400 per
+cent ink in the margin for nothing.
+
 
 ## PDF/X
 
@@ -835,7 +892,8 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `marks` — registration targets and colour bar |
 | ✅ | `fold` — signature folding derived, head to head or foot to foot |
 | ✅ | `schemas.signature` — one sheet folded twice or more, sections gathered |
-| ⬜ | Slug line (needs an embedded font to stay PDF/X) |
+| ✅ | `font` — the bundled face read and embedded, as PDF/X requires |
+| ✅ | `slug` — what the sheet is, set in the margin it already has spare |
 | ✅ | Uniform-page gate — mixed sizes, orientations and offsets refused by name |
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `fit` from a file, and for the bound schemas' spread |
@@ -951,7 +1009,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 560 tests, no system libraries, under two seconds. The suite asserts
+Over 610 tests, no system libraries, under two seconds. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.
@@ -982,3 +1040,10 @@ The single dependency is [pikepdf](https://github.com/pikepdf/pikepdf)
 (MPL-2.0, over QPDF's Apache-2.0). PyMuPDF is deliberately not used: it is
 AGPL-or-commercial, which would make the MIT licence here misleading to anyone
 redistributing.
+
+One font is bundled, for the slug line: **IBM Plex Mono Regular**, copyright
+IBM Corp., under the [SIL Open Font License
+1.1](impose/fonts/LICENSE-OFL.txt). The OFL permits embedding, which matters
+because an embedded font travels in every PDF this produces. It keeps its own
+terms and ships with its own licence file; it does not affect the MIT licence
+on the code. `impose/fonts/README.md` says why that face.
