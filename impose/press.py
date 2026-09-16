@@ -29,6 +29,12 @@ from .units import MM, format_mm, length, paper, to_mm
 Edge = Literal["bottom", "top", "left", "right"]
 
 
+#: A --sheet value meaning "make the sheet exactly the size of the form".
+#: The first pass of a two-stage job, whose output is imposed again rather
+#: than run.
+FIT_SHEET = "fit"
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class Press:
     """A press: the largest sheet it takes and the border it cannot image."""

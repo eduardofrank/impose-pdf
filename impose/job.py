@@ -37,8 +37,9 @@ from .geometry import Insets, Rect, Size, approx
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, Segment, furniture, trim_marks
 from .plan import Plan, Surface
-from .press import Press
+from .press import FIT_SHEET, Press
 from .press import get as get_press
+from .repeat import repeated
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .slug import Slug, compose, place
 from .units import format_mm, length, paper
@@ -72,7 +73,6 @@ DEFAULT_BLEED = "2mm"
 #: centring, nothing spare. The result is not a press sheet but a *form*: one
 #: folded signature, trimmed to its own outer edge, ready to be fed to a second
 #: imposition that puts several of them on real paper.
-FIT_SHEET = "fit"
 
 #: What the output page is. `imageable` makes it the part of the sheet the
 #: press can actually print, so a form that fits the page is a form that runs --
@@ -114,6 +114,9 @@ class Result:  # pylint: disable=too-many-instance-attributes
     turned: bool
     #: Whether the pages sit on their sides in their cells.
     pages_turned: bool = False
+    #: Complete bound copies on one press sheet. One unless --repeat asked
+    #: for more, in which case the sheet is cut apart into that many books.
+    repeat: int = 1
     pdfx: str | None = None
     warnings: tuple[str, ...] = ()
 
@@ -132,12 +135,13 @@ class Result:  # pylint: disable=too-many-instance-attributes
         turned = ", form turned to fit" if self.turned else ""
         claim = f", {self.pdfx}" if self.pdfx else ""
         way = "turned" if self.pages_turned else "upright"
+        copies = f", {self.repeat} copies per sheet" if self.repeat > 1 else ""
         return (
             f"{self.plan.schema}: {self.plan.pages} pages onto {self.sheets} "
             f"sheet(s) at {self.up} up ({self.plan.columns} × "
-            f"{self.plan.rows} {way}), page {format_mm(self.sheet_size)} on "
-            f"{self.press}; finished page {format_mm(self.trim_size)}"
-            f"{turned}{claim}"
+            f"{self.plan.rows} {way}){copies}, page "
+            f"{format_mm(self.sheet_size)} on {self.press}; finished page "
+            f"{format_mm(self.trim_size)}{turned}{claim}"
         )
 
 
@@ -462,6 +466,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     page: str = "imageable",
     fold: str = "auto",
     slug: bool = False,
+    repeat: str | int | tuple[int, int] | None = None,
     plan_only: bool = False,
     **options: Any,
 ) -> Result:
@@ -520,6 +525,31 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     # a plan costs nothing but this module: the renderer pulls in pikepdf's
     # compiled extension, and the ordering logic has no use for it.
     from .render import Renderer  # pylint: disable=import-outside-toplevel
+
+    if repeat not in (None, 1):
+        return repeated(
+            source,
+            output,
+            repeat,
+            {
+                "schema": schema,
+                "press": press,
+                "sheet": sheet,
+                "gutters": gutters,
+                "marks": marks,
+                "orientation": orientation,
+                "max_nested_sheets": max_nested_sheets,
+                "paper_caliper": paper_caliper,
+                "bleed": bleed,
+                "registration": registration,
+                "colour_bar": colour_bar,
+                "page": page,
+                "fold": fold,
+                "slug": slug,
+                **options,
+            },
+            impose=impose_document,
+        )
 
     opened = _open(source)
     try:
@@ -769,10 +799,20 @@ def _warnings(
 
 
 def _source_name(source: pikepdf.Pdf | str | pathlib.Path) -> str:
-    """What to call the job on the slug: the file's own name."""
+    """What to call the job on the slug: the file's own name.
+
+    A source need not be a file. pikepdf opens a stream as readily as a path,
+    and the two-stage route hands this an in-memory form, so anything without
+    a name of its own is named for what it is rather than crashing the job
+    over a line of text in the margin.
+    """
     if isinstance(source, pikepdf.Pdf):
-        return pathlib.Path(source.filename).name if source.filename else "(in memory)"
-    return pathlib.Path(source).name
+        source = source.filename or ""
+    try:
+        name = pathlib.Path(source).name
+    except TypeError:
+        return getattr(source, "name", None) or "(in memory)"
+    return name or "(in memory)"
 
 
 def _slug(  # pylint: disable=too-many-arguments

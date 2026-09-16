@@ -48,6 +48,9 @@ _GRID_SCHEMAS = ("nup", "cutstack", "steprepeat", "signature")
 #: Schemas that repeat a two-page spread rather than a single page.
 _SPREAD_SCHEMAS = ("saddle", "perfect")
 
+#: Schemas whose form is smaller than the sheet, so copies of it can share one.
+_BOUND_SCHEMAS = ("saddle", "perfect", "signature")
+
 #: Schemas whose sidedness is the operator's to choose. A bound book is
 #: printed both sides by definition; flat work need not be.
 _SIDED_SCHEMAS = ("nup", "cutstack", "steprepeat")
@@ -73,6 +76,13 @@ def _grid(text: str) -> tuple[int, int]:
     if columns < 1 or rows < 1:
         raise argparse.ArgumentTypeError(f"A grid must be at least 1x1; got {text!r}.")
     return (columns, rows)
+
+
+def _repeat(text: str) -> str | tuple[int, int]:
+    """Parse ``auto`` or ``COLUMNSxROWS`` for --repeat."""
+    if text.strip().lower() == "auto":
+        return "auto"
+    return _grid(text)
 
 
 def _length(text: str) -> float:
@@ -278,6 +288,18 @@ def build_parser() -> argparse.ArgumentParser:
                     else "How many pages across and down. Omit it and the "
                     "densest grid that fits the press is chosen for you."
                 ),
+            )
+        if name in _BOUND_SCHEMAS:
+            schema.add_argument(
+                "--repeat",
+                type=_repeat,
+                default=None,
+                metavar="auto|COLUMNSxROWS",
+                help="Put several complete copies of the book on one press "
+                "sheet and cut them apart. A bound form is smaller than the "
+                "sheet, so the spare room holds another whole copy: two "
+                "half-letter booklets share an Indigo sheet and four "
+                "quarter-letter ones do. `auto` fits as many as it can.",
             )
         if name == "signature":
             schema.add_argument(
@@ -696,6 +718,7 @@ def _options(args: argparse.Namespace) -> dict:
         "registration": args.registration,
         "colour_bar": args.colour_bar,
         "slug": args.slug,
+        "repeat": getattr(args, "repeat", None),
         **_schema_options(args, schema),
     }
 
