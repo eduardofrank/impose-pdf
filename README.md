@@ -7,10 +7,9 @@ boxes a print-ready PDF already carries — TrimBox is the finished page,
 BleedBox is the margin that gets trimmed away — and targets a named press whose
 sheet size and imageable area it knows.
 
-> **Status: complete for the six schemas it covers.** Library and command line
-> both work end to end. Still to come: putting several copies of a bound job on
-> one sheet in a single pass — which [two-stage jobs](#two-stage-jobs) already
-> do in two. See [Roadmap](#roadmap).
+> **Status: complete.** Every schema, the fitting, the marks and furniture,
+> creep, PDF/X passthrough and the slug line all work from the library and the
+> command line. See [Roadmap](#roadmap) for what is built.
 
 ## Why this exists
 
@@ -222,6 +221,7 @@ series.
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
 | `--slug` | off | a line in the side margin saying what the sheet is |
+| `--repeat auto\|COLUMNSxROWS` | off | several complete copies of a bound job on one sheet (`saddle`, `perfect`, `signature`) |
 | `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
 | `-n`, `--dry-run` | off | show the page order and sheet count, write nothing |
@@ -363,8 +363,13 @@ impose saddle magazine.pdf --paper-caliper 0.1mm
 # Check the page order before committing anything
 impose saddle magazine.pdf --dry-run
 
-# A paperback in 16-page sections, each one sheet folded three times
+# A paperback in 16-page sections, each one sheet folded three times.
+# Needs a page small enough: a quarter-letter book folds to 16, a
+# half-letter one only to 8. `impose fit --schema signature` says which.
 impose perfect novel.pdf --section-pages 16 --folded
+
+# Two whole booklets to a press sheet, cut apart after folding
+impose saddle booklet.pdf --repeat auto
 
 # The same thing said as a fold grid
 impose signature novel.pdf --up 4x2
@@ -899,26 +904,67 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `fit` from a file, and for the bound schemas' spread |
 | ✅ | `fit` for signatures — biggest fold that fits, or a named section size |
 | ✅ | `creep` — fore-edge push-out compensated per leaf, not per sheet |
-| ⬜ | Several copies of a bound job on one sheet in a single pass |
+| ✅ | `repeat` — several complete copies of a bound job on one sheet |
 
-## Two-stage jobs
+## Several copies to a sheet
 
 A saddle spread often uses a fraction of the sheet. A 16-page half-letter
 booklet is a 279 × 216 mm spread on a 310 × 450 mm imageable area — 43% of it,
-with 234 mm of height wasted on every sheet.
+with 234 mm of height wasted on every sheet. The room left over holds another
+whole copy of the same book:
 
-`impose fit booklet.pdf --schema saddle` says how many booklets share a sheet
-and prints the two passes to run. Impose the signature onto its own outer edge
-first, then step and repeat that form:
+```
+$ impose saddle booklet.pdf
+saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1 upright), ...
+
+$ impose saddle booklet.pdf --repeat auto
+saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1 upright), 2 copies per sheet, ...
+```
+
+Four sheets either way — but the second gives **two** finished books, so the
+press cost per book halves. A quarter-letter booklet goes four to a sheet.
+`impose fit booklet.pdf --schema saddle` answers how many share one before you
+commit to it, and `--repeat 1x2` pins the arrangement if you would rather say
+it than have it chosen. A grid that will not fit is refused and says so in the
+form's own measurements:
+
+```
+$ impose saddle booklet.pdf --repeat 2x2
+impose: 2 × 2 copies of the saddle-stitch form (283.4 × 219.9 mm each) do not
+fit. The imposed form is 445.8 × 572.8 mm ... and the imageable area is
+310 × 450 mm.
+```
+
+Each sheet carries **copies of one signature**, not consecutive ones. Cut down
+the gutter and there are two identical folded sets, one for each copy — no
+collation to get wrong. That is the arrangement a run wants; for a single
+exemplar off the fewest sheets, use larger [signatures](#signatures) instead.
+
+### Doing it in two passes yourself
+
+`--repeat` runs two passes internally and never writes the intermediate. The
+same thing by hand:
 
 ```bash
 impose saddle booklet.pdf --sheet fit --marks none -o forms.pdf
 impose steprepeat forms.pdf -o press.pdf
 ```
 
+The output is identical — same pages, same form positions, same marks — so
+either is safe. Do it by hand when you want to inspect the form, or to feed a
+form that came from somewhere else.
+
+Two passes rather than one wider grid is a deliberate choice. The form's own
+folds butt and the cut between copies does not, so a single pass would need a
+gutter that differed from boundary to boundary rather than per axis.
+
 Leave the second pass to choose its grid. Pinning it with `--up` also turns off
 the auto-orientation that made the grid fit, so a form that needs turning a
 quarter will be refused.
+
+Leave the marks off the form as well. They would sit outside its TrimBox, which
+the second pass clips to, so they would be silently discarded — the fold is
+carried across as a record instead, and the second pass draws it.
 
 The second pass fills each sheet with **copies of one signature**. Cut down the
 gutter and there are two identical folded sheets, one for each copy of the
@@ -1009,7 +1055,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 610 tests, no system libraries, under two seconds. The suite asserts
+Over 630 tests, no system libraries, under two seconds. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.

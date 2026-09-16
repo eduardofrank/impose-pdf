@@ -112,7 +112,7 @@ def repeated(
         # about a form that will not fit. Say what that form is, or the
         # measurement in the message looks unrelated to anything asked for.
         raise ImposeError(
-            f"{repeat} copies of the {first.plan.schema} form "
+            f"{_asked_for(repeat)} of the {first.plan.schema} form "
             f"({format_mm(first.sheet_size)} each) do not fit. {error}"
         ) from error
     copies = second.plan.columns * second.plan.rows
@@ -128,6 +128,21 @@ def repeated(
         repeat=copies,
         warnings=first.warnings + second.warnings,
     )
+
+
+def _asked_for(repeat: str | int | tuple[int, int]) -> str:
+    """How to name the repeat in a refusal, in the words it was asked for.
+
+    >>> _asked_for((2, 2))
+    '2 × 2 copies'
+    >>> _asked_for("auto")
+    'Copies'
+    """
+    if isinstance(repeat, tuple):
+        return f"{repeat[0]} × {repeat[1]} copies"
+    if isinstance(repeat, int):
+        return f"{repeat} copies"
+    return "Copies"
 
 
 def _repeat_grid(repeat: str | int | tuple[int, int]) -> dict:
