@@ -41,6 +41,7 @@ from .press import FIT_SHEET, Press
 from .press import get as get_press
 from .repeat import repeated
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
+from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .slug import Slug, compose, place
 from .units import format_mm, length, paper
 
@@ -466,6 +467,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     page: str = "imageable",
     fold: str = "auto",
     slug: bool = False,
+    slug_size: float = SLUG_SIZE,
     repeat: str | int | tuple[int, int] | None = None,
     plan_only: bool = False,
     **options: Any,
@@ -546,6 +548,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 "page": page,
                 "fold": fold,
                 "slug": slug,
+                "slug_size": slug_size,
                 **options,
             },
             impose=impose_document,
@@ -682,6 +685,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                     layout=layout,
                     press=machine,
                     name=name,
+                    size=slug_size,
                 ),
             )
         identity = renderer.carry_over(opened)
@@ -823,6 +827,7 @@ def _slug(  # pylint: disable=too-many-arguments
     layout,
     press: Press,
     name: str,
+    size: float = SLUG_SIZE,
 ) -> Slug | None:
     """The slug for one surface, or None when it is off or will not fit."""
     if not wanted:
@@ -841,6 +846,7 @@ def _slug(  # pylint: disable=too-many-arguments
         form=layout.trim_bounds,
         reach=DEFAULT_MARKS.reach,
         font=load_font(),
+        size=size,
     )
 
 

@@ -40,6 +40,7 @@ from .press import get as get_press
 from .press import press_names
 from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
+from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
@@ -218,6 +219,16 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "time. Set vertically in space the sheet already has spare, so it "
         "costs the artwork nothing, and left off where the margin has no room "
         "rather than made to fit.",
+    )
+    parser.add_argument(
+        "--slug-size",
+        type=float,
+        default=SLUG_SIZE,
+        metavar="POINTS",
+        help="Text size for the slug. Default: %(default)g pt, which reads at "
+        "arm's length on the stacker. Smaller fits a longer line into a short "
+        "form; larger needs a wider margin and may be left off for want of "
+        "one.",
     )
     parser.add_argument(
         "--fold",
@@ -718,6 +729,7 @@ def _options(args: argparse.Namespace) -> dict:
         "registration": args.registration,
         "colour_bar": args.colour_bar,
         "slug": args.slug,
+        "slug_size": args.slug_size,
         "repeat": getattr(args, "repeat", None),
         **_schema_options(args, schema),
     }
