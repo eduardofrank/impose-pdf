@@ -13,7 +13,7 @@ import pikepdf
 
 from impose.font import load
 from impose.geometry import Rect, Size
-from impose.slug import GAP, compose, place
+from impose.slug import DEFAULT_SIZE, GAP, compose, place
 from impose.units import MM
 
 from .support import make_pdf
@@ -117,7 +117,7 @@ class TestPlacing(unittest.TestCase):
         )
 
     def test_the_boundary_is_the_strip_plus_its_clearances(self):
-        strip = self.font.height(10)
+        strip = self.font.height(DEFAULT_SIZE)
         for slack, expected in ((0.2 * MM, True), (-0.2 * MM, False)):
             with self.subTest(slack=slack):
                 need = strip + 2 * GAP + slack
@@ -126,6 +126,32 @@ class TestPlacing(unittest.TestCase):
                     line(), page=PAGE, form=form, reach=REACH, font=self.font
                 )
                 self.assertEqual(placed is not None, expected)
+
+
+class TestDefaultSize(unittest.TestCase):
+    """Eight point, chosen on a printed proof rather than on screen.
+
+    The margin has room for more, so the constraint is not the sheet -- it is
+    the form's height. At 10 pt a half-letter saddle job is 40 mm from losing
+    its timestamp and at 12 pt it has already lost it; at 8 pt there is room
+    to spare on every job the shop runs.
+    """
+
+    def test_it_is_eight_point(self):
+        self.assertEqual(DEFAULT_SIZE, 8.0)
+
+    def test_the_whole_line_fits_a_half_letter_form(self):
+        form = Rect(15.3 * MM, 7.1 * MM, 294.7 * MM, 223 * MM)
+        slug = place(line(), page=PAGE, form=form, reach=REACH, font=load())
+        self.assertEqual(slug.text, line())
+
+    def test_it_still_clears_the_marks_and_the_edge(self):
+        font = load()
+        slug = place(line(), page=PAGE, form=FORM, reach=REACH, font=font)
+        left = slug.x - font.ascent * slug.size / 1000
+        right = slug.x - font.descent * slug.size / 1000
+        self.assertGreaterEqual(left, PAGE.x0)
+        self.assertLessEqual(right, FORM.x0 - REACH)
 
 
 class TestShortening(unittest.TestCase):
@@ -143,7 +169,9 @@ class TestShortening(unittest.TestCase):
         ladder = []
         for height in (250, 160, 80, 40):
             form = Rect(15.3 * MM, 0, 294.7 * MM, height * MM)
-            slug = place(line(), page=PAGE, form=form, reach=REACH, font=self.font)
+            slug = place(
+                line(), page=PAGE, form=form, reach=REACH, font=self.font, size=10
+            )
             ladder.append(slug.text)
         self.assertIn("2026-09-12", ladder[0])
         self.assertNotIn("2026-09-12", ladder[1])
@@ -155,7 +183,9 @@ class TestShortening(unittest.TestCase):
     def test_the_name_is_shortened_from_its_end_and_only_last(self):
         """The beginning of a name is what identifies it."""
         short = Rect(15.3 * MM, 0, 294.7 * MM, 60 * MM)
-        slug = place(line(), page=PAGE, form=short, reach=REACH, font=self.font)
+        slug = place(
+            line(), page=PAGE, form=short, reach=REACH, font=self.font, size=10
+        )
         self.assertTrue(slug.text.startswith("Catálogo"))
         self.assertIn("…", slug.text)
         self.assertTrue(slug.text.endswith("sheet 1/4 front"))

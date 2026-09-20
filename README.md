@@ -221,6 +221,7 @@ series.
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
 | `--slug` | off | a line in the side margin saying what the sheet is |
+| `--slug-size POINTS` | `8` | text size for that line |
 | `--repeat auto\|COLUMNSxROWS` | off | several complete copies of a bound job on one sheet (`saddle`, `perfect`, `signature`) |
 | `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
@@ -779,8 +780,10 @@ The head and tail can come down to half a millimetre on a full sheet.
 Two places it is deliberately not put. **Not in the bleed**: that band is the
 artwork running past the trim so the knife has tolerance, and it is exactly
 where the cut is allowed to wander — ink there can be delivered on the finished
-piece. **Not in the crop-mark band**: 10 pt needs 4.59 mm from ascender to
-descender and the band is 3 mm.
+piece. **Not in the crop-mark band**: the type needs 3.67 mm from ascender to
+descender at the default 8 pt, and the band is 3 mm. `--slug-size` moves it;
+the ceiling is the form's height rather than the margin, since a taller line
+is a longer one and the fields start dropping.
 
 Where the margin has no room the line is left off rather than shrunk or moved
 inward, the same rule the colour bar follows. `--sheet fit` makes the page the
@@ -790,11 +793,11 @@ If the line is too long for the form it is shortened by dropping whole fields
 from the end, in the order they are written, so the least useful goes first:
 
 ```
-250 mm of form   Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000 · 2026-09-14 09:31
-200 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000
-120 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front
- 80 mm           Catálogo-primavera… · sheet 1/4 front
- 40 mm           sheet 1/4 front
+200 mm of form   Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000 · 2026-09-20 10:15
+160 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front · saddle-stitch 2×1 · indigo-5000
+100 mm           Catálogo-primavera-2026.pdf · sheet 1/4 front
+ 60 mm           Catálogo-primave… · sheet 1/4 front
+ 40 mm           Catá… · sheet 1/4 front
 ```
 
 The name is shortened last, and from its end, because the beginning of a name

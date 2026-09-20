@@ -41,8 +41,10 @@ from .geometry import Rect
 from .units import MM
 
 #: Text size. Large enough to read at arm's length on the stacker without
-#: leaning in, which is the whole point of it.
-DEFAULT_SIZE = 10.0
+#: leaning in, and small enough that the line still fits a short form: at
+#: 10 pt a half-letter saddle job is 40 mm from losing its timestamp, and at
+#: 12 pt it has already lost it.
+DEFAULT_SIZE = 8.0
 
 #: Clearance kept between the slug and whatever is on either side of it.
 GAP = 1.0 * MM
