@@ -87,6 +87,11 @@ def compose(  # pylint: disable=too-many-arguments
     holding a stack is trying to settle. The press and the grid are there to
     catch a sheet imposed for one machine being run on another.
 
+    This order was checked with the operator who reads these on the stacker
+    rather than reasoned out here, so it is worth a question before changing
+    it. It is also the order fields are dropped in when the line will not fit,
+    which is why the least useful one is last.
+
     >>> compose(source="Catálogo.pdf", sheet=0, side="front", sheets=4,
     ...         schema="saddle-stitch", grid=(2, 1), press="indigo-5000",
     ...         when=datetime.datetime(2026, 9, 12, 21, 30))
