@@ -807,10 +807,31 @@ is what identifies it.
 embedded and a font found on the machine would mean sheets that conform from
 one install and not from another. It is IBM Plex Mono Regular under the SIL
 Open Font License, in `impose/fonts/`, and the reasons for that particular face
-are written down beside it. It costs about 58 kB in the output, and only when a
-slug is actually drawn. The line is set K-only: it is information for a person,
-not a device for registering plates, so registration colour would put 400 per
-cent ink in the margin for nothing.
+are written down beside it. The line is set K-only: it is information for a
+person, not a device for registering plates, so registration colour would put
+400 per cent ink in the margin for nothing.
+
+**Only the glyphs the slug uses are embedded.** The bundled face is 134 kB and
+82 per cent of that is the outlines of 1028 glyphs; a slug line uses about
+thirty. Cutting the rest away takes the cost on a real catalogue from 58 kB to
+10 kB — 12 per cent of the file down to 2. The name carries the six-letter tag
+PDF requires of a subset, so a reader can tell it from the whole face:
+`/DABAON+IBMPlexMono-Regular`.
+
+The subset keeps the original glyph numbering rather than packing it densely.
+That is the whole design: renumbering would force `cmap` to be rewritten,
+`hmtx` rebuilt and every composite glyph's component references renumbered
+inside its own outline data, and all three stay correct untouched if the
+numbers do not move. A glyph nobody needs simply becomes a zero-length entry in
+the index. It costs a couple of kilobytes of sparse index against a quantity of
+machinery that could be subtly wrong — and a subsetter is the kind of code that
+fails silently, producing a font that parses, embeds and renders every glyph
+but one.
+
+Composite glyphs bring their components: `á` is an outline that says *draw
+glyph 68 here and glyph 941 there*, and dropping a component would leave the
+accent off — which on a Spanish job name is exactly the failure this face was
+chosen to avoid.
 
 
 ## PDF/X
@@ -902,6 +923,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `schemas.signature` — one sheet folded twice or more, sections gathered |
 | ✅ | `font` — the bundled face read and embedded, as PDF/X requires |
 | ✅ | `slug` — what the sheet is, set in the margin it already has spare |
+| ✅ | `subset` — only the glyphs the slug uses are embedded |
 | ✅ | Uniform-page gate — mixed sizes, orientations and offsets refused by name |
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `fit` from a file, and for the bound schemas' spread |
@@ -1058,7 +1080,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 630 tests, no system libraries, under two seconds. The suite asserts
+Over 660 tests, no system libraries, under two seconds. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.

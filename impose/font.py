@@ -98,8 +98,82 @@ class Font:  # pylint: disable=too-many-instance-attributes
         ).encode("cp1252", errors="replace")
 
 
-def embed(pdf, font: Font):
-    """Put *font* in *pdf* and return the font dictionary.
+def glyphs(font: Font, text: str) -> set[int]:
+    """The glyph numbers *text* needs, through the font's Unicode cmap.
+
+    >>> sorted(glyphs(load(), "aá"))
+    [1, 177]
+    """
+    lookup = _unicode_cmap(font)
+    return {lookup(character) for character in text} - {0}
+
+
+def _unicode_cmap(font: Font):  # pylint: disable=too-many-locals
+    """A character-to-glyph lookup from the (3, 1) format 4 subtable.
+
+    Format 4 is what every modern font uses for the Basic Multilingual Plane,
+    and it is the subtable a PDF reader consults for a non-symbolic TrueType
+    font -- so reading the same one is how this stays in step with whatever
+    the reader will do.
+    """
+    data = font.data
+    start = _tables(data, pathlib.Path(font.name))["cmap"]
+    count = struct.unpack(">H", data[start + 2 : start + 4])[0]
+    subtable = None
+    for index in range(count):
+        record = start + 4 + 8 * index
+        platform, encoding, offset = struct.unpack(">HHI", data[record : record + 8])
+        if (platform, encoding) == (3, 1):
+            subtable = start + offset
+    if subtable is None:
+        raise ImposeError(
+            f"{font.name} has no Unicode cmap, so there is no way to say "
+            f"which glyph a character needs."
+        )
+    form, _length, _language, segments = struct.unpack(
+        ">HHHH", data[subtable : subtable + 8]
+    )
+    if form != 4:
+        raise ImposeError(f"{font.name} uses cmap format {form}, which is not read.")
+
+    count = segments // 2
+    ends = struct.unpack(f">{count}H", data[subtable + 14 : subtable + 14 + segments])
+    at = subtable + 16 + segments
+    starts = struct.unpack(f">{count}H", data[at : at + segments])
+    deltas = struct.unpack(f">{count}h", data[at + segments : at + 2 * segments])
+    ranges_at = at + 2 * segments
+    ranges = struct.unpack(f">{count}H", data[ranges_at : ranges_at + segments])
+
+    def lookup(character: str) -> int:
+        code = ord(character)
+        for index in range(count):
+            if not starts[index] <= code <= ends[index]:
+                continue
+            if ranges[index] == 0:
+                return (code + deltas[index]) & 0xFFFF
+            where = ranges_at + 2 * index + ranges[index] + 2 * (code - starts[index])
+            glyph = struct.unpack(">H", data[where : where + 2])[0]
+            return (glyph + deltas[index]) & 0xFFFF if glyph else 0
+        return 0
+
+    return lookup
+
+
+def reserve(pdf):
+    """An empty font object to reference now and describe later.
+
+    The renderer knows what a page's slug says as it draws it, but not what
+    every page will say until the document is finished -- and a subset cannot
+    be cut until the whole repertoire is known. So pages take a reference to
+    this and :func:`describe` fills it in at the end.
+    """
+    from pikepdf import Dictionary  # pylint: disable=import-outside-toplevel
+
+    return pdf.make_indirect(Dictionary())
+
+
+def describe(pdf, obj, font: Font, characters: str | None = None) -> None:
+    """Fill a reserved font object in, carrying only what *characters* need.
 
     A simple TrueType font: the glyphs are reached through WinAnsiEncoding, so
     one byte is one character and the ``/Widths`` array covers the codes the
@@ -108,18 +182,30 @@ def embed(pdf, font: Font):
 
     ``/Length1`` is the uncompressed size of the font file, which is how a
     reader knows where the TrueType data ends once the stream is deflated.
+
+    With *characters*, the embedded file is cut down to the glyphs they need
+    and the name takes the six-letter tag PDF requires of a subset, so a
+    reader can tell it apart from the whole face of the same name.
     """
     # Imported here rather than at module scope so that measuring text costs
     # nothing but this module: the renderer pulls in pikepdf's compiled
     # extension, and a caller asking how wide a slug sets has no use for it.
     from pikepdf import Array, Dictionary, Name, Stream  # pylint: disable=C0415
 
-    file_stream = Stream(pdf, font.data)
-    file_stream["/Length1"] = len(font.data)
+    from .subset import subset, tag_for  # pylint: disable=C0415
+
+    data, name = font.data, font.name
+    if characters:
+        wanted = glyphs(font, characters)
+        data = subset(font.data, wanted)
+        name = f"{tag_for(wanted)}+{font.name}"
+
+    file_stream = Stream(pdf, data)
+    file_stream["/Length1"] = len(data)
     descriptor = pdf.make_indirect(
         Dictionary(
             Type=Name.FontDescriptor,
-            FontName=Name("/" + font.name),
+            FontName=Name("/" + name),
             Flags=FLAGS,
             FontBBox=Array(list(font.bbox)),
             ItalicAngle=font.italic_angle,
@@ -130,18 +216,21 @@ def embed(pdf, font: Font):
             FontFile2=pdf.make_indirect(file_stream),
         )
     )
-    return pdf.make_indirect(
-        Dictionary(
-            Type=Name.Font,
-            Subtype=Name.TrueType,
-            BaseFont=Name("/" + font.name),
-            FirstChar=FIRST_CHAR,
-            LastChar=LAST_CHAR,
-            Widths=Array([font.advance] * (LAST_CHAR - FIRST_CHAR + 1)),
-            Encoding=Name.WinAnsiEncoding,
-            FontDescriptor=descriptor,
-        )
-    )
+    obj["/Type"] = Name.Font
+    obj["/Subtype"] = Name.TrueType
+    obj["/BaseFont"] = Name("/" + name)
+    obj["/FirstChar"] = FIRST_CHAR
+    obj["/LastChar"] = LAST_CHAR
+    obj["/Widths"] = Array([font.advance] * (LAST_CHAR - FIRST_CHAR + 1))
+    obj["/Encoding"] = Name.WinAnsiEncoding
+    obj["/FontDescriptor"] = descriptor
+
+
+def embed(pdf, font: Font, characters: str | None = None):
+    """Put *font* in *pdf* and return the font dictionary."""
+    obj = reserve(pdf)
+    describe(pdf, obj, font, characters)
+    return obj
 
 
 def _stem_width(font: Font) -> int:

@@ -18,8 +18,9 @@ import pikepdf
 from pikepdf import Array, Dictionary, Name
 
 from . import __version__
-from .font import embed as embed_font
+from .font import describe as describe_font
 from .font import load as load_font
+from .font import reserve as reserve_font
 from .geometry import Rect, placement_matrix
 from .layout import PlacedPage, SheetLayout
 from .marks import MarkStyle, Patch, Segment, Target, circle_path
@@ -192,6 +193,11 @@ class Renderer:
         self._colorspace: Name | None = None
         self._state: Name | None = None
         self._font = None
+        # Every character any slug in this document sets. The font cannot be
+        # cut down until they are all known, which is not until the last page
+        # has been added -- so the object is reserved now and described at
+        # save time.
+        self._slug_characters: set[str] = set()
         self._min_version = "1.4"
 
     def carry_over(self, source: pikepdf.Pdf) -> Identity:
@@ -252,6 +258,7 @@ class Renderer:
         if bar:
             stream.append(_draw_patches(bar))
         if slug is not None:
+            self._slug_characters |= set(slug.text)
             stream.append(_draw_slug(slug, self._slug_font(page)))
         # latin-1 rather than ascii: a content stream is bytes, and a slug
         # carrying a job called Catálogo puts 0xE1 in a string literal. Every
@@ -261,9 +268,9 @@ class Renderer:
         return page
 
     def _slug_font(self, page: pikepdf.Page) -> Name:
-        """The embedded font, added to the document once and shared."""
+        """The font object, reserved once and shared by every page."""
         if self._font is None:
-            self._font = embed_font(self.pdf, load_font())
+            self._font = reserve_font(self.pdf)
         return page.add_resource(self._font, Name.Font)
 
     def _mark_resources(self, page: pikepdf.Page) -> tuple[Name | None, Name | None]:
@@ -278,6 +285,13 @@ class Renderer:
 
     def save(self, path, *, linearize: bool = False) -> None:
         """Write the document, compressed and with unused objects dropped."""
+        if self._font is not None:
+            # Now that every page is in, the repertoire is known and the font
+            # can be cut to it: the bundled face is 134 kB and a slug uses
+            # about thirty glyphs of it.
+            describe_font(
+                self.pdf, self._font, load_font(), "".join(self._slug_characters)
+            )
         with self.pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
             meta["dc:creator"] = ["impose"]
             meta["pdf:Producer"] = f"impose {__version__}"
