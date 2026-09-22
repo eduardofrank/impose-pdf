@@ -156,6 +156,109 @@ class TestPlacement(unittest.TestCase):
         self.assertEqual(len(renderer.pdf.pages[0].obj["/Resources"]["/XObject"]), 1)
 
 
+def _embed_image(pdf, page_index, payload):
+    """Put an image XObject on one page, so a copy can be counted later."""
+    page = pdf.pages[page_index]
+    image = pikepdf.Stream(
+        pdf,
+        payload,
+        Type=pikepdf.Name.XObject,
+        Subtype=pikepdf.Name.Image,
+        Width=16,
+        Height=16,
+        ColorSpace=pikepdf.Name.DeviceGray,
+        BitsPerComponent=8,
+    )
+    name = page.add_resource(image, pikepdf.Name.XObject)
+    page.contents_add(pikepdf.Stream(pdf, f"q\n{name} Do\nQ\n".encode("ascii")))
+
+
+def _xobjects(pdf):
+    """Form and image XObjects reachable from the pages, once each."""
+    forms = {}
+    images = {}
+
+    def visit(xobj):
+        subtype = str(xobj.get("/Subtype", ""))
+        identity = xobj.objgen if xobj.is_indirect else id(xobj)
+        if subtype == "/Form":
+            if identity in forms:
+                return
+            forms[identity] = xobj
+            nested = xobj.get("/Resources", {}).get("/XObject", {})
+            for child in nested.values():
+                visit(child)
+        elif subtype == "/Image":
+            images[identity] = xobj
+
+    for page in pdf.pages:
+        for xobj in page.obj.get("/Resources", {}).get("/XObject", {}).values():
+            visit(xobj)
+    return forms, images
+
+
+def _repeated(source, cells, columns, rows):
+    """Lay *cells* out as one surface. Each entry is a source page number."""
+    boxes = read_boxes(source.pages[0])
+    placements = tuple(
+        Placement(page, index % columns, index // columns)
+        for index, page in enumerate(cells)
+    )
+    return lay_out(
+        Surface(0, "front", placements),
+        columns=columns,
+        rows=rows,
+        trim=boxes.trim_size,
+        trim_origin=boxes.trim,
+        bleed=boxes.bleed_insets,
+        press=INDIGO_5000,
+    )
+
+
+class TestSharedForm(unittest.TestCase):
+    """One source page is one form, however many cells show it."""
+
+    def test_one_page_repeated_across_a_sheet_is_one_form(self):
+        payload = bytes(range(256))
+        source = make_pdf(1)
+        _embed_image(source, 0, payload)
+        layout = _repeated(source, (0, 0, 0, 0), columns=2, rows=2)
+        renderer = Renderer()
+        renderer.add(layout, source)
+        renderer.add(layout, source)
+
+        for page in renderer.pdf.pages:
+            self.assertEqual(content(page).count("re W n"), 4)
+        forms, images = _xobjects(renderer.pdf)
+        self.assertEqual(len(forms), 1)
+        self.assertEqual(len(images), 1)
+        self.assertEqual(next(iter(images.values())).read_bytes(), payload)
+
+        buffer = io.BytesIO()
+        renderer.save(buffer)
+        buffer.seek(0)
+        with pikepdf.open(buffer) as written:
+            forms, images = _xobjects(written)
+            self.assertEqual(len(forms), 1)
+            self.assertEqual(len(images), 1)
+            self.assertEqual(next(iter(images.values())).read_bytes(), payload)
+
+    def test_distinct_pages_stay_distinct_forms(self):
+        first = bytes(range(256))
+        second = bytes(range(255, -1, -1))
+        source = make_pdf(2)
+        _embed_image(source, 0, first)
+        _embed_image(source, 1, second)
+        renderer = Renderer()
+        renderer.add(_repeated(source, (0, 0, 1, 1), columns=2, rows=2), source)
+
+        forms, images = _xobjects(renderer.pdf)
+        self.assertEqual(len(forms), 2)
+        self.assertEqual(len(images), 2)
+        payloads = {image.read_bytes() for image in images.values()}
+        self.assertEqual(payloads, {first, second})
+
+
 class TestMarkColour(unittest.TestCase):
     def test_registration_uses_separation_all(self):
         """A mark must appear on every plate, not only on black."""
