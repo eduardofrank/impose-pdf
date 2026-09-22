@@ -7,8 +7,10 @@ what a PDF is, and its job is narrow: put each source page where the layout
 says, clipped to what the layout kept, and draw the marks in a colour that will
 survive separation.
 
-Pages are placed as form XObjects and moved with a matrix. Nothing is scaled --
-a finished page is the size it is, and a tool that quietly resizes artwork to
+Pages are placed as form XObjects and moved with a matrix. A source page is
+copied once, however many cells show it: the clip, the rotation and the creep
+shift differ per cell, and the artwork does not. Nothing is scaled -- a
+finished page is the size it is, and a tool that quietly resizes artwork to
 make it fit has destroyed the one measurement the customer specified.
 """
 
@@ -184,7 +186,7 @@ def _draw_targets(
     return "".join(parts)
 
 
-class Renderer:
+class Renderer:  # pylint: disable=too-many-instance-attributes
     """Builds an imposed document, one surface at a time."""
 
     def __init__(self, style: MarkStyle | None = None) -> None:
@@ -199,6 +201,10 @@ class Renderer:
         # save time.
         self._slug_characters: set[str] = set()
         self._min_version = "1.4"
+        # One copied form per source page. Keyed by the document as well as
+        # the page, because add() is handed its source each time and page 0
+        # of two documents is not the same page.
+        self._forms: dict[tuple[int, int], pikepdf.Object] = {}
 
     def carry_over(self, source: pikepdf.Pdf) -> Identity:
         """Copy *source*'s printing condition and PDF/X claim onto the output.
@@ -239,15 +245,11 @@ class Renderer:
         )
         stream: list[str] = []
         for placed in layout.printed:
-            foreign = pikepdf.Page(source.pages[placed.source])
-            form = foreign.as_form_xobject()
-            # as_form_xobject() sets /BBox from the source TrimBox, which
-            # would clip the bleed away before it could be placed. The form
-            # must carry the whole sheet the page was drawn on; what actually
-            # shows is decided by this renderer's own clip.
-            form.BBox = Array(list(foreign.mediabox))
-            xobject = self.pdf.copy_foreign(form)
-            name = page.add_resource(xobject, Name.XObject)
+            if placed.source is None:
+                continue
+            name = page.add_resource(
+                self._source_form(source, placed.source), Name.XObject
+            )
             stream.append(_place(placed, name, source_rotation))
         if marks or targets:
             resources = self._mark_resources(page)
@@ -266,6 +268,25 @@ class Renderer:
         page.contents_add(pikepdf.Stream(self.pdf, "".join(stream).encode("latin-1")))
         _set_boxes(page, sheet, layout, folds)
         return page
+
+    def _source_form(self, source: pikepdf.Pdf, index: int):
+        """The form XObject for one source page, copied into this document once.
+
+        ``as_form_xobject`` sets ``/BBox`` from the source TrimBox, which would
+        clip the bleed away before it could be placed. The form carries the
+        whole sheet the page was drawn on; what actually shows is this
+        renderer's own clip, written into the content stream per cell.
+        """
+        key = (id(source), index)
+        cached = self._forms.get(key)
+        if cached is not None:
+            return cached
+        foreign = pikepdf.Page(source.pages[index])
+        form = foreign.as_form_xobject()
+        form.BBox = Array(list(foreign.mediabox))
+        copied = self.pdf.copy_foreign(form)
+        self._forms[key] = copied
+        return copied
 
     def _slug_font(self, page: pikepdf.Page) -> Name:
         """The font object, reserved once and shared by every page."""
