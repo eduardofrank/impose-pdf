@@ -155,7 +155,8 @@ impose steprepeat card.pdf --up 3x4 --marks black
 impose perfect novel.pdf --section-pages 16 --press indigo-7000
 ```
 
-`--dry-run` shows the page order and sheet count without writing anything:
+`--dry-run` shows the page order and sheet count without writing the press
+file:
 
 ```
 $ impose saddle book.pdf --dry-run
@@ -165,6 +166,16 @@ sheet 1 back
      2   15
 ...
   16 pages, 4 sheet(s), 8 surface(s); finished page 105 × 148 mm
+```
+
+`--proof` writes the sheet an operator signs. Each surface is a page at the
+size the press file will be, with the folio in its cell, turned the way that
+page is turned, a blank named `blank`, and a fold drawn dashed. None of the
+artwork is in it, so it is the order and not the job:
+
+```bash
+impose saddle book.pdf --dry-run --proof          # -> book-proof.pdf
+impose saddle book.pdf --proof book-proof.pdf     # proof and press file
 ```
 
 Refusals are sentences:
@@ -225,7 +236,8 @@ series.
 | `--repeat auto\|COLUMNSxROWS` | off | several complete copies of a bound job on one sheet (`saddle`, `perfect`, `signature`) |
 | `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
-| `-n`, `--dry-run` | off | show the page order and sheet count, write nothing |
+| `--proof [FILE]` | off | a sheet with the folio in each cell, for signing off the order. With no file, `INPUT-proof.pdf`. With `--dry-run`, only the proof is written |
+| `-n`, `--dry-run` | off | show the page order and sheet count; write no press file |
 | `-q`, `--quiet` | off | say nothing on success; warnings still go to stderr |
 
 ### Options for particular schemas
@@ -444,7 +456,8 @@ print(result.describe())
 The schema's own options pass straight through: `columns` and `rows` for the
 grid schemas, `section_pages` for perfect binding and for signatures, `sides`
 for step and repeat, `style` and `flip` for signatures. `marks=None` draws
-none, and `plan_only=True` works everything out and writes nothing.
+none, and `plan_only=True` works everything out and writes no press file.
+`proof=` writes the sign-off sheet either way.
 
 Refusals name the problem rather than producing an unusable sheet:
 
@@ -930,6 +943,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `fit` for signatures — biggest fold that fits, or a named section size |
 | ✅ | `creep` — fore-edge push-out compensated per leaf, not per sheet |
 | ✅ | `repeat` — several complete copies of a bound job on one sheet |
+| ✅ | `proof` — a sheet with the folio in each cell, for signing off the order |
 
 ## Several copies to a sheet
 

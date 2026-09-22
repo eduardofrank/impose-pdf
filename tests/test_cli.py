@@ -464,6 +464,44 @@ class TestDryRunMatchesTheRealRun(unittest.TestCase):
             self.assertIn("sheet 1 back", text)
 
 
+class TestProofSheet(unittest.TestCase):
+    """--proof is the picture an operator signs, and it is not the press file."""
+
+    def test_a_dry_run_writes_the_proof_and_not_the_press_file(self):
+        with workspace(pages=8) as source:
+            proof = source.with_name("book-proof.pdf")
+            press = _default_output(source)
+            status, text, err = run("saddle", str(source), "--dry-run", "--proof")
+            self.assertEqual(status, 0, err)
+            self.assertTrue(proof.exists())
+            self.assertFalse(press.exists())
+            self.assertIn(f"proof {proof}", text)
+            self.assertIn("sheet 1 front", text)
+            with pikepdf.open(proof) as document:
+                self.assertEqual(len(document.pages), 4)
+
+    def test_a_run_writes_both(self):
+        with workspace(pages=8) as source:
+            proof = source.with_name("signed.pdf")
+            press = source.with_name("press.pdf")
+            status, text, err = run(
+                "saddle", str(source), "-o", str(press), "--proof", str(proof)
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(proof.exists())
+            self.assertTrue(press.exists())
+            self.assertIn(f"proof {proof}", text)
+            self.assertIn(f"wrote {press}", text)
+
+    def test_quiet_still_writes_the_proof(self):
+        with workspace(pages=8) as source:
+            proof = source.with_name("signed.pdf")
+            status, text, err = run("saddle", str(source), "-q", "--proof", str(proof))
+            self.assertEqual(status, 0, err)
+            self.assertEqual(text, "")
+            self.assertTrue(proof.exists())
+
+
 class TestAssumedTrimWarning(unittest.TestCase):
     """A file that never said its finished size still gets imposed, and the
     operator is told what size was used instead of finding out at the knife."""

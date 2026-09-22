@@ -99,6 +99,20 @@ def _default_output(source: pathlib.Path) -> pathlib.Path:
     return source.with_name(f"{source.stem}-imposed{source.suffix or '.pdf'}")
 
 
+def _default_proof(source: pathlib.Path) -> pathlib.Path:
+    """`book.pdf` becomes `book-proof.pdf`, beside the original."""
+    return source.with_name(f"{source.stem}-proof.pdf")
+
+
+def _proof_path(args: argparse.Namespace) -> pathlib.Path | None:
+    """Where ``--proof`` writes, or ``None`` when it was not asked for."""
+    if args.proof is None:
+        return None
+    if args.proof == "":
+        return _default_proof(args.input)
+    return pathlib.Path(args.proof)
+
+
 def _add_mark_options(parser: argparse.ArgumentParser) -> None:
     """Options describing the marks, shared by imposing and by `fit`.
 
@@ -249,10 +263,22 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "the fold. Default: %(default)s.",
     )
     parser.add_argument(
+        "--proof",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILE",
+        help="Write a sheet for signing off the page order: the folio in "
+        "each cell, turned as the page is turned, blanks named, folds "
+        "dashed, and none of the artwork. With no file, INPUT-proof.pdf "
+        "beside the original. With --dry-run, only the proof is written.",
+    )
+    parser.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
-        help="Show the page order and the sheet count; write nothing.",
+        help="Show the page order and the sheet count, and write no press "
+        "file. --proof still writes its picture.",
     )
     parser.add_argument(
         "-q",
@@ -736,22 +762,29 @@ def _options(args: argparse.Namespace) -> dict:
 
 
 def _dry_run(args: argparse.Namespace, out) -> int:
-    """Show the ordering and the sheet count without writing anything.
+    """Show the ordering and the sheet count without writing the press file.
 
     The point of a dry run is to see the job you are about to send, so it goes
     through the same code the real job does and stops just before rendering.
     Working the plan out separately here is how it came to report four sheets
     for a job that runs two: the grid is chosen while imposing, and a dry run
     that skips the choosing is describing a different job.
+
+    ``--proof`` still writes. The picture is what gets signed, and it is not
+    the press file.
     """
+    proof = _proof_path(args)
     result = impose_document(
         args.input,
         args.output or _default_output(args.input),
         plan_only=True,
+        proof=proof,
         **_options(args),
     )
     print(result.plan.describe(), file=out)
     print(f"\n  {result.describe()}", file=out)
+    if proof is not None:
+        print(f"proof {proof}", file=out)
     for warning in result.warnings:
         print(f"impose: warning: {warning}", file=sys.stderr)
     return 0
@@ -776,14 +809,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.dry_run:
             return _dry_run(args, out)
 
+        proof = _proof_path(args)
+        output = args.output or _default_output(args.input)
         result = impose_document(
             args.input,
-            args.output or _default_output(args.input),
+            output,
+            proof=proof,
             **_options(args),
         )
         if not args.quiet:
             print(result.describe(), file=out)
-            print(f"wrote {args.output or _default_output(args.input)}", file=out)
+            print(f"wrote {output}", file=out)
+            if proof is not None:
+                print(f"proof {proof}", file=out)
         # Warnings go to stderr even when quiet: a job that will not staple is
         # not something to keep to ourselves because output was suppressed.
         for warning in result.warnings:
