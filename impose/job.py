@@ -39,6 +39,7 @@ from .marks import MarkStyle, Segment, furniture, trim_marks
 from .plan import Plan, Surface
 from .press import FIT_SHEET, Press
 from .press import get as get_press
+from .proof import write_proof
 from .repeat import repeated
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .slug import DEFAULT_SIZE as SLUG_SIZE
@@ -469,6 +470,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     slug: bool = False,
     slug_size: float = SLUG_SIZE,
     repeat: str | int | tuple[int, int] | None = None,
+    proof: str | pathlib.Path | IO[bytes] | None = None,
     plan_only: bool = False,
     **options: Any,
 ) -> Result:
@@ -478,9 +480,14 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
     marks.
 
     *plan_only* stops after working out the ordering and the geometry and
-    returns the :class:`Result` without writing anything. It is what ``--dry
-    run`` needs: the same grid, the same sheet count and the same refusals as
-    the real job, because it is the same code up to the point of rendering.
+    returns the :class:`Result` without writing the press file. It is what
+    ``--dry-run`` needs: the same grid, the same sheet count and the same
+    refusals as the real job, because it is the same code up to the point of
+    rendering.
+
+    *proof* writes a sheet for signing off the order: one page per surface,
+    the folio in each cell, none of the artwork. It is written whether or not
+    the press file is, so a dry run can produce the picture and nothing else.
 
     *fold* says whether the pages being placed fold, which decides where the
     dashed marks go. ``"auto"`` believes the file: a form this tool made for a
@@ -549,6 +556,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 "fold": fold,
                 "slug": slug,
                 "slug_size": slug_size,
+                "proof": proof,
                 **options,
             },
             impose=impose_document,
@@ -640,6 +648,20 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
         )
         turned = any(layout.turned for layout in layouts)
         warnings = _warnings(plan, schema, max_nested_sheets, boxes)
+        if proof is not None:
+            write_proof(
+                proof,
+                plan,
+                layouts,
+                [
+                    _all_folds(
+                        layout,
+                        plan,
+                        layout.carried_folds(source_folds, boxes.rotation),
+                    )
+                    for layout in layouts
+                ],
+            )
         if plan_only:
             return Result(
                 plan=plan,
