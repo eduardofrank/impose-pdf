@@ -148,11 +148,30 @@ slug and marks, and placing those into a gutter is worse than placing nothing.
 
 ## Command line
 
+One job of each schema. The press file is written beside the input, with
+`-imposed` on the name: `book.pdf` becomes `book-imposed.pdf`.
+
 ```bash
-impose saddle book.pdf                      # -> book-imposed.pdf
-impose nup report.pdf --up 2x2
-impose steprepeat card.pdf --up 3x4 --marks black
+# Saddle stitch: sheets nested, stapled through the fold.
+impose saddle book.pdf
+
+# Perfect binding: 16-page sections, gathered and glued, on the larger Indigo.
 impose perfect novel.pdf --section-pages 16 --press indigo-7000
+
+# N-up: four pages to a side, the sheet left whole.
+impose nup report.pdf --up 2x2
+
+# Cut and stack: both sides, then cut into stacks that reassemble in order.
+impose cutstack manual.pdf --up 2x2 --flip long-edge
+
+# Step and repeat: one card, repeated to fill the sheet. Marks in black only.
+impose steprepeat card.pdf --marks black
+
+# Signature: one sheet folded to sixteen pages, sections gathered.
+impose signature book.pdf --section-pages 16
+
+# Cover wrapped around the novel. The spine is the thickness of the text block.
+impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 ```
 
 `--dry-run` shows the page order and sheet count without writing the press
@@ -213,6 +232,7 @@ series.
 | `impose cutstack` | none; cut into stacks | yours, or chosen |
 | `impose steprepeat` | none; cut apart | yours, or chosen |
 | `impose signature` | one sheet folded twice or more, gathered | powers of two, or chosen |
+| `impose cover` | wrapped around a perfect-bound block | one flat: back, spine, front |
 
 ### Options every schema takes
 
@@ -247,10 +267,14 @@ series.
 | `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
 | `--sides N` | `nup`, `cutstack`, `steprepeat` | 2, or from the page count for `steprepeat` | 1 for fronts only, 2 for a front and a back |
 | `--flip {long-edge,short-edge}` | `cutstack`, `steprepeat` | `long-edge` | which way the press turns the sheet for the back |
-| `--section-pages N` | `perfect`, `signature` | `4` for perfect | pages per section; on `signature`, an alternative to `--up` |
+| `--section-pages N` | `perfect`, `signature`, `cover` | `4` for perfect and cover | pages per section; on `signature`, an alternative to `--up`. On `cover`, leaves added to finish a section are in the spine |
 | `--folded` | `perfect` | off | make each section by folding one sheet rather than nesting several |
 | `--fold-style {head-to-head,foot-to-foot}` | `signature` | `head-to-head` | which way the sheet folds across itself |
-| `--paper-caliper LENGTH` | `saddle`, `perfect`, `signature` | off | one sheet's thickness; turns on creep |
+| `--paper-caliper LENGTH` | `saddle`, `perfect`, `signature`, `cover` | off | one sheet's thickness. Turns on creep; for `cover`, it is the text stock the spine is built from, and it is required |
+| `--hinge LENGTH` | `cover` | none, or the cover caliper | score allowance on each side of the spine |
+| `--cover-caliper LENGTH` | `cover` | off | thickness of the cover stock, used as the hinge when `--hinge` is omitted. Not added to the spine |
+| `--glue LENGTH` | `cover` | none | glue film added to the spine panel |
+| `--artwork FILE` | `cover` | a labelled template | the flat, already at the calculated size: one page outside, or two outside and inside |
 | `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
 
 `saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
@@ -404,6 +428,9 @@ impose nup artwork.pdf --registration --colour-bar --slug
 
 # A long document cut into stacks that reassemble in order
 impose cutstack manual.pdf --up 2x2 --gutter 3mm
+
+# Cover for an 80-page A5 novel: 0.1 mm text, 5 mm hinges
+impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 ```
 
 ## Using it as a library
@@ -458,6 +485,20 @@ grid schemas, `section_pages` for perfect binding and for signatures, `sides`
 for step and repeat, `style` and `flip` for signatures. `marks=None` draws
 none, and `plan_only=True` works everything out and writes no press file.
 `proof=` writes the sign-off sheet either way.
+
+A perfect-bound cover is a separate call. It reads the text block, builds the
+flat, and imposes that:
+
+```python
+from impose.cover import impose_cover
+
+cover, result, warnings = impose_cover(
+    "novel.pdf", "novel-cover.pdf",
+    paper_caliper="0.1mm",
+    hinge="5mm",
+)
+print(cover.describe())
+```
 
 Refusals name the problem rather than producing an unusable sheet:
 
@@ -550,6 +591,7 @@ than once. See [Fitting a document](#fitting-a-document).
 | `cutstack` | guillotined into stacks, stacks set on each other | each cell holds a consecutive block |
 | `steprepeat` | cut apart | one artwork, repeated |
 | `signature` | one sheet folded twice or more, sections gathered | nested within the fold, sequential between |
+| `cover` | wrapped around a perfect-bound block | one flat: the outside, then the inside |
 
 The dividing line between them is whether the sheet gets **cut**, because that
 decides whether it matters which page lands physically behind which.
@@ -680,6 +722,38 @@ once.
 What moves is the **image inside its cell**, never the cell. The fold is where
 the fold is, and sliding both halves of a spread toward it would only overlap
 them.
+
+## Cover
+
+A perfect-bound cover is a separate sheet wrapped around the text block. The
+spine panel is the thickness of that block: the imposed leaves — one leaf is
+two pages, and blanks added to finish a section count — times the gauge of the
+text paper. `--paper-caliper` is that gauge, the same measurement creep uses,
+and it is required here. `--glue` adds the film once the block is glued, and
+nothing else. A caliper set on a finished book includes the two covers as
+well; that larger number is the book on the shelf, and using it as the panel
+makes the panel too wide.
+
+```bash
+# An 80-page A5 novel, 0.1 mm text stock, 5 mm hinges.
+impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
+```
+
+```
+cover: spine 4 mm (40 leaves × 0.1 mm), hinges 5 mm, flat 310 × 210 mm
+```
+
+The flat is back, hinge, spine, hinge, front. Back and front are the finished
+trim of the text. The scores are drawn dashed, and the outer edges are cut.
+`--hinge` is the score allowance on each side. `--cover-caliper` supplies it
+when you would rather give the thickness of the cover stock; it is not added
+to the spine.
+
+Without `--artwork` the sheet is a labelled template, for agreeing the flat
+before the cover is designed. With it, the file is that flat already — one
+page the outside, or two the outside and the inside — and it has to be the
+calculated size. The inside is placed as drawn. A cover is one cell, so there
+is no column for the press flip to swap.
 
 ## Bindery limits
 
@@ -944,6 +1018,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `creep` — fore-edge push-out compensated per leaf, not per sheet |
 | ✅ | `repeat` — several complete copies of a bound job on one sheet |
 | ✅ | `proof` — a sheet with the folio in each cell, for signing off the order |
+| ✅ | `cover` — perfect-bound flat, spine from the text gauge, scores at the hinges |
 
 ## Several copies to a sheet
 
