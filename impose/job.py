@@ -41,6 +41,7 @@ from .press import FIT_SHEET, Press
 from .press import get as get_press
 from .proof import write_proof
 from .repeat import repeated
+from .schemas import cover as cover_schema
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .slug import Slug, compose, place
@@ -54,6 +55,7 @@ SCHEMAS: dict[str, Callable[..., Plan]] = {
     "cutstack": cutstack.impose,
     "steprepeat": steprepeat.impose,
     "signature": signature.impose,
+    "cover": cover_schema.impose,
 }
 
 #: Schemas whose grid is fixed by the binding rather than chosen.
@@ -64,7 +66,7 @@ _FIXED_GRID = frozenset({"saddle", "perfect"})
 #: the fold runs the other way, which is a top-bound book, not the one that was
 #: asked for. A signature has folds on both axes and the same applies twice
 #: over. The flat schemas are cut apart, so orientation is free.
-_BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect", "signature"})
+_BINDING_EDGE_MATTERS = frozenset({"saddle", "perfect", "signature", "cover"})
 
 #: The most bleed to place, capping whatever the artwork arrived with. Two
 #: millimetres is enough for any guillotine to cut into and leaves the rest of
@@ -243,11 +245,12 @@ def build_plan(schema: str, pages: int, **options: Any) -> Plan:
             f"Unknown schema {schema!r}. Known schemas: "
             f"{', '.join(sorted(SCHEMAS))}."
         ) from None
-    if schema in _FIXED_GRID:
+    if schema in _FIXED_GRID or schema == "cover":
         for fixed in ("columns", "rows"):
             if options.pop(fixed, None) is not None:
+                what = "a single flat" if schema == "cover" else "a two-page spread"
                 raise ImposeError(
-                    f"The {schema} schema imposes a two-page spread; its grid "
+                    f"The {schema} schema imposes {what}; its grid "
                     f"is fixed by the binding and cannot be set."
                 )
     else:
@@ -432,7 +435,7 @@ def _resolve_grid(  # pylint: disable=too-many-arguments
                 "the count."
             )
         return False
-    if schema in _FIXED_GRID or not wants_grid:
+    if schema in _FIXED_GRID or schema == "cover" or not wants_grid:
         return False
     columns, rows, turned = choose_grid(
         boxes.trim_size,

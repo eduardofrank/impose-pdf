@@ -93,7 +93,15 @@ class TestSchemas(unittest.TestCase):
     def test_registry_matches_the_documented_schemas(self):
         self.assertEqual(
             set(SCHEMAS),
-            {"saddle", "perfect", "nup", "cutstack", "steprepeat", "signature"},
+            {
+                "saddle",
+                "perfect",
+                "nup",
+                "cutstack",
+                "steprepeat",
+                "signature",
+                "cover",
+            },
         )
 
 

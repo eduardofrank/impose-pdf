@@ -464,6 +464,34 @@ class TestDryRunMatchesTheRealRun(unittest.TestCase):
             self.assertIn("sheet 1 back", text)
 
 
+class TestCoverCommand(unittest.TestCase):
+    def test_dry_run_reports_the_spine_and_writes_nothing(self):
+        with workspace(pages=80) as source:
+            status, text, err = run(
+                "cover", str(source), "--paper-caliper", "0.1mm", "--dry-run"
+            )
+            self.assertEqual(status, 0, err)
+            self.assertIn("spine 4 mm", text)
+            self.assertIn("40 leaves", text)
+            self.assertFalse(_default_output(source).exists())
+
+    def test_a_missing_gauge_is_a_sentence(self):
+        with workspace(pages=8) as source:
+            status, _, err = run("cover", str(source))
+            self.assertEqual(status, 1)
+            self.assertIn("--paper-caliper", err)
+
+    def test_it_writes_the_press_file(self):
+        with workspace(pages=8) as source:
+            output = source.with_name("cover.pdf")
+            status, text, err = run(
+                "cover", str(source), "--paper-caliper", "0.1mm", "-o", str(output)
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())
+            self.assertIn(f"wrote {output}", text)
+
+
 class TestProofSheet(unittest.TestCase):
     """--proof is the picture an operator signs, and it is not the press file."""
 

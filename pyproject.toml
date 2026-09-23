@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # `impose-pdf` because `impose` on PyPI belongs to an unrelated imaging tool.
 name = "impose-pdf"
 version = "0.1.0"
-description = "Imposition for commercial print: saddle stitch, perfect bound, n-up, step and repeat, cut and stack."
+description = "Imposition for commercial print: saddle stitch, perfect bound, cover, n-up, step and repeat, cut and stack."
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
 license = "MIT"

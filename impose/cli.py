@@ -22,6 +22,7 @@ import sys
 from collections.abc import Sequence
 
 from . import ImposeError, __version__
+from .cover import impose_cover
 from .fit import DEFAULT_GUTTER, arrangements, compare
 from .fold import HEAD_TO_HEAD
 from .fold import STYLES as FOLD_STYLES
@@ -307,6 +308,10 @@ def build_parser() -> argparse.ArgumentParser:
         "signature": "One sheet folded twice or more, sections gathered. Books.",
     }
     for name in SCHEMAS:
+        if name == "cover":
+            # The input is the text block, not the flat, so cover cannot share
+            # the path that imposes INPUT as its own pages.
+            continue
         schema = subcommands.add_parser(
             name, help=descriptions[name], description=descriptions[name]
         )
@@ -429,6 +434,68 @@ def build_parser() -> argparse.ArgumentParser:
                 "setting on the press. Default: long-edge.",
             )
 
+    cover = subcommands.add_parser(
+        "cover",
+        help="Perfect-bound cover: spine from the text block, scores at the hinges.",
+        description="Wrap a cover around a perfect-bound text block. The spine "
+        "is the imposed leaves times the gauge of the text paper, and the "
+        "flat is back, hinge, spine, hinge, front. Scores are drawn dashed.",
+    )
+    cover.set_defaults(command="cover")
+    _common(cover)
+    cover.add_argument(
+        "--paper-caliper",
+        type=_length,
+        default=None,
+        metavar="LENGTH",
+        help="Thickness of one sheet of the text stock. The spine is the "
+        "imposed leaves times this, so it has to be measured: a micrometer "
+        "on twenty sheets, divided by twenty.",
+    )
+    cover.add_argument(
+        "--hinge",
+        type=_length,
+        default=None,
+        metavar="LENGTH",
+        help="Score allowance on each side of the spine, where the cover "
+        "turns off the glue. Default: the cover stock's thickness if "
+        "--cover-caliper is given, otherwise none.",
+    )
+    cover.add_argument(
+        "--cover-caliper",
+        type=_length,
+        default=None,
+        metavar="LENGTH",
+        help="Thickness of the cover stock. Used as the hinge on each side "
+        "when --hinge is not given. It is not added to the spine panel.",
+    )
+    cover.add_argument(
+        "--glue",
+        type=_length,
+        default=0.0,
+        metavar="LENGTH",
+        help="Glue film added to the spine once the block is glued. Default: "
+        "none, which sizes the panel to the dry block.",
+    )
+    cover.add_argument(
+        "--section-pages",
+        type=int,
+        default=4,
+        metavar="N",
+        help="Pages per gathered section of the text block, a multiple of 4. "
+        "Blank leaves added to finish a section are in the spine. Default: "
+        "%(default)s.",
+    )
+    cover.add_argument(
+        "--artwork",
+        type=pathlib.Path,
+        default=None,
+        metavar="FILE",
+        help="The flat itself: one page the outside, or two the outside and "
+        "the inside, already at the calculated size. Without it, the sheet "
+        "is a labelled template for agreeing the spine.",
+    )
+
     fit = subcommands.add_parser(
         "fit",
         help="How many fit on a sheet, and what the leftovers cost.",
@@ -445,7 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fit.add_argument(
         "--schema",
-        choices=sorted(SCHEMAS),
+        choices=sorted(name for name in SCHEMAS if name != "cover"),
         default=None,
         help="Answer for the schema that would be run. The bound schemas "
         "repeat a two-page spread rather than a single page, so this changes "
@@ -761,6 +828,68 @@ def _options(args: argparse.Namespace) -> dict:
     }
 
 
+def _cover_hinge(args: argparse.Namespace) -> float:
+    """The hinge each side of the spine.
+
+    An explicit ``--hinge`` wins. Otherwise the cover stock's own thickness
+    is the score allowance, and with neither given the scores sit on the
+    edges of the spine panel.
+    """
+    if args.hinge is not None:
+        return args.hinge
+    if args.cover_caliper is not None:
+        return args.cover_caliper
+    return 0.0
+
+
+def _cover(args: argparse.Namespace, out) -> int:
+    """Impose the cover wrapped around the text block in *args*."""
+    if args.paper_caliper is None:
+        raise ImposeError(
+            "A cover spine is the thickness of the text block, and that needs "
+            "the gauge of the paper it is printed on. Pass --paper-caliper, "
+            "measured on the stock: a micrometer on twenty sheets, divided "
+            "by twenty."
+        )
+    if args.artwork is not None and not args.artwork.exists():
+        raise ImposeError(f"No such file: {args.artwork}")
+    proof = _proof_path(args)
+    output = args.output or _default_output(args.input)
+    cover, result, warnings = impose_cover(
+        args.input,
+        output,
+        paper_caliper=args.paper_caliper,
+        hinge=_cover_hinge(args),
+        glue=args.glue,
+        section_pages=args.section_pages,
+        artwork=args.artwork,
+        bleed=args.bleed,
+        press=args.press,
+        sheet=args.sheet,
+        gutters=0.0 if args.gutters is None else args.gutters,
+        marks=_style(args),
+        orientation=args.orientation,
+        page=args.page,
+        fold=args.fold,
+        registration=args.registration,
+        colour_bar=args.colour_bar,
+        slug=args.slug,
+        slug_size=args.slug_size,
+        plan_only=args.dry_run,
+        proof=proof,
+    )
+    print(cover.describe(), file=out)
+    if args.dry_run or not args.quiet:
+        print(f"  {result.describe()}", file=out)
+    if not args.dry_run and not args.quiet:
+        print(f"wrote {output}", file=out)
+    if proof is not None and (args.dry_run or not args.quiet):
+        print(f"proof {proof}", file=out)
+    for warning in (*warnings, *result.warnings):
+        print(f"impose: warning: {warning}", file=sys.stderr)
+    return 0
+
+
 def _dry_run(args: argparse.Namespace, out) -> int:
     """Show the ordering and the sheet count without writing the press file.
 
@@ -790,7 +919,9 @@ def _dry_run(args: argparse.Namespace, out) -> int:
     return 0
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(  # pylint: disable=too-many-return-statements
+    argv: Sequence[str] | None = None,
+) -> int:
     """Run the command line. Returns the process exit status."""
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -806,6 +937,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _fit(args, out)
         if not args.input.exists():
             raise ImposeError(f"No such file: {args.input}")
+        if args.command == "cover":
+            return _cover(args, out)
         if args.dry_run:
             return _dry_run(args, out)
 
