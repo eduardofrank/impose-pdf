@@ -275,6 +275,9 @@ series.
 | `--cover-caliper LENGTH` | `cover` | off | thickness of the cover stock, used as the hinge when `--hinge` is omitted. Not added to the spine |
 | `--glue LENGTH` | `cover` | none | glue film added to the spine panel |
 | `--artwork FILE` | `cover` | a labelled template | the flat, already at the calculated size: one page outside, or two outside and inside |
+| `--grind LENGTH` | `perfect`, `signature` | none | paper milled off the binding edge of each leaf. The pages retreat from the spine by this; the bulk does not change |
+| `--lap LENGTH` | `perfect`, `signature` | none | extra paper on the foot of each sheet's low folio, for the folder to grab. Trimmed off |
+| `--no-collation` | `perfect`, `signature` | marks on | leave off the stepped collation mark and the signature letter |
 | `--max-nested-sheets N` | `saddle` | `15` | how many sheets will staple |
 
 `saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
@@ -755,6 +758,31 @@ page the outside, or two the outside and the inside — and it has to be the
 calculated size. The inside is placed as drawn. A cover is one cell, so there
 is no column for the press flip to swap.
 
+## Bindery marks
+
+A gathered book is sections set one on the next, then milled and glued. The
+sheet carries three things for that.
+
+```bash
+impose perfect novel.pdf --section-pages 16 --grind 3mm --lap 10mm
+```
+
+`--grind` is what the mill takes off the binding edge of each leaf. The two
+pages of the spread retreat from the fold by that much, so after milling the
+finished page is still the trim. It is not added to the spine of the cover:
+the bulk of the block is the paper and the glue, and the grind only shortens
+the leaves.
+
+Each section gets a black bar on its spine, stepped down from the head, and a
+letter at the foot: A, then B, and on past Z. Gathered in order the bars make
+a diagonal, and a missing section breaks it. The bar sits in the grind gap,
+so the mill removes it; with no grind it sits on the fold. The letter sits
+outside the foot trim. `--no-collation` leaves both off. An inner sheet of a
+nested section carries neither, because folding hides it.
+
+`--lap` is extra paper on the foot of each sheet's lowest page, the lip a
+folder grabs. The final trim takes it off.
+
 ## Bindery limits
 
 A saddle-stitched book can only be so thick before the stapler struggles: the
@@ -1019,6 +1047,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `repeat` — several complete copies of a bound job on one sheet |
 | ✅ | `proof` — a sheet with the folio in each cell, for signing off the order |
 | ✅ | `cover` — perfect-bound flat, spine from the text gauge, scores at the hinges |
+| ✅ | `bindery` — grind-off, collation marks, signature letters, folder lap |
 
 ## Several copies to a sheet
 

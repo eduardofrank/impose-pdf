@@ -91,7 +91,14 @@ def impose(  # pylint: disable=too-many-arguments
         fold_columns=tuple(sorted({f.at for f in folds if f.axis == "vertical"})),
         fold_rows=tuple(sorted({f.at for f in folds if f.axis == "horizontal"})),
         schema="signature",
+        spine=_spine(folds),
     )
+
+
+def _spine(folds: tuple[Fold, ...]) -> int | None:
+    """The binding fold: the last vertical one, which the folder makes last."""
+    vertical = [fold.at for fold in folds if fold.axis == "vertical"]
+    return vertical[-1] if vertical else None
 
 
 def _sheet(  # pylint: disable=too-many-arguments
@@ -120,6 +127,7 @@ def _sheet(  # pylint: disable=too-many-arguments
                 face.row,
                 face.rotation,
                 face.depth,
+                section=sheet,
             )
         )
     return [Surface(sheet, side, tuple(placed[side])) for side in ("front", "back")]

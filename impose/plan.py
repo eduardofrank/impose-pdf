@@ -45,6 +45,10 @@ class Placement:
     #: push-out at the fore edge. Only the schema knows it, because it is a
     #: fact about the binding and not about the rectangles.
     depth: int = 0
+    #: Which gathered section this page belongs to, counting from the start
+    #: of the book. A saddle is one nest, so it stays 0. Perfect binding and
+    #: signatures number each section, which is what steps a collation mark.
+    section: int = 0
 
     def __post_init__(self) -> None:
         if self.depth < 0:
@@ -124,6 +128,10 @@ class Plan:
     schema: str = ""
     fold_columns: tuple[int, ...] = ()
     fold_rows: tuple[int, ...] = ()
+    #: The column boundary that is the binding fold, when this plan has one.
+    #: Grind-off opens a gap there, and the collation mark sits on it. Other
+    #: folds are bolts that get trimmed, and they are not the spine.
+    spine: int | None = None
 
     def __post_init__(self) -> None:
         if self.columns < 1 or self.rows < 1:

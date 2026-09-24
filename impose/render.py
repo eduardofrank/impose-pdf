@@ -73,6 +73,28 @@ def _place(page: PlacedPage, name: Name, source_rotation: int = 0) -> str:
     )
 
 
+def _draw_bindery(bindery, name: Name) -> str:
+    """Collation bars and signature letters, in K.
+
+    A binder reads these on the printed sheet, so they are black rather than
+    registration colour. The bars are filled; the letter is set at the foot.
+    """
+    parts = ["q\n0 0 0 1 k\n"]
+    for block in bindery.bars:
+        parts.append(
+            f"{_numbers(block.x0, block.y0, block.width, block.height)} re f\n"
+        )
+    if bindery.letters:
+        parts.append("0 g\nBT\n")
+        for x, y, text in bindery.letters:
+            parts.append(
+                f"{name} 8 Tf\n1 0 0 1 {_numbers(x, y)} Tm\n{_pdf_string(text)} Tj\n"
+            )
+        parts.append("ET\n")
+    parts.append("Q\n")
+    return "".join(parts)
+
+
 def _draw_slug(slug: Slug, name: Name) -> str:
     """The content stream fragment that sets the slug line.
 
@@ -237,6 +259,7 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         source_rotation: int = 0,
         folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
         slug: Slug | None = None,
+        bindery=None,
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
         sheet = Rect.from_size(layout.sheet)
@@ -262,6 +285,9 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         if slug is not None:
             self._slug_characters |= set(slug.text)
             stream.append(_draw_slug(slug, self._slug_font(page)))
+        if bindery is not None and (bindery.bars or bindery.letters):
+            self._slug_characters |= set(bindery.text)
+            stream.append(_draw_bindery(bindery, self._slug_font(page)))
         # latin-1 rather than ascii: a content stream is bytes, and a slug
         # carrying a job called Catálogo puts 0xE1 in a string literal. Every
         # other fragment here is ASCII, which latin-1 encodes identically.

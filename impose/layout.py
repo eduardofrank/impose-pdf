@@ -229,6 +229,23 @@ def _butting_edges(
     return frozenset(edges)
 
 
+#: Where a page's foot is, once the page has been turned in its cell. The lap
+#: extends that edge: it is the lip a folder grabs, and the final trim takes
+#: it off.
+_FOOT = {0: "bottom", 90: "left", 180: "top", 270: "right"}
+
+
+def _spine_edge(placement: Placement, spine: int | None, grind: float) -> str | None:
+    """The edge of this cell that faces the binding fold, when grind opens it."""
+    if spine is None or grind <= 0:
+        return None
+    if placement.column == spine - 1:
+        return "right"
+    if placement.column == spine:
+        return "left"
+    return None
+
+
 def _outer_edges(placement: Placement, columns: int, rows: int) -> frozenset[str]:
     """Edges of this cell that face the outside of the form.
 
@@ -364,6 +381,10 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     trim_origin: Rect,
     caliper: float = 0.0,
     fold_columns: tuple[int, ...] = (),
+    grind: float = 0.0,
+    spine: int | None = None,
+    lap: float = 0.0,
+    lip: tuple[int, int] | None = None,
 ) -> SheetLayout:
     """Place one surface on a sheet.
 
@@ -380,26 +401,41 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
 
     step_x = cell.width + gutters.horizontal
     step_y = cell.height + gutters.vertical
+    # Grind-off is paper milled off the binding edge of every leaf. The two
+    # trims retreat from the fold by that much each, so after milling the
+    # finished page is still the trim. It does not change the bulk.
+    spine_gap = 2 * grind if spine is not None and grind else 0.0
     form = Size(
-        columns * cell.width + (columns - 1) * gutters.horizontal,
+        columns * cell.width + (columns - 1) * gutters.horizontal + spine_gap,
         rows * cell.height + (rows - 1) * gutters.vertical,
     )
 
     placed: list[PlacedPage] = []
     for placement in surface.placements:
         # Rows count downward as a person reads; PDF y counts upward.
-        x0 = placement.column * step_x
+        opened = spine_gap if spine is not None and placement.column >= spine else 0.0
+        x0 = placement.column * step_x + opened
         y1 = form.height - placement.row * step_y
         cell_rect = Rect(x0, y1 - cell.height, x0 + cell.width, y1)
         butts = _butting_edges(placement, columns, rows, gutters)
+        spine_edge = _spine_edge(placement, spine, grind)
+        if spine_edge:
+            butts = frozenset(edge for edge in butts if edge != spine_edge)
         outer = _outer_edges(placement, columns, rows)
         kept = _kept_bleed(bleed, butts, outer, gutters)
+        if spine_edge:
+            kept = dataclasses.replace(
+                kept, **{spine_edge: min(getattr(kept, spine_edge), grind)}
+            )
         paint = cell_rect.expanded(kept)
         # Butting neighbours are painted a hair into each other so the shared
         # edge cannot show as a pale hairline.
         paint = paint.expanded(
             Insets(**{edge: TRAP for edge in butts}) if butts else Insets()
         )
+        if lap and lip == placement.cell:
+            foot = _FOOT[placement.rotation % 360]
+            paint = paint.expanded(Insets(**{foot: lap}))
         placed.append(
             PlacedPage(
                 source=placement.source,

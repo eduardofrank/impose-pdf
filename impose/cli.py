@@ -289,6 +289,30 @@ def _common(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _gathered_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--grind",
+        type=_length,
+        default=0.0,
+        metavar="LENGTH",
+        help="Paper milled off each leaf's binding edge. The pages retreat "
+        "from the spine by this. The bulk of the book does not change.",
+    )
+    parser.add_argument(
+        "--lap",
+        type=_length,
+        default=0.0,
+        metavar="LENGTH",
+        help="Extra paper on the foot of each sheet's low folio, for the "
+        "folder to grab. The final trim takes it off.",
+    )
+    parser.add_argument(
+        "--no-collation",
+        action="store_true",
+        help="Leave off the stepped collation mark and the signature letter.",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The whole command line."""
     parser = argparse.ArgumentParser(
@@ -377,6 +401,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "Measure it: a micrometer on twenty sheets, divided by twenty.",
             )
         if name in ("perfect", "signature"):
+            _gathered_arguments(schema)
             schema.add_argument(
                 "--section-pages",
                 type=int,
@@ -824,6 +849,9 @@ def _options(args: argparse.Namespace) -> dict:
         "slug": args.slug,
         "slug_size": args.slug_size,
         "repeat": getattr(args, "repeat", None),
+        "grind": getattr(args, "grind", 0.0) or 0.0,
+        "lap": getattr(args, "lap", 0.0) or 0.0,
+        "collation": False if getattr(args, "no_collation", False) else None,
         **_schema_options(args, schema),
     }
 

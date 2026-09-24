@@ -24,6 +24,7 @@ from typing import IO, Any
 import pikepdf
 
 from . import ImposeError
+from .bindery import lip_cell, marks_for
 from .boxes import (
     PageBoxes,
     assumed_trim_warning,
@@ -604,6 +605,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             allowance=allowance,
             pages=len(opened.pages),
         )
+        grind, lap, collate = _bindery_request(schema, options)
         plan = build_plan(schema, len(opened.pages), **options)
         plan.validate(exhaustive=schema != "steprepeat")
         if chose_turned and orientation == "auto":
@@ -617,7 +619,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 if orientation == "turned"
                 else boxes.trim_size
             )
-            machine = _form_press(cell, plan, gutters=gaps, allowance=allowance)
+            machine = _form_press(
+                cell, plan, gutters=gaps, allowance=allowance, grind=grind
+            )
             sheet_size = machine.sheet
         elif page == "imageable":
             # The page becomes the printable area itself. Nothing about the
@@ -648,6 +652,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             sheet=sheet_size,
             allowance=allowance,
             caliper=length(paper_caliper),
+            grind=grind,
+            lap=lap,
         )
         turned = any(layout.turned for layout in layouts)
         warnings = _warnings(plan, schema, max_nested_sheets, boxes)
@@ -695,10 +701,12 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
                 else ([], [])
             )
             folds = _all_folds(layout, plan, carried)
+            bindery = marks_for(layout, plan) if collate else None
             renderer.add(
                 layout,
                 opened,
                 marks=_marks(layout, plan, style, carried),
+                bindery=bindery,
                 targets=targets,
                 bar=patches,
                 source_rotation=boxes.rotation,
@@ -748,7 +756,7 @@ def _candidates(plan: Plan, schema: str, orientation: str) -> list[Plan]:
     return [plan, plan.turned()]
 
 
-def _fit(  # pylint: disable=too-many-arguments
+def _fit(  # pylint: disable=too-many-arguments,too-many-locals
     plan: Plan,
     *,
     schema: str,
@@ -760,6 +768,8 @@ def _fit(  # pylint: disable=too-many-arguments
     sheet: Size,
     allowance: float,
     caliper: float = 0.0,
+    grind: float = 0.0,
+    lap: float = 0.0,
 ) -> tuple[Plan, list]:
     """Lay every surface out, turning the pages if that is what fits."""
     failure: ImposeError | None = None
@@ -779,6 +789,10 @@ def _fit(  # pylint: disable=too-many-arguments
                     mark_allowance=allowance,
                     caliper=caliper,
                     fold_columns=candidate.fold_columns,
+                    grind=grind,
+                    spine=candidate.spine,
+                    lap=lap,
+                    lip=lip_cell(candidate, surface),
                 )
                 for surface in candidate
             ]
@@ -789,7 +803,31 @@ def _fit(  # pylint: disable=too-many-arguments
     raise failure  # every orientation was tried and none fitted
 
 
-def _form_press(trim: Size, plan: Plan, *, gutters: Gutters, allowance: float) -> Press:
+def _bindery_request(schema: str, options: dict) -> tuple[float, float, bool]:
+    """Grind, lap, and whether this job wants collation marks.
+
+    Grind-off belongs to a gathered spine. A stapled book keeps its fold, so
+    asking to mill one is refused rather than ignored.
+    """
+    grind = length(options.pop("grind", 0) or 0)
+    lap = length(options.pop("lap", 0) or 0)
+    collate = options.pop("collation", None)
+    if collate is None:
+        collate = schema in ("perfect", "signature")
+    if grind < 0 or lap < 0:
+        raise ImposeError("A grind-off or a folder lap cannot be negative.")
+    if grind and schema not in ("perfect", "signature"):
+        raise ImposeError(
+            "Grind-off is the milling of a gathered spine, and it shortens "
+            f"each leaf from the binding edge. The {schema} schema does "
+            "not mill one."
+        )
+    return grind, lap, collate
+
+
+def _form_press(
+    trim: Size, plan: Plan, *, gutters: Gutters, allowance: float, grind: float = 0.0
+) -> Press:
     """A press whose sheet is exactly the form, with no margin anywhere.
 
     Used for the first pass of a two-stage job: impose the signature onto its
@@ -799,6 +837,7 @@ def _form_press(trim: Size, plan: Plan, *, gutters: Gutters, allowance: float) -
     width = (
         plan.columns * trim.width
         + (plan.columns - 1) * gutters.horizontal
+        + (2 * grind if plan.spine is not None and grind else 0.0)
         + 2 * allowance
     )
     height = (
