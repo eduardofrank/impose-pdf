@@ -215,6 +215,7 @@ Every command and option is listed below.
 impose SCHEMA INPUT [options]     impose a document
 impose fit SIZE|PDF [options]     how many fit, with or without a file
 impose presses                    list the press profiles
+impose run JOB                    impose a stored job file
 ```
 
 Sizes and lengths accept `mm`, `cm`, `in`, `pt`, `pc`, or a bare number meaning
@@ -435,6 +436,32 @@ impose cutstack manual.pdf --up 2x2 --gutter 3mm
 # Cover for an 80-page A5 novel: 0.1 mm text, 5 mm hinges
 impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 ```
+
+## A job the shop can store
+
+A command line is gone when the terminal is. `--record` writes the job just
+run as JSON, and `impose run` imposes that file. The keys are the same fields
+the command takes. Paths in the file are read relative to the file, so a
+folder of jobs can move with its artwork.
+
+```bash
+impose perfect novel.pdf --section-pages 16 --grind 3mm --record novel.json
+impose run novel.json
+```
+
+```json
+{
+  "version": 1,
+  "source": "novel.pdf",
+  "schema": "perfect",
+  "section_pages": 16,
+  "grind": "3mm"
+}
+```
+
+Lengths are written the same way as on the command line, or as a bare number
+of PDF points. `"marks": "none"` draws no cut marks. A quote system or a hot
+folder writes the same file.
 
 ## Using it as a library
 
@@ -1048,6 +1075,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `proof` — a sheet with the folio in each cell, for signing off the order |
 | ✅ | `cover` — perfect-bound flat, spine from the text gauge, scores at the hinges |
 | ✅ | `bindery` — grind-off, collation marks, signature letters, folder lap |
+| ✅ | `ticket` — a job file with the same fields as the command, run again later |
 
 ## Several copies to a sheet
 

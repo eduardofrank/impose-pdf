@@ -42,6 +42,9 @@ from .press import press_names
 from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .slug import DEFAULT_SIZE as SLUG_SIZE
+from .ticket import add_command, dump, recorded
+from .ticket import run as run_job
+from .ticket import schema_options
 from .units import format_mm, length, paper
 
 #: Schemas whose grid the operator chooses.
@@ -162,6 +165,13 @@ def _mark_reach(args: argparse.Namespace) -> float:
 def _common(parser: argparse.ArgumentParser) -> None:
     """Options every schema takes."""
     parser.add_argument("input", type=pathlib.Path, help="PDF to impose.")
+    parser.add_argument(
+        "--record",
+        type=pathlib.Path,
+        metavar="FILE",
+        help="Write this job as JSON, then impose it. The file is the job "
+        "a hot folder or a later run can impose again.",
+    )
     parser.add_argument(
         "-o",
         "--output",
@@ -313,7 +323,7 @@ def _gathered_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-statements
     """The whole command line."""
     parser = argparse.ArgumentParser(
         prog="impose",
@@ -593,6 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
         "presses", help="List the press profiles.", description="List press profiles."
     )
     presses.set_defaults(command="presses")
+    add_command(subcommands)
     return parser
 
 
@@ -607,33 +618,6 @@ def _style(args: argparse.Namespace) -> MarkStyle | None:
         width=args.mark_width if args.mark_width is not None else default.width,
         colour=args.marks,
     )
-
-
-def _schema_options(args: argparse.Namespace, schema: str | None = None) -> dict:
-    """Options belonging to the chosen schema.
-
-    Sidedness is one question at the terminal and two in the schemas: step and
-    repeat counts the sides of an *item*, which is how it tells a two-page
-    document of one card from a one-page document of two. The schemas that
-    deal a document across the cells count the sides of the *sheet*. Asking it
-    once and translating here keeps that distinction out of the operator's way.
-    """
-    options: dict = {}
-    if getattr(args, "up", None) is not None:
-        options["columns"], options["rows"] = args.up
-    if getattr(args, "section_pages", None) is not None:
-        options["section_pages"] = args.section_pages
-    if getattr(args, "flip", None) is not None:
-        options["flip"] = args.flip
-    if getattr(args, "fold_style", None) is not None:
-        options["style"] = args.fold_style
-    sides = getattr(args, "sides", None)
-    if sides is not None:
-        if (schema or args.command) == "steprepeat":
-            options["sides"] = sides
-        else:
-            options["duplex"] = sides == 2
-    return options
 
 
 def _list_presses(out) -> int:
@@ -852,7 +836,7 @@ def _options(args: argparse.Namespace) -> dict:
         "grind": getattr(args, "grind", 0.0) or 0.0,
         "lap": getattr(args, "lap", 0.0) or 0.0,
         "collation": False if getattr(args, "no_collation", False) else None,
-        **_schema_options(args, schema),
+        **schema_options(args, schema),
     }
 
 
@@ -963,15 +947,20 @@ def main(  # pylint: disable=too-many-return-statements
             return _list_presses(out)
         if args.command == "fit":
             return _fit(args, out)
+        if args.command == "run":
+            run_job(args.job, out, plan_only=args.dry_run)
+            return 0
         if not args.input.exists():
             raise ImposeError(f"No such file: {args.input}")
+        proof = _proof_path(args)
+        output = args.output or _default_output(args.input)
+        if getattr(args, "record", None) is not None:
+            dump(args.record, recorded(args, _options(args), output, proof))
         if args.command == "cover":
             return _cover(args, out)
         if args.dry_run:
             return _dry_run(args, out)
 
-        proof = _proof_path(args)
-        output = args.output or _default_output(args.input)
         result = impose_document(
             args.input,
             output,
