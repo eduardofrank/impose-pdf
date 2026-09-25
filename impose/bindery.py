@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import dataclasses
 
+from . import ImposeError
 from .font import load
 from .geometry import Rect
 from .layout import SheetLayout
 from .plan import Plan
-from .units import MM
+from .units import MM, length
 
 #: How far down from the head the first bar starts, and how far each next
 #: section steps. A bar is the first of those and leaves a gap of the rest.
@@ -53,6 +54,28 @@ class BinderyMarks:
     def text(self) -> str:
         """Every letter drawn, for the font subset."""
         return "".join(letter for _, _, letter in self.letters)
+
+
+def bindery_request(schema: str, options: dict) -> tuple[float, float, bool]:
+    """Grind, lap, and whether this job wants collation marks.
+
+    Grind-off belongs to a gathered spine. A stapled book keeps its fold, so
+    asking to mill one is refused rather than ignored.
+    """
+    grind = length(options.pop("grind", 0) or 0)
+    lap = length(options.pop("lap", 0) or 0)
+    collate = options.pop("collation", None)
+    if collate is None:
+        collate = schema in ("perfect", "signature")
+    if grind < 0 or lap < 0:
+        raise ImposeError("A grind-off or a folder lap cannot be negative.")
+    if grind and schema not in ("perfect", "signature"):
+        raise ImposeError(
+            "Grind-off is the milling of a gathered spine, and it shortens "
+            f"each leaf from the binding edge. The {schema} schema does "
+            "not mill one."
+        )
+    return grind, lap, collate
 
 
 def letter(section: int) -> str:

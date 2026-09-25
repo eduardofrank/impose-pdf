@@ -23,8 +23,8 @@ from typing import IO, Any
 
 import pikepdf
 
-from . import ImposeError
-from .bindery import lip_cell, marks_for
+from . import ImposeError, gang
+from .bindery import bindery_request, lip_cell, marks_for
 from .boxes import (
     PageBoxes,
     assumed_trim_warning,
@@ -57,6 +57,7 @@ SCHEMAS: dict[str, Callable[..., Plan]] = {
     "steprepeat": steprepeat.impose,
     "signature": signature.impose,
     "cover": cover_schema.impose,
+    "gang": gang.impose,
 }
 
 #: Schemas whose grid is fixed by the binding rather than chosen.
@@ -436,7 +437,7 @@ def _resolve_grid(  # pylint: disable=too-many-arguments
                 "the count."
             )
         return False
-    if schema in _FIXED_GRID or schema == "cover" or not wants_grid:
+    if schema in _FIXED_GRID or schema in ("cover", "gang") or not wants_grid:
         return False
     columns, rows, turned = choose_grid(
         boxes.trim_size,
@@ -454,7 +455,7 @@ def _resolve_grid(  # pylint: disable=too-many-arguments
     return turned
 
 
-def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
+def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements
     source: pikepdf.Pdf | str | pathlib.Path,
     output: str | pathlib.Path | IO[bytes],
     *,
@@ -583,18 +584,24 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             raise ImposeError(
                 f"Unknown page {page!r}; use {' or '.join(PAGE_CHOICES)}."
             )
-        boxes = source_boxes(opened)
+        if schema == "gang":
+            gang_pages, bleeds = gang.read_pages(opened, bleed)
+            boxes = gang_pages[0]
+            bleed_insets = bleeds[0]
+        else:
+            gang_pages, bleeds = None, None
+            boxes = source_boxes(opened)
+            bleed_insets = boxes.bleed_insets.capped(length(bleed))
 
         gaps = _gutters(default_gutter(schema) if gutters is None else gutters)
-        bleed_insets = boxes.bleed_insets.capped(length(bleed))
-        allowance = max(
-            marks.reach if marks else 0.0,
-            bleed_insets.left,
-            bleed_insets.right,
-            bleed_insets.bottom,
-            bleed_insets.top,
-        )
+        allowance = gang.allowance(marks, bleeds or (bleed_insets,))
         source_folds = _source_folds(fold, boxes)
+        if schema == "gang" and (
+            options.get("columns") is not None or options.get("rows") is not None
+        ):
+            raise ImposeError(
+                "A gang is packed from the pages' own sizes; its grid cannot be set."
+            )
         chose_turned = _resolve_grid(
             schema,
             options,
@@ -605,8 +612,18 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             allowance=allowance,
             pages=len(opened.pages),
         )
-        grind, lap, collate = _bindery_request(schema, options)
-        plan = build_plan(schema, len(opened.pages), **options)
+        grind, lap, collate = bindery_request(schema, options)
+        if gang_pages:
+            imageable = machine.imageable_area(sheet_size)
+            plan = gang.arranged(
+                gang_pages,
+                imageable.width - 2 * allowance,
+                imageable.height - 2 * allowance,
+                max(gaps.horizontal, gaps.vertical),
+            )
+            chose_turned = False
+        else:
+            plan = build_plan(schema, len(opened.pages), **options)
         plan.validate(exhaustive=schema != "steprepeat")
         if chose_turned and orientation == "auto":
             orientation = "turned"
@@ -654,6 +671,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals
             caliper=length(paper_caliper),
             grind=grind,
             lap=lap,
+            gang_pages=gang_pages,
+            gang_bleeds=bleeds,
         )
         turned = any(layout.turned for layout in layouts)
         warnings = _warnings(plan, schema, max_nested_sheets, boxes)
@@ -751,7 +770,7 @@ def _candidates(plan: Plan, schema: str, orientation: str) -> list[Plan]:
         raise ImposeError(
             f"Unknown orientation {orientation!r}; use auto, upright, or turned."
         )
-    if schema in _BINDING_EDGE_MATTERS:
+    if schema in _BINDING_EDGE_MATTERS or schema == "gang":
         return [plan]
     return [plan, plan.turned()]
 
@@ -770,6 +789,8 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
     caliper: float = 0.0,
     grind: float = 0.0,
     lap: float = 0.0,
+    gang_pages=None,
+    gang_bleeds=None,
 ) -> tuple[Plan, list]:
     """Lay every surface out, turning the pages if that is what fits."""
     failure: ImposeError | None = None
@@ -793,6 +814,9 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
                     spine=candidate.spine,
                     lap=lap,
                     lip=lip_cell(candidate, surface),
+                    sizes=gang.sizes(gang_pages),
+                    origins=gang.origins(gang_pages),
+                    bleeds=gang_bleeds,
                 )
                 for surface in candidate
             ]
@@ -801,28 +825,6 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
             continue
         return candidate, layouts
     raise failure  # every orientation was tried and none fitted
-
-
-def _bindery_request(schema: str, options: dict) -> tuple[float, float, bool]:
-    """Grind, lap, and whether this job wants collation marks.
-
-    Grind-off belongs to a gathered spine. A stapled book keeps its fold, so
-    asking to mill one is refused rather than ignored.
-    """
-    grind = length(options.pop("grind", 0) or 0)
-    lap = length(options.pop("lap", 0) or 0)
-    collate = options.pop("collation", None)
-    if collate is None:
-        collate = schema in ("perfect", "signature")
-    if grind < 0 or lap < 0:
-        raise ImposeError("A grind-off or a folder lap cannot be negative.")
-    if grind and schema not in ("perfect", "signature"):
-        raise ImposeError(
-            "Grind-off is the milling of a gathered spine, and it shortens "
-            f"each leaf from the binding edge. The {schema} schema does "
-            "not mill one."
-        )
-    return grind, lap, collate
 
 
 def _form_press(

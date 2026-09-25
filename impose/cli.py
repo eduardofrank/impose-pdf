@@ -340,6 +340,7 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
         "cutstack": "Cut into stacks that reassemble in order.",
         "steprepeat": "One item repeated to fill the sheet. Cards, labels.",
         "signature": "One sheet folded twice or more, sections gathered. Books.",
+        "gang": "Different finished sizes on one sheet, cut apart.",
     }
     for name in SCHEMAS:
         if name == "cover":
@@ -547,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
     )
     fit.add_argument(
         "--schema",
-        choices=sorted(name for name in SCHEMAS if name != "cover"),
+        choices=sorted(name for name in SCHEMAS if name not in ("cover", "gang")),
         default=None,
         help="Answer for the schema that would be run. The bound schemas "
         "repeat a two-page spread rather than a single page, so this changes "

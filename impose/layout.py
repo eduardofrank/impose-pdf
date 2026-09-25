@@ -385,6 +385,9 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     spine: int | None = None,
     lap: float = 0.0,
     lip: tuple[int, int] | None = None,
+    sizes: tuple[Size, ...] | None = None,
+    origins: tuple[Rect, ...] | None = None,
+    bleeds: tuple[Insets, ...] | None = None,
 ) -> SheetLayout:
     """Place one surface on a sheet.
 
@@ -396,6 +399,17 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     """
     sheet = sheet or press.sheet
     imageable = press.imageable_area(sheet)
+    if sizes is not None:
+        return _place_gang(
+            surface,
+            sizes=sizes,
+            origins=origins or (),
+            bleeds=bleeds or (),
+            gutters=gutters,
+            sheet=sheet,
+            imageable=imageable,
+            mark_allowance=mark_allowance,
+        )
     cell = _uniform_cell(surface.placements, trim)
     source_trim = trim_origin
 
@@ -455,6 +469,72 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
         )
 
     return _position(placed, form, sheet, imageable, mark_allowance)
+
+
+def _place_gang(  # pylint: disable=too-many-arguments
+    surface: Surface,
+    *,
+    sizes: tuple[Size, ...],
+    origins: tuple[Rect, ...],
+    bleeds: tuple[Insets, ...],
+    gutters: Gutters,
+    sheet: Size,
+    imageable: Rect,
+    mark_allowance: float,
+) -> SheetLayout:
+    """Place each page at its own size, on the shelves the gang planned."""
+    frames, form = _gang_frames(surface, sizes, gutters)
+    placed: list[PlacedPage] = []
+    for placement in surface.placements:
+        if placement.source is None:
+            continue
+        cell_rect = frames[placement.cell]
+        kept = _kept_bleed(bleeds[placement.source], frozenset(), frozenset(), gutters)
+        placed.append(
+            PlacedPage(
+                source=placement.source,
+                trim=cell_rect,
+                paint=cell_rect.expanded(kept),
+                clip=_source_clip(origins[placement.source], kept, 0),
+                rotation=0,
+                butts=frozenset(),
+                column=placement.column,
+                row=placement.row,
+            )
+        )
+    return _position(placed, form, sheet, imageable, mark_allowance)
+
+
+def _gang_frames(  # pylint: disable=too-many-locals
+    surface: Surface, sizes: tuple[Size, ...], gutters: Gutters
+) -> tuple[dict[tuple[int, int], Rect], Size]:
+    """Where each cell sits, packed left to right and top to bottom."""
+    by_row: dict[int, list[Placement]] = {}
+    for placement in surface.placements:
+        if placement.source is None:
+            continue
+        by_row.setdefault(placement.row, []).append(placement)
+    row_height = {
+        row: max(sizes[item.source].height for item in items)
+        for row, items in by_row.items()
+    }
+    order = sorted(row_height)
+    total_h = sum(row_height.values()) + gutters.vertical * (len(order) - 1)
+    frames: dict[tuple[int, int], Rect] = {}
+    cursor = total_h
+    total_w = 0.0
+    for row in order:
+        height = row_height[row]
+        cursor -= height
+        x = 0.0
+        for item in sorted(by_row[row], key=lambda placement: placement.column):
+            size = sizes[item.source]
+            top = cursor + height
+            frames[item.cell] = Rect(x, top - size.height, x + size.width, top)
+            x += size.width + gutters.horizontal
+        total_w = max(total_w, x - gutters.horizontal)
+        cursor -= gutters.vertical
+    return frames, Size(total_w, total_h)
 
 
 def _position(

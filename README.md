@@ -172,6 +172,9 @@ impose signature book.pdf --section-pages 16
 
 # Cover wrapped around the novel. The spine is the thickness of the text block.
 impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
+
+# A card and a flyer on one sheet, each at its own size.
+impose gang jobs.pdf --gutter 4mm
 ```
 
 `--dry-run` shows the page order and sheet count without writing the press
@@ -234,6 +237,7 @@ series.
 | `impose steprepeat` | none; cut apart | yours, or chosen |
 | `impose signature` | one sheet folded twice or more, gathered | powers of two, or chosen |
 | `impose cover` | wrapped around a perfect-bound block | one flat: back, spine, front |
+| `impose gang` | none; cut apart | packed from each page's own size |
 
 ### Options every schema takes
 
@@ -437,6 +441,22 @@ impose cutstack manual.pdf --up 2x2 --gutter 3mm
 impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 ```
 
+## Gang
+
+A book is one finished size, and a mixed file is refused there by name. A
+gang is the other job: several sizes on one sheet, cut apart afterwards.
+Pages are placed in the order the file gives them, left to right, a new row
+when the row is full, and a new sheet when the next row does not fit. A page
+is not turned to make it fit. One that does not fit the sheet on its own is
+named.
+
+```bash
+impose gang jobs.pdf --gutter 4mm
+```
+
+The sheet is printed one side. Each item is a page of the file, so twenty
+cards are twenty pages.
+
 ## A job the shop can store
 
 A command line is gone when the terminal is. `--record` writes the job just
@@ -622,6 +642,7 @@ than once. See [Fitting a document](#fitting-a-document).
 | `steprepeat` | cut apart | one artwork, repeated |
 | `signature` | one sheet folded twice or more, sections gathered | nested within the fold, sequential between |
 | `cover` | wrapped around a perfect-bound block | one flat: the outside, then the inside |
+| `gang` | cut apart | each page at its own size, in file order |
 
 The dividing line between them is whether the sheet gets **cut**, because that
 decides whether it matters which page lands physically behind which.
@@ -1076,6 +1097,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `cover` — perfect-bound flat, spine from the text gauge, scores at the hinges |
 | ✅ | `bindery` — grind-off, collation marks, signature letters, folder lap |
 | ✅ | `ticket` — a job file with the same fields as the command, run again later |
+| ✅ | `gang` — different finished sizes on one sheet, cut apart |
 
 ## Several copies to a sheet
 

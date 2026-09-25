@@ -101,6 +101,7 @@ class TestSchemas(unittest.TestCase):
                 "steprepeat",
                 "signature",
                 "cover",
+                "gang",
             },
         )
 
