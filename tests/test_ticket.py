@@ -38,6 +38,24 @@ class TestStoredJob(unittest.TestCase):
             self.assertEqual(status, 0, err)
             self.assertIn("sheet 1 front", text)
 
+    def test_lay_is_a_field_of_the_job(self):
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "--lay",
+                "left",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertEqual(stored["lay"], "left")
+            status, _, err = run("run", str(job), "--dry-run")
+            self.assertEqual(status, 0, err)
+
     def test_a_path_is_read_beside_the_job(self):
         with workspace(pages=8) as source:
             job = source.with_name("job.json")

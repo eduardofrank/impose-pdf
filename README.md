@@ -68,6 +68,17 @@ edge that feeds first. On an Indigo 5000 that is 12 mm at the lead edge and
 8 mm at the tail. A form that will not fit is turned; the sheet never is,
 because the gripper edge is fixed with respect to the machine.
 
+**The form can pin to the side guide.** By default it is centered in the
+imageable area, and the spare margin is split. `--lay left` or `--lay right`
+puts the form against that side and against the gripper, which is how a press
+with a side guide registers. The spare then sits at the tail and the far side.
+Turning the form to make it fit still turns the form, and the gripper stays
+the lead edge of the sheet.
+
+```bash
+impose nup cards.pdf --lay left
+```
+
 **Pages are turned if that is what fits.** Six A6 pages will not go on an
 Indigo upright — two across by three down is 462 mm tall against a 450 mm
 imageable area — but the same six fit comfortably on their sides, at 310 × 333
@@ -261,6 +272,7 @@ series.
 | `--repeat auto\|COLUMNSxROWS` | off | several complete copies of a bound job on one sheet (`saddle`, `perfect`, `signature`) |
 | `--fold {auto,none,vertical,horizontal}` | `auto` | whether the pages being placed fold, and which way |
 | `--orientation {auto,upright,turned}` | `auto` | how pages sit in their cells |
+| `--lay {center,left,right}` | `center` | centered in the imageable area, or pinned to that side guide and the gripper |
 | `--proof [FILE]` | off | a sheet with the folio in each cell, for signing off the order. With no file, `INPUT-proof.pdf`. With `--dry-run`, only the proof is written |
 | `-n`, `--dry-run` | off | show the page order and sheet count; write no press file |
 | `-q`, `--quiet` | off | say nothing on success; warnings still go to stderr |
@@ -1098,6 +1110,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `bindery` — grind-off, collation marks, signature letters, folder lap |
 | ✅ | `ticket` — a job file with the same fields as the command, run again later |
 | ✅ | `gang` — different finished sizes on one sheet, cut apart |
+| ✅ | `lay` — the form centered, or pinned to the side guide and the gripper |
 
 ## Several copies to a sheet
 

@@ -465,6 +465,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     gutters: Gutters | float | str | None = None,
     marks: MarkStyle | None = DEFAULT_MARKS,
     orientation: str = "auto",
+    lay: str = "center",
     max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
     paper_caliper: float | str = 0.0,
     bleed: float | str = DEFAULT_BLEED,
@@ -535,9 +536,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     the grid schemas, ``section_pages`` for perfect binding, ``sides`` for
     step and repeat.
     """
-    # Imported here rather than at module scope so that building and checking
-    # a plan costs nothing but this module: the renderer pulls in pikepdf's
-    # compiled extension, and the ordering logic has no use for it.
+    # Late import: rendering pulls in pikepdf, and ordering does not need it.
     from .render import Renderer  # pylint: disable=import-outside-toplevel
 
     if repeat not in (None, 1):
@@ -552,6 +551,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 "gutters": gutters,
                 "marks": marks,
                 "orientation": orientation,
+                "lay": lay,
                 "max_nested_sheets": max_nested_sheets,
                 "paper_caliper": paper_caliper,
                 "bleed": bleed,
@@ -669,6 +669,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             sheet=sheet_size,
             allowance=allowance,
             caliper=length(paper_caliper),
+            lay=lay,
             grind=grind,
             lap=lap,
             gang_pages=gang_pages,
@@ -787,6 +788,7 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
     sheet: Size,
     allowance: float,
     caliper: float = 0.0,
+    lay: str = "center",
     grind: float = 0.0,
     lap: float = 0.0,
     gang_pages=None,
@@ -817,6 +819,7 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
                     sizes=gang.sizes(gang_pages),
                     origins=gang.origins(gang_pages),
                     bleeds=gang_bleeds,
+                    lay=lay,
                 )
                 for surface in candidate
             ]

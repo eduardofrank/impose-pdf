@@ -40,6 +40,7 @@ _KEYS = frozenset(
         "gutters",
         "marks",
         "orientation",
+        "lay",
         "max_nested_sheets",
         "paper_caliper",
         "bleed",

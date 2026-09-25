@@ -166,6 +166,73 @@ class TestFit(unittest.TestCase):
         )
         self.assertAlmostEqual(to_mm(layout.trim_bounds.y0), 163.0, places=4)
 
+    def test_left_lay_pins_to_the_side_guide_and_the_gripper(self):
+        layout = spread(lay="left")
+        area = layout.imageable
+        self.assertAlmostEqual(layout.bleed_bounds.x0, area.x0, places=6)
+        self.assertAlmostEqual(layout.bleed_bounds.y0, area.y0, places=6)
+        self.assertGreater(area.x1 - layout.bleed_bounds.x1, 1)
+
+    def test_right_lay_pins_to_the_other_guide(self):
+        layout = spread(lay="right")
+        area = layout.imageable
+        self.assertAlmostEqual(layout.bleed_bounds.x1, area.x1, places=6)
+        self.assertAlmostEqual(layout.bleed_bounds.y0, area.y0, places=6)
+
+    def test_a_top_gripper_pins_the_lead_edge_upward(self):
+        press = custom(
+            sheet=INDIGO_5000.sheet, margins=INDIGO_5000.margins, gripper="top"
+        )
+        layout = spread(press=press, lay="left")
+        area = layout.imageable
+        self.assertAlmostEqual(layout.bleed_bounds.x0, area.x0, places=6)
+        self.assertAlmostEqual(layout.bleed_bounds.y1, area.y1, places=6)
+
+    def test_a_turned_form_is_pinned_in_sheet_space(self):
+        press = custom(sheet=Size(400 * MM, 200 * MM), margins="0mm")
+        layout = lay_out(
+            Surface(0, "front", (Placement(0, 0, 0),)),
+            columns=1,
+            rows=1,
+            trim=Size(150 * MM, 350 * MM),
+            trim_origin=Rect.from_size(Size(150 * MM, 350 * MM)),
+            press=press,
+            lay="left",
+        )
+        self.assertTrue(layout.turned)
+        self.assertAlmostEqual(layout.trim_bounds.x0, layout.imageable.x0, places=6)
+        self.assertAlmostEqual(layout.trim_bounds.y0, layout.imageable.y0, places=6)
+
+    def test_a_gang_takes_the_same_lay(self):
+        card = Size(90 * MM, 50 * MM)
+        flyer = Size(148 * MM, 105 * MM)
+        layout = lay_out(
+            Surface(0, "front", (Placement(0, 0, 0), Placement(1, 1, 0))),
+            columns=2,
+            rows=1,
+            trim=card,
+            trim_origin=Rect.from_size(card),
+            press=INDIGO_5000,
+            sizes=(card, flyer),
+            origins=(Rect.from_size(card), Rect.from_size(flyer)),
+            bleeds=(Insets(), Insets()),
+            lay="right",
+        )
+        area = layout.imageable
+        self.assertAlmostEqual(layout.bleed_bounds.x1, area.x1, places=6)
+        self.assertAlmostEqual(layout.bleed_bounds.y0, area.y0, places=6)
+
+    def test_an_unknown_lay_is_named(self):
+        with self.assertRaises(ImposeError) as caught:
+            spread(lay="side")
+        self.assertIn("side", str(caught.exception))
+
+    def test_a_side_gripper_has_no_left_or_right_guide(self):
+        press = custom(sheet=Size(400 * MM, 300 * MM), margins="5mm", gripper="left")
+        with self.assertRaises(ImposeError) as caught:
+            spread(press=press, lay="left")
+        self.assertIn("left gripper", str(caught.exception))
+
     def test_a_form_that_only_fits_turned_is_turned(self):
         press = custom(sheet=Size(400 * MM, 200 * MM), margins="0mm")
         layout = lay_out(

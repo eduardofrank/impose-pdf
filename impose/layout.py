@@ -388,6 +388,7 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
     sizes: tuple[Size, ...] | None = None,
     origins: tuple[Rect, ...] | None = None,
     bleeds: tuple[Insets, ...] | None = None,
+    lay: str = "center",
 ) -> SheetLayout:
     """Place one surface on a sheet.
 
@@ -409,6 +410,8 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
             sheet=sheet,
             imageable=imageable,
             mark_allowance=mark_allowance,
+            lay=lay,
+            gripper=press.gripper,
         )
     cell = _uniform_cell(surface.placements, trim)
     source_trim = trim_origin
@@ -468,10 +471,12 @@ def lay_out(  # pylint: disable=too-many-arguments,too-many-locals
             )
         )
 
-    return _position(placed, form, sheet, imageable, mark_allowance)
+    return _position(
+        placed, form, sheet, imageable, mark_allowance, lay=lay, gripper=press.gripper
+    )
 
 
-def _place_gang(  # pylint: disable=too-many-arguments
+def _place_gang(  # pylint: disable=too-many-arguments,too-many-locals
     surface: Surface,
     *,
     sizes: tuple[Size, ...],
@@ -481,6 +486,8 @@ def _place_gang(  # pylint: disable=too-many-arguments
     sheet: Size,
     imageable: Rect,
     mark_allowance: float,
+    lay: str,
+    gripper: str,
 ) -> SheetLayout:
     """Place each page at its own size, on the shelves the gang planned."""
     frames, form = _gang_frames(surface, sizes, gutters)
@@ -502,7 +509,9 @@ def _place_gang(  # pylint: disable=too-many-arguments
                 row=placement.row,
             )
         )
-    return _position(placed, form, sheet, imageable, mark_allowance)
+    return _position(
+        placed, form, sheet, imageable, mark_allowance, lay=lay, gripper=gripper
+    )
 
 
 def _gang_frames(  # pylint: disable=too-many-locals
@@ -537,14 +546,17 @@ def _gang_frames(  # pylint: disable=too-many-locals
     return frames, Size(total_w, total_h)
 
 
-def _position(
+def _position(  # pylint: disable=too-many-arguments
     placed: list[PlacedPage],
     form: Size,
     sheet: Size,
     imageable: Rect,
     mark_allowance: float,
+    *,
+    lay: str = "center",
+    gripper: str = "bottom",
 ) -> SheetLayout:
-    """Centre the form in the imageable area, turning it if that is what fits."""
+    """Seat the form in the imageable area, turning it if that is what fits."""
     trim_bounds = bounds([page.trim for page in placed])
     paint_bounds = bounds([page.paint for page in placed])
     # Marks are measured from the trim, so a marked edge needs whichever is
@@ -577,7 +589,7 @@ def _position(
         )
         form = form.swapped()
 
-    target = extent.centered_in(imageable)
+    target = _lay(extent, imageable, lay, gripper)
     dx, dy = target.x0 - extent.x0, target.y0 - extent.y0
     placed = [
         dataclasses.replace(
@@ -594,6 +606,29 @@ def _position(
         bleed_bounds=bounds([page.paint for page in placed]),
         turned=turned,
     )
+
+
+def _lay(extent: Rect, imageable: Rect, lay: str, gripper: str) -> Rect:
+    """Where the form sits: centred, or against the side guide and the gripper.
+
+    The turn has already happened, so left and right are the sheet's, and the
+    gripper stays the lead edge. Spare margin falls to the tail and the far side.
+    """
+    if lay == "center":
+        return extent.centered_in(imageable)
+    if lay not in ("left", "right"):
+        raise ImposeError(
+            f"Unknown lay {lay!r}. The form is centered, or pinned to the "
+            "left or right side guide."
+        )
+    if gripper not in ("bottom", "top"):
+        raise ImposeError(
+            f"A {gripper} gripper has no left or right side guide. The side "
+            "guide stands across the lead edge."
+        )
+    x = imageable.x0 if lay == "left" else imageable.x1 - extent.width
+    y = imageable.y0 if gripper == "bottom" else imageable.y1 - extent.height
+    return Rect(x, y, x + extent.width, y + extent.height)
 
 
 def _why_it_does_not_fit(

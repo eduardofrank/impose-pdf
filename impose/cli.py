@@ -266,6 +266,15 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "no record to read. Default: %(default)s.",
     )
     parser.add_argument(
+        "--lay",
+        choices=("center", "left", "right"),
+        default="center",
+        help="Where the form sits in the imageable area. center splits the "
+        "spare margin. left and right pin it to that side guide and to the "
+        "gripper, so the spare falls to the tail and the far side. "
+        "Default: %(default)s.",
+    )
+    parser.add_argument(
         "--orientation",
         choices=("auto", "upright", "turned"),
         default="auto",
@@ -824,6 +833,7 @@ def _options(args: argparse.Namespace) -> dict:
         "gutters": args.gutters,
         "marks": _style(args),
         "orientation": args.orientation,
+        "lay": args.lay,
         "max_nested_sheets": getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
         "paper_caliper": getattr(args, "paper_caliper", 0.0),
         "bleed": args.bleed,
