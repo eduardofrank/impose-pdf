@@ -46,6 +46,9 @@ _KEYS = frozenset(
         "bleed",
         "registration",
         "colour_bar",
+        "cut",
+        "cut_name",
+        "strip",
         "page",
         "fold",
         "slug",
@@ -72,7 +75,7 @@ _KEYS = frozenset(
     }
 )
 
-_PATHS = ("source", "output", "proof", "artwork")
+_PATHS = ("source", "output", "proof", "artwork", "strip")
 
 
 def schema_options(args, schema: str | None = None) -> dict:

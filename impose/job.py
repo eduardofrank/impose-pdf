@@ -32,11 +32,12 @@ from .boxes import (
     read_boxes,
     require_trim,
 )
+from .finishing import layer_note, open_strip, outlines, prepare_cut, strip_slots
 from .fit import DEFAULT_GUTTER, best, largest_signature
 from .font import load as load_font
 from .geometry import Insets, Rect, Size, approx
 from .layout import Gutters, lay_out
-from .marks import MarkStyle, Segment, furniture, trim_marks
+from .marks import MarkStyle, all_folds, furniture, sheet_marks
 from .plan import Plan, Surface
 from .press import FIT_SHEET, Press
 from .press import get as get_press
@@ -471,6 +472,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     bleed: float | str = DEFAULT_BLEED,
     registration: bool = False,
     colour_bar: bool = False,
+    cut: bool = False,
+    cut_name: str = "CutContour",
+    strip: str | pathlib.Path | None = None,
     page: str = "imageable",
     fold: str = "auto",
     slug: bool = False,
@@ -557,6 +561,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 "bleed": bleed,
                 "registration": registration,
                 "colour_bar": colour_bar,
+                "cut": cut,
+                "cut_name": cut_name,
+                "strip": strip,
                 "page": page,
                 "fold": fold,
                 "slug": slug,
@@ -568,6 +575,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         )
 
     opened = _open(source)
+    wedge = None
     try:
         fit_to_form = isinstance(sheet, str) and sheet.strip().lower() == FIT_SHEET
         machine = get_press(press) if isinstance(press, str) else press
@@ -677,13 +685,19 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         )
         turned = any(layout.turned for layout in layouts)
         warnings = _warnings(plan, schema, max_nested_sheets, boxes)
+        spot = prepare_cut(schema, cut, cut_name)
+        wedge = open_strip(strip) if strip else None
+        slots, bar_note = strip_slots(wedge, layouts, style, colour_bar)
+        if bar_note:
+            warnings = (*warnings, bar_note)
+            colour_bar = False
         if proof is not None:
             write_proof(
                 proof,
                 plan,
                 layouts,
                 [
-                    _all_folds(
+                    all_folds(
                         layout,
                         plan,
                         layout.carried_folds(source_folds, boxes.rotation),
@@ -707,7 +721,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
 
         renderer = Renderer(style=style)
         name = _source_name(source)
-        for surface, layout in zip(plan.surfaces, layouts):
+        for index, (surface, layout) in enumerate(zip(plan.surfaces, layouts)):
             carried = layout.carried_folds(source_folds, boxes.rotation)
             targets, patches = (
                 furniture(
@@ -720,12 +734,12 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 if style and (registration or colour_bar)
                 else ([], [])
             )
-            folds = _all_folds(layout, plan, carried)
+            folds = all_folds(layout, plan, carried)
             bindery = marks_for(layout, plan) if collate else None
             renderer.add(
                 layout,
                 opened,
-                marks=_marks(layout, plan, style, carried),
+                marks=sheet_marks(layout, plan, style, carried),
                 bindery=bindery,
                 targets=targets,
                 bar=patches,
@@ -740,8 +754,13 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                     name=name,
                     size=slug_size,
                 ),
+                cut=outlines(layout) if spot else None,
+                cut_name=spot,
+                wedge=(wedge.pdf, wedge.media, slots[index]) if wedge else None,
             )
         identity = renderer.carry_over(opened)
+        if spot:
+            warnings = (*warnings, *layer_note(identity.version, spot))
         renderer.save(output)
 
         return Result(
@@ -759,6 +778,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     finally:
         if opened is not source:
             opened.close()
+        if wedge is not None:
+            wedge.close()
 
 
 def _candidates(plan: Plan, schema: str, orientation: str) -> list[Plan]:
@@ -938,37 +959,6 @@ def _source_folds(
     if fold == "horizontal":
         return ((), (middle_y,))
     raise ImposeError(f"Unknown fold {fold!r}; use {', '.join(FOLD_CHOICES)}.")
-
-
-def _all_folds(
-    layout, plan: Plan, carried: tuple[tuple[float, ...], tuple[float, ...]]
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Every fold on a finished sheet: the schema's own, and the pages' own.
-
-    Recorded on the output so that a form of forms keeps its folds through a
-    third pass as readily as through a second.
-    """
-    own_x, own_y = layout.fold_positions(plan.fold_columns, plan.fold_rows)
-    carried_x, carried_y = carried
-    return (tuple(sorted({*own_x, *carried_x})), tuple(sorted({*own_y, *carried_y})))
-
-
-def _marks(
-    layout,
-    plan: Plan,
-    style: MarkStyle | None,
-    carried: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
-) -> list[Segment] | None:
-    """Cut marks for a laid-out surface, with every fold dashed."""
-    if style is None:
-        return None
-    fold_x, fold_y = _all_folds(layout, plan, carried)
-    return trim_marks(
-        [page.trim for page in layout.pages],
-        style=style,
-        fold_x=fold_x,
-        fold_y=fold_y,
-    )
 
 
 def _gutters(value: Gutters | float | str) -> Gutters:

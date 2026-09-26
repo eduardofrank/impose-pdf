@@ -26,6 +26,7 @@ import dataclasses
 from typing import Literal
 
 from .geometry import Rect, approx
+from .plan import Plan
 from .units import MM
 
 #: Bezier handle length for a circular arc of unit radius. Four arcs of this
@@ -356,3 +357,34 @@ def furniture(
 def allowance(style: MarkStyle | None) -> float:
     """How much room beyond the trim a form needs for its marks."""
     return 0.0 if style is None else style.reach
+
+
+def all_folds(
+    layout, plan: Plan, carried: tuple[tuple[float, ...], tuple[float, ...]]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Every fold on a finished sheet: the schema's own, and the pages' own.
+
+    Recorded on the output so that a form of forms keeps its folds through a
+    third pass as readily as through a second.
+    """
+    own_x, own_y = layout.fold_positions(plan.fold_columns, plan.fold_rows)
+    carried_x, carried_y = carried
+    return (tuple(sorted({*own_x, *carried_x})), tuple(sorted({*own_y, *carried_y})))
+
+
+def sheet_marks(
+    layout,
+    plan: Plan,
+    style: MarkStyle | None,
+    carried: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
+) -> list[Segment] | None:
+    """Cut marks for a laid-out surface, with every fold dashed."""
+    if style is None:
+        return None
+    fold_x, fold_y = all_folds(layout, plan, carried)
+    return trim_marks(
+        [page.trim for page in layout.pages],
+        style=style,
+        fold_x=fold_x,
+        fold_y=fold_y,
+    )

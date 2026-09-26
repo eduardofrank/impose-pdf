@@ -23,6 +23,7 @@ from collections.abc import Sequence
 
 from . import ImposeError, __version__
 from .cover import impose_cover
+from .finishing import add_arguments as add_finishing_arguments
 from .fit import DEFAULT_GUTTER, arrangements, compare
 from .fold import HEAD_TO_HEAD
 from .fold import STYLES as FOLD_STYLES
@@ -222,20 +223,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "and none stays none. Default: 2mm.",
     )
     _add_mark_options(parser)
-    parser.add_argument(
-        "--registration",
-        action="store_true",
-        help="Add a registration bullseye on each side of the form, in "
-        "registration colour. Placed only where the margin has room.",
-    )
-    parser.add_argument(
-        "--colour-bar",
-        "--color-bar",
-        dest="colour_bar",
-        action="store_true",
-        help="Add a row of process-ink patches along the tail of the sheet, "
-        "for reading density on press.",
-    )
+    add_finishing_arguments(parser)
     parser.add_argument(
         "--slug",
         action="store_true",
@@ -841,6 +829,9 @@ def _options(args: argparse.Namespace) -> dict:
         "fold": args.fold,
         "registration": args.registration,
         "colour_bar": args.colour_bar,
+        "cut": args.cut,
+        "cut_name": args.cut_name,
+        "strip": args.strip,
         "slug": args.slug,
         "slug_size": args.slug_size,
         "repeat": getattr(args, "repeat", None),

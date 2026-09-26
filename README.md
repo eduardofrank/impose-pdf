@@ -267,6 +267,9 @@ series.
 | `--mark-width LENGTH` | `0.25pt` | stroke width |
 | `--registration` | off | bullseye on each side of the form |
 | `--colour-bar` | off | ink patches along the tail (`--color-bar` also accepted) |
+| `--cut` | off | a closed path around each piece, for a cutter (`nup`, `cutstack`, `steprepeat`, `gang`, `cover`) |
+| `--cut-name NAME` | `CutContour` | the spot colour the cutter is set to pick up |
+| `--strip FILE` | off | a licensed control strip, embedded whole at the tail, at its own size |
 | `--slug` | off | a line in the side margin saying what the sheet is |
 | `--slug-size POINTS` | `8` | text size for that line |
 | `--repeat auto\|COLUMNSxROWS` | off | several complete copies of a bound job on one sheet (`saddle`, `perfect`, `signature`) |
@@ -926,8 +929,49 @@ read — an unreadable bar is worse than none, because it looks like a check tha
 was made.
 
 This is a working bar, not a standardised one. Fogra, Ugra and GATF wedges are
-specified objects with their own patch geometry; a job that needs one of those
-needs the real thing rather than an approximation of it.
+specified objects with their own patch geometry. A job that needs one embeds
+the file it is licensed to use; see [A control strip](#a-control-strip).
+
+### A cutter path
+
+Crop marks tell a person where to set a guillotine. A Zünd or a Kongsberg
+follows a path. `--cut` draws a closed outline around each piece, stroked in a
+spot colour and placed on a layer marked as an ISO 19593-1 Cutting step
+(`/Structural` / `/Cutting`). The spot name defaults to `CutContour`, which is
+what Fiery, ONYX, and most Zünd workflows are set to extract. `--cut-name`
+matches a tool the cutter already has, such as `Through Cut`.
+
+```bash
+impose nup cards.pdf --cut
+impose gang cards.pdf --cut --cut-name "Through Cut"
+```
+
+The path overprints, so it does not knock the artwork out, and a viewer shows
+it in magenta. A press that does not know the name will print that line.
+Nothing is drawn over the path.
+
+Each piece is its own outline. Two pieces that meet with no gutter are cut
+twice, once around each. An empty cell is left alone.
+
+A bound schema has no path. The book is trimmed on a guillotine after it is
+folded or gathered, and an outline around each page on the flat sheet would
+cut the book apart. `nup`, `cutstack`, `steprepeat`, `gang`, and `cover` are
+the schemas the knife separates.
+
+### A control strip
+
+`--strip FILE` embeds that page whole, at the size it was made, flush to the
+tail in the band the working colour bar would have used. The drawing stays the
+file's own: a wedge whose patches have moved is a different wedge. One page,
+upright. If the tail cannot hold it, the job is refused and the message names
+the strip and the room.
+
+```bash
+impose nup cards.pdf --strip wedge.pdf
+```
+
+Asked for together with `--colour-bar`, the strip is the bar and the working
+row is left off.
 
 ### The slug line
 
@@ -1111,6 +1155,8 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `ticket` — a job file with the same fields as the command, run again later |
 | ✅ | `gang` — different finished sizes on one sheet, cut apart |
 | ✅ | `lay` — the form centered, or pinned to the side guide and the gripper |
+| ✅ | `cut` — a closed path per piece, in a spot colour on an ISO 19593 Cutting layer |
+| ✅ | `strip` — a licensed control wedge embedded whole, at its own size |
 
 ## Several copies to a sheet
 

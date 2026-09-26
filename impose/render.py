@@ -154,6 +154,74 @@ def _draw_marks(
     return "".join(parts)
 
 
+def _spot_colorspace(pdf: pikepdf.Pdf, name: str) -> Array:
+    """A separation the cutter reads, shown as magenta where a viewer draws it.
+
+    The alternate is only for display. The name is what a RIP strips out of
+    the print and hands to the cutter, so it is never a process colour.
+    """
+    tint = pdf.make_indirect(
+        Dictionary(
+            FunctionType=2,
+            Domain=[0, 1],
+            C0=[0, 0, 0, 0],
+            C1=[0, 1, 0, 0],
+            N=1,
+        )
+    )
+    return Array([Name.Separation, _pdf_name(name), Name.DeviceCMYK, tint])
+
+
+def _pdf_name(text: str) -> Name:
+    """A PDF name, with characters a name cannot hold written as hex."""
+    encoded = "".join(
+        (
+            char
+            if 33 <= ord(char) <= 126 and char not in "#%/()<>[]{}"
+            else f"#{ord(char):02X}"
+        )
+        for char in text
+    )
+    return Name("/" + encoded)
+
+
+def _draw_cut(rects: list[Rect], colour: Name, state: Name, prop: Name) -> str:
+    """Closed trims, stroked and overprinted, on the Cutting layer.
+
+    ISO 19593-1: a path that may cross the artwork is a spot colour, stroke
+    only, overprint on, and nothing is painted over it. The layer carries
+    ``/GTS_ProcStepsGroup /Structural`` and ``/GTS_ProcStepsType /Cutting``,
+    which is how a finishing device identifies the step without trusting the
+    layer's display name.
+    """
+    parts = [
+        f"/OC {prop} BDC\nq\n",
+        f"{colour} CS\n1 SCN\n",
+        f"{state} gs\n",
+        "0.25 w\n",
+    ]
+    for rect in rects:
+        parts.append(
+            f"{_numbers(rect.x0, rect.y0)} m\n"
+            f"{_numbers(rect.x1, rect.y0)} l\n"
+            f"{_numbers(rect.x1, rect.y1)} l\n"
+            f"{_numbers(rect.x0, rect.y1)} l\n"
+            "h S\n"
+        )
+    parts.append("Q\nEMC\n")
+    return "".join(parts)
+
+
+def _place_wedge(name: Name, media: Rect, slot: Rect) -> str:
+    """The strip's own page, unscaled, with its media origin on the slot."""
+    return (
+        "q\n"
+        f"1 0 0 1 {_numbers(slot.x0 - media.x0, slot.y0 - media.y0)} cm\n"
+        f"{name} Do\n"
+        "Q\n"
+    )
+
+
 def _draw_patches(patches: list[Patch]) -> str:
     """Colour-bar patches, filled in DeviceCMYK.
 
@@ -227,6 +295,9 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         # the page, because add() is handed its source each time and page 0
         # of two documents is not the same page.
         self._forms: dict[tuple[int, int], pikepdf.Object] = {}
+        self._cut_ocg = None
+        self._cut_space = None
+        self._wedge = None
 
     def carry_over(self, source: pikepdf.Pdf) -> Identity:
         """Copy *source*'s printing condition and PDF/X claim onto the output.
@@ -260,6 +331,9 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ()),
         slug: Slug | None = None,
         bindery=None,
+        cut: list[Rect] | None = None,
+        cut_name: str | None = None,
+        wedge: tuple[pikepdf.Pdf, Rect, Rect] | None = None,
     ) -> pikepdf.Page:
         """Draw one imposed surface as a new page."""
         sheet = Rect.from_size(layout.sheet)
@@ -288,6 +362,15 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         if bindery is not None and (bindery.bars or bindery.letters):
             self._slug_characters |= set(bindery.text)
             stream.append(_draw_bindery(bindery, self._slug_font(page)))
+        if wedge is not None:
+            pdf, media, slot = wedge
+            placed = page.add_resource(self._wedge_form(pdf), Name.XObject)
+            stream.append(_place_wedge(placed, media, slot))
+        if cut and cut_name:
+            # Last, so nothing is painted over the path. ISO 19593-1 requires
+            # that of a step whose objects may meet the artwork.
+            colour, state, prop = self._cut_resources(page, cut_name)
+            stream.append(_draw_cut(cut, colour, state, prop))
         # latin-1 rather than ascii: a content stream is bytes, and a slug
         # carrying a job called Catálogo puts 0xE1 in a string literal. Every
         # other fragment here is ASCII, which latin-1 encodes identically.
@@ -313,6 +396,49 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         copied = self.pdf.copy_foreign(form)
         self._forms[key] = copied
         return copied
+
+    def _wedge_form(self, source: pikepdf.Pdf):
+        """The strip as one form, copied once and placed on every sheet."""
+        if self._wedge is not None:
+            return self._wedge
+        foreign = pikepdf.Page(source.pages[0])
+        form = foreign.as_form_xobject()
+        # The whole page, including anything outside its trim. A wedge is the
+        # file the licensor drew, and clipping it would drop a patch.
+        form.BBox = Array(list(foreign.mediabox))
+        self._wedge = self.pdf.copy_foreign(form)
+        return self._wedge
+
+    def _cut_resources(self, page: pikepdf.Page, spot: str) -> tuple[Name, Name, Name]:
+        """Spot colour, overprint, and the Cutting layer, created once."""
+        if self._cut_ocg is None:
+            self._cut_ocg = self.pdf.make_indirect(
+                Dictionary(
+                    Type=Name.OCG,
+                    Name=spot,
+                    GTS_Metadata=Dictionary(
+                        GTS_ProcStepsGroup=Name("/Structural"),
+                        GTS_ProcStepsType=Name("/Cutting"),
+                    ),
+                )
+            )
+            self._cut_space = self.pdf.make_indirect(_spot_colorspace(self.pdf, spot))
+            self.pdf.Root.OCProperties = Dictionary(
+                OCGs=Array([self._cut_ocg]),
+                D=Dictionary(
+                    BaseState=Name("/ON"),
+                    ON=Array([self._cut_ocg]),
+                    Order=Array([self._cut_ocg]),
+                ),
+            )
+            self._min_version = max(self._min_version, "1.5")
+        colour = page.add_resource(self._cut_space, Name.ColorSpace)
+        state = page.add_resource(_overprint_state(self.pdf), Name.ExtGState)
+        prop = page.add_resource(
+            Dictionary(Type=Name("/OCMD"), OCGs=Array([self._cut_ocg])),
+            Name("/Properties"),
+        )
+        return colour, state, prop
 
     def _slug_font(self, page: pikepdf.Page) -> Name:
         """The font object, reserved once and shared by every page."""
