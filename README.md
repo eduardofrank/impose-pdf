@@ -159,8 +159,9 @@ slug and marks, and placing those into a gutter is worse than placing nothing.
 
 ## Command line
 
-One job of each schema. The press file is written beside the input, with
-`-imposed` on the name: `book.pdf` becomes `book-imposed.pdf`.
+One job of each schema, then where the form sits, a cutter path, and a
+control strip. The press file is written beside the input, with `-imposed`
+on the name: `book.pdf` becomes `book-imposed.pdf`.
 
 ```bash
 # Saddle stitch: sheets nested, stapled through the fold.
@@ -186,6 +187,18 @@ impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 
 # A card and a flyer on one sheet, each at its own size.
 impose gang jobs.pdf --gutter 4mm
+
+# Pin the form to the side guide. The spare falls to the tail and the far side.
+impose nup cards.pdf --lay left
+
+# A closed outline around each piece, for a Zünd or a Kongsberg.
+impose nup cards.pdf --cut
+
+# The same path, named for the tool the cutter already has.
+impose gang cards.pdf --cut --cut-name "Through Cut"
+
+# A licensed control strip, embedded whole at the tail, at its own size.
+impose nup cards.pdf --strip wedge.pdf
 ```
 
 `--dry-run` shows the page order and sheet count without writing the press
@@ -454,6 +467,15 @@ impose cutstack manual.pdf --up 2x2 --gutter 3mm
 
 # Cover for an 80-page A5 novel: 0.1 mm text, 5 mm hinges
 impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
+
+# Pin the form to the side guide and the gripper
+impose nup cards.pdf --lay left
+
+# A closed path around each card, named for the cutter's tool
+impose nup cards.pdf --cut --cut-name "Through Cut"
+
+# A licensed control strip, embedded whole at the tail
+impose nup cards.pdf --strip wedge.pdf
 ```
 
 ## Gang
