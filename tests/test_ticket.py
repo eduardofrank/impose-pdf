@@ -86,5 +86,94 @@ class TestStoredJob(unittest.TestCase):
             self.assertIn("source", str(caught.exception))
 
 
+class TestStoredPress(unittest.TestCase):
+    """A press the profiles do not describe is still a job that can be stored."""
+
+    def test_a_custom_press_is_recorded_and_run_again(self):
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "--up",
+                "2x1",
+                "--press",
+                "320mmx450mm",
+                "--margins",
+                "bottom=12mm,top=5mm",
+                "--gripper",
+                "bottom",
+                "--record",
+                str(job),
+                "-o",
+                str(source.with_name("out.pdf")),
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertEqual(
+                stored["press"],
+                {
+                    "name": "320mmx450mm",
+                    "sheet": "320mmx450mm",
+                    "margins": {
+                        "bottom": "12mm",
+                        "top": "5mm",
+                        "left": "0mm",
+                        "right": "0mm",
+                    },
+                    "gripper": "bottom",
+                },
+            )
+            status, text, err = run("run", str(job))
+            self.assertEqual(status, 0, err)
+            self.assertIn("320 × 433 mm", text)
+
+    def test_a_profile_with_nothing_overriding_it_stays_a_name(self):
+        """A name reads the profile of the day, not a frozen copy of it."""
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup", str(source), "--up", "2x1", "--record", str(job), "--dry-run"
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertEqual(stored["press"], "indigo-5000")
+
+    def test_a_press_written_by_hand_is_read(self):
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {
+                        "source": source.name,
+                        "schema": "nup",
+                        "up": "2x1",
+                        "press": {
+                            "name": "the-old-heidelberg",
+                            "sheet": "320mmx450mm",
+                            "margins": {"bottom": "12mm", "top": "5mm"},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status, text, err = run("run", str(job), "--dry-run")
+            self.assertEqual(status, 0, err)
+            self.assertIn("the-old-heidelberg", text)
+
+    def test_a_press_the_file_cannot_describe_fails_on_opening_it(self):
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {"source": source.name, "schema": "saddle", "press": "gutenberg"}
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ImposeError) as caught:
+                load(job)
+            self.assertIn("indigo-5000", str(caught.exception))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

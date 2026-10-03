@@ -23,7 +23,9 @@ from .cover import impose_cover
 from .job import SCHEMAS, impose_document
 from .layout import Gutters
 from .marks import MarkStyle
-from .units import length
+from .press import EDGES, Press
+from .press import resolve as resolve_press
+from .units import length, to_mm
 
 #: The only edition of the file this version of impose reads.
 VERSION = 1
@@ -167,6 +169,10 @@ def load(path: str | pathlib.Path) -> dict:
             f"Unknown schema {data['schema']!r}. Known schemas: "
             f"{', '.join(sorted(SCHEMAS))}."
         )
+    if data.get("press") is not None:
+        # Read the press now, so a job naming a machine it cannot describe
+        # fails on opening the file rather than part-way through a run.
+        resolve_press(data["press"])
     base = file.parent
     job = dict(data)
     for key in _PATHS:
@@ -333,8 +339,23 @@ def _beside(source: pathlib.Path) -> pathlib.Path:
     return source.with_name(f"{source.stem}-imposed{source.suffix or '.pdf'}")
 
 
+def _mm(points: float) -> str:
+    """A length in millimetres, as a job file writes one."""
+    return f"{to_mm(points):g}mm"
+
+
 def _plain(value):
     """A value JSON can store. A mark style becomes its four numbers."""
+    if isinstance(value, Press):
+        # Stored as the millimetres an operator would read off the machine,
+        # not as the points we work in: a job file is a document a person
+        # checks, and it has to read the press back the way it was given.
+        return {
+            "name": value.name,
+            "sheet": f"{_mm(value.sheet.width)}x{_mm(value.sheet.height)}",
+            "margins": {edge: _mm(getattr(value.margins, edge)) for edge in EDGES},
+            "gripper": value.gripper,
+        }
     if isinstance(value, MarkStyle):
         return {
             "colour": value.colour,

@@ -40,7 +40,7 @@ from .layout import Gutters, lay_out
 from .marks import MarkStyle, all_folds, furniture, sheet_marks
 from .plan import Plan, Surface
 from .press import FIT_SHEET, Press
-from .press import get as get_press
+from .press import resolve as resolve_press
 from .proof import write_proof
 from .repeat import repeated
 from .schemas import cover as cover_schema
@@ -461,7 +461,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     output: str | pathlib.Path | IO[bytes],
     *,
     schema: str = "saddle",
-    press: Press | str = "indigo-5000",
+    press: Press | str | dict = "indigo-5000",
     sheet: Size | str | tuple[float, float] | None = None,
     gutters: Gutters | float | str | None = None,
     marks: MarkStyle | None = DEFAULT_MARKS,
@@ -505,6 +505,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     ignores that record, and ``"vertical"`` or ``"horizontal"`` say each page
     folds down its own middle on that axis -- for a form some other program
     made, which has no record to read.
+
+    *press* is a profile name such as ``"indigo-5000"``, a :class:`Press`, or
+    a mapping describing one -- ``{"sheet": "320mmx450mm", "margins":
+    {"bottom": "12mm"}}`` for a machine this tool has no profile for. See
+    :func:`impose.press.resolve`.
 
     *page* decides what the output page is. ``"imageable"``, the default, makes
     it the area the press can print, so anything that fits the page will run
@@ -578,7 +583,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     wedge = None
     try:
         fit_to_form = isinstance(sheet, str) and sheet.strip().lower() == FIT_SHEET
-        machine = get_press(press) if isinstance(press, str) else press
+        machine = resolve_press(press)
         # A form-sized sheet is not known until the plan is, and the plan needs
         # a grid, and the grid needs a sheet to be chosen against. The press
         # maximum breaks the circle: it is the largest the first pass could

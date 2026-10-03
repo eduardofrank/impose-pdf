@@ -38,8 +38,11 @@ from .job import (
     repeating_unit,
 )
 from .marks import MarkStyle
+from .press import add_arguments as add_press_arguments
+from .press import from_arguments as chosen_press
 from .press import get as get_press
 from .press import press_names
+from .press import resolve as resolve_press
 from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .slug import DEFAULT_SIZE as SLUG_SIZE
@@ -183,8 +186,10 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "--press",
         default="indigo-5000",
         metavar="NAME",
-        help=f"Press profile. One of: {', '.join(press_names())}. "
-        f"Default: %(default)s.",
+        help=f"Press profile. One of: {', '.join(press_names())}. A size "
+        f"such as 320mmx450mm instead names a machine this tool has no "
+        f"profile for, whose whole sheet images until --imageable or "
+        f"--margins says otherwise. Default: %(default)s.",
     )
     parser.add_argument(
         "--sheet",
@@ -194,6 +199,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "exactly the size of the form -- the first pass of a two-stage job, "
         "whose output is imposed again rather than run.",
     )
+    add_press_arguments(parser)
     parser.add_argument(
         "--gutters",
         "--gutter",
@@ -566,9 +572,11 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
         "--press",
         default="indigo-5000",
         metavar="NAME",
-        help="Press profile. Default: %(default)s.",
+        help="Press profile, or a size such as 320mmx450mm for a machine "
+        "this tool has no profile for. Default: %(default)s.",
     )
     fit.add_argument("--sheet", metavar="SIZE", help="Sheet, if not the maximum.")
+    add_press_arguments(fit)
     fit.add_argument(
         "--gutter",
         "--gutters",
@@ -726,7 +734,7 @@ def _fit(  # pylint: disable=too-many-locals,too-many-branches
     args: argparse.Namespace, out
 ) -> int:
     """Answer how many fit, and what a given order wastes."""
-    press = get_press(args.press)
+    press = resolve_press(chosen_press(args))
     sheet = paper(args.sheet) if args.sheet else press.sheet
     press.check_sheet(sheet)
     area = press.imageable_area(sheet)
@@ -816,7 +824,7 @@ def _options(args: argparse.Namespace) -> dict:
     schema = "signature" if getattr(args, "folded", False) else args.command
     return {
         "schema": schema,
-        "press": args.press,
+        "press": chosen_press(args),
         "sheet": args.sheet,
         "gutters": args.gutters,
         "marks": _style(args),
@@ -878,7 +886,7 @@ def _cover(args: argparse.Namespace, out) -> int:
         section_pages=args.section_pages,
         artwork=args.artwork,
         bleed=args.bleed,
-        press=args.press,
+        press=chosen_press(args),
         sheet=args.sheet,
         gutters=0.0 if args.gutters is None else args.gutters,
         marks=_style(args),

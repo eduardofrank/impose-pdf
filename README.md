@@ -269,8 +269,11 @@ series.
 |---|---|---|
 | `INPUT` | — | the PDF to impose |
 | `-o`, `--output FILE` | `INPUT-imposed.pdf` | where to write |
-| `--press NAME` | `indigo-5000` | press profile; see `impose presses` |
+| `--press NAME` | `indigo-5000` | press profile; see `impose presses`. A size such as `320mmx450mm` names a machine there is no profile for |
 | `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
+| `--imageable SIZE` | from the profile | the part of the sheet that can carry ink, centred in it |
+| `--margins SPEC` | from the profile | the border the press cannot image: `5mm`, or `bottom=12mm,top=5mm`; an edge not named keeps the profile's |
+| `--gripper {bottom,top,left,right}` | from the profile | which edge the grippers hold, and so goes in first |
 | `--page {imageable,sheet}` | `imageable` | what the output page is |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
 | `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
@@ -341,8 +344,11 @@ off the TrimBox and the page count stands in for the quantity.
 | `SIZE_OR_PDF` | — | finished size (`A6`, `90mmx50mm`) or a PDF to measure |
 | `--schema NAME` | flat piece | answer for the schema that would be run |
 | `-n`, `--quantity N` | none | pieces wanted; adds sheet counts and waste |
-| `--press NAME` | `indigo-5000` | press profile |
+| `--press NAME` | `indigo-5000` | press profile, or a size such as `320mmx450mm` |
 | `--sheet SIZE` | the press maximum | sheet to run |
+| `--imageable SIZE` | from the profile | the part of the sheet that can carry ink, centred in it |
+| `--margins SPEC` | from the profile | the border the press cannot image |
+| `--gripper {bottom,top,left,right}` | from the profile | which edge the grippers hold |
 | `--gutter LENGTH` | `4mm` | gap between pieces |
 | `--marks {registration,black,none}` | `registration` | `none` reserves no room for marks |
 | `--mark-offset LENGTH` | `2mm` | gap between the trim and the start of a mark |
@@ -519,6 +525,36 @@ impose run novel.json
 Lengths are written the same way as on the command line, or as a bare number
 of PDF points. `"marks": "none"` draws no cut marks. A quote system or a hot
 folder writes the same file.
+
+`"press"` is a profile name, and a job that names one reads the profile of the
+day it is imposed. A press the profiles do not describe is written out in
+full, so the job carries the machine with it:
+
+```json
+{
+  "version": 1,
+  "source": "cards.pdf",
+  "schema": "nup",
+  "up": "2x4",
+  "press": {
+    "name": "the-old-heidelberg",
+    "sheet": "330mmx482mm",
+    "margins": {
+      "bottom": "12mm",
+      "top": "6mm",
+      "left": "5mm",
+      "right": "5mm"
+    },
+    "gripper": "bottom"
+  }
+}
+```
+
+With a sheet of its own, `name` is only a label. Without one, it is a profile
+to start from, so `{"name": "indigo-5000", "margins": {"bottom": "15mm"}}` is
+that press with the gripper strip this shop measured and its own figures for
+the other three edges. `imageable` may be given instead of `margins`, and is
+centred in the sheet.
 
 ## Using it as a library
 
@@ -1127,7 +1163,56 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 
 These figures are **nominal**. A press is a physical machine with its own
 history — confirm them against yours before committing a job, and override
-where they differ:
+where they differ.
+
+### Your own machine
+
+`--margins` is the border the press cannot image, measured in from the sheet
+edges. Give it one length for all four, or name only the edges that differ
+from the profile:
+
+```bash
+impose saddle book.pdf --margins bottom=14mm,top=7mm
+```
+
+An edge the figure does not name keeps the profile's — a shop that measured
+its own gripper strip said nothing about the other three, and reading that as
+nothing would widen the imageable area past what the press can print. A single
+length replaces the border whole, and where there is no profile to keep, an
+edge not named is nothing.
+
+`--press` takes a size as well as a profile name, for a machine this tool has
+no profile for. On its own, that is a press whose whole sheet images — a
+device fed cut sheets. With a border, it is the machine in the room:
+
+```bash
+impose nup cards.pdf --up 2x4 \
+    --press 330mmx482mm --margins bottom=12mm,top=6mm,left=5mm,right=5mm
+```
+
+`--imageable` gives the printable area instead of the border, and centres it
+in the sheet. It is the simple case, and it is the one the trade gets wrong:
+centring splits the unimageable border equally, and no press does that. Where
+the gripper edge differs from the tail — it always does — the figures are a
+border, so give `--margins`.
+
+`--gripper` says which edge the grippers hold, and so which goes into the
+machine first. It is fixed with respect to the sheet, not to the artwork:
+turning a form to make it fit turns the form, never the gripper.
+
+Check what the options came to before committing a job:
+
+```bash
+impose fit A6 --press 330mmx482mm --margins bottom=12mm,top=6mm
+```
+
+```
+105 × 148 mm on 330mmx482mm, imageable 330 × 464 mm
+  8 up, 2 × 4 turned, form 300 × 432 mm
+  6 up, 2 × 3 upright, form 214 × 452 mm
+```
+
+The same three options are available to a caller:
 
 ```python
 from impose.geometry import Insets
@@ -1179,6 +1264,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `lay` — the form centered, or pinned to the side guide and the gripper |
 | ✅ | `cut` — a closed path per piece, in a spot colour on an ISO 19593 Cutting layer |
 | ✅ | `strip` — a licensed control wedge embedded whole, at its own size |
+| ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
 
 ## Several copies to a sheet
 
