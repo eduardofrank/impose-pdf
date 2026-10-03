@@ -132,28 +132,40 @@ def main(argv=None) -> int:
     )
     parser.add_argument("input", help="PDF to check.")
     parser.add_argument(
-        "--threshold", type=float, default=1.0, metavar="MM",
+        "--threshold",
+        type=float,
+        default=1.0,
+        metavar="MM",
         help="A shortfall up to this is called a fault; more is assumed to be "
-             "a designed margin. Default: %(default)s mm.",
+        "a designed margin. Default: %(default)s mm.",
     )
     parser.add_argument(
-        "--strip", type=float, default=3.0, metavar="MM",
+        "--strip",
+        type=float,
+        default=3.0,
+        metavar="MM",
         help="How far in to look from each edge. Default: %(default)s mm.",
     )
     parser.add_argument(
-        "--dpi", type=float, default=300,
+        "--dpi",
+        type=float,
+        default=300,
         help="Resolution of the band. A pixel is 25.4/dpi mm, and that is the "
-             "measurement's precision. Costs almost nothing: on image-heavy "
-             "work the decode dominates and 300 measures no slower than 72. "
-             "Default: %(default)s.",
+        "measurement's precision. Costs almost nothing: on image-heavy "
+        "work the decode dominates and 300 measures no slower than 72. "
+        "Default: %(default)s.",
     )
     parser.add_argument(
-        "--background", type=int, default=225, metavar="LEVEL",
+        "--background",
+        type=int,
+        default=225,
+        metavar="LEVEL",
         help="A pixel is ink when its darkest channel is at or below this. "
-             "Default: %(default)s.",
+        "Default: %(default)s.",
     )
     parser.add_argument(
-        "--all", action="store_true",
+        "--all",
+        action="store_true",
         help="Show every edge, not only the faults.",
     )
     args = parser.parse_args(argv)
@@ -179,8 +191,11 @@ def main(argv=None) -> int:
         for number in range(len(doc)):
             boxes = read_boxes(source.pages[number])
             found = read_page(
-                doc[number], boxes,
-                dpi=args.dpi, strip_mm=args.strip, background=args.background,
+                doc[number],
+                boxes,
+                dpi=args.dpi,
+                strip_mm=args.strip,
+                background=args.background,
             )
             for edge in EDGES:
                 short, reaching, samples = found[edge]
