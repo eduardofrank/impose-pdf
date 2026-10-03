@@ -490,7 +490,7 @@ A book is one finished size, and a mixed file is refused there by name. A
 gang is the other job: several sizes on one sheet, cut apart afterwards.
 Pages are placed in the order the file gives them, left to right, a new row
 when the row is full, and a new sheet when the next row does not fit. A page
-is not turned to make it fit. One that does not fit the sheet on its own is
+is not turned to make it fit. One that does not fit the area on its own is
 named.
 
 ```bash
@@ -499,6 +499,33 @@ impose gang jobs.pdf --gutter 4mm
 
 The sheet is printed one side. Each item is a page of the file, so twenty
 cards are twenty pages.
+
+Pieces are packed into the imageable area, so that area is what decides how
+many fit, where the rows break, and which page is too big. `--imageable` gives
+it directly, for a machine the profiles do not describe:
+
+```bash
+impose gang jobs.pdf --gutter 4mm --imageable 310mmx440mm
+```
+
+```
+gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 440 mm on indigo-5000; finished page 90 × 50 mm
+```
+
+`--imageable` is centred in the sheet, which no press is. Where the gripper
+edge differs from the tail, give the border with `--margins` instead, and the
+sheet itself with `--press` — see [Your own machine](#your-own-machine):
+
+```bash
+impose gang jobs.pdf --press 330mmx482mm --margins bottom=12mm,top=6mm,left=5mm,right=5mm
+```
+
+A piece that will not fit is named, and measured against that same area less
+the room the marks and the bleed need:
+
+```
+impose: Page 9 is 105 × 148 mm, and the area a gang can use is 140 × 140 mm. It does not fit, and a gang does not turn a page to make it.
+```
 
 ## A job the shop can store
 
