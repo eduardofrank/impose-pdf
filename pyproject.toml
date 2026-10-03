@@ -65,6 +65,13 @@ load-plugins = ["pylint.extensions.no_self_use"]
 dummy-variables-rgx = "_|dummy"
 good-names = ["i", "j", "x", "y", "dx", "dy"]
 
+[tool.pylint.design]
+# The plan, the result and the press are records: frozen dataclasses whose
+# fields are the measurements a job is made of, and a plan genuinely has
+# eight. The check is aimed at classes accumulating state, which these are
+# not, and splitting a record to satisfy a count would make it harder to read.
+max-attributes = 10
+
 [tool.pylint.messages_control]
 disable = ["duplicate-code"]
 
