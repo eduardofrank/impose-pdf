@@ -20,6 +20,7 @@ from impose.job import (
     source_boxes,
 )
 from impose.marks import MarkStyle
+from impose.press import custom
 from impose.units import MM, to_mm
 
 from .support import declare_pdfx, make_pdf
@@ -495,6 +496,52 @@ class TestPageSize(unittest.TestCase):
         """--sheet fit already says exactly what the page is."""
         width, _ = self.media(run(pages=8, schema="saddle", sheet="fit", marks=None)[1])
         self.assertLess(width, 310.0)
+
+
+class TestTheGripperSurvivesThePage(unittest.TestCase):
+    """The page loses the border; the machine keeps its lead edge.
+
+    Making the page the imageable area rebuilds the press around that area,
+    and the rebuilt press has to carry the gripper edge. Dropping it lays the
+    form against the bottom of a machine that grips the top.
+    """
+
+    @staticmethod
+    def trim_bottom(data):
+        """How far the form's TrimBox sits above the foot of the page, in mm."""
+        pdf = pikepdf.open(io.BytesIO(data))
+        box = [float(v) for v in pdf.pages[0].obj["/TrimBox"]]
+        media = [float(v) for v in pdf.pages[0].obj["/MediaBox"]]
+        pdf.close()
+        return round(to_mm(box[1] - media[1]), 3)
+
+    def test_a_side_gripper_still_has_no_side_guide(self):
+        """The refusal must not depend on which page was asked for."""
+        for page in ("imageable", "sheet"):
+            with self.subTest(page=page), self.assertRaises(ImposeError) as caught:
+                run(
+                    pages=4,
+                    schema="nup",
+                    columns=2,
+                    rows=1,
+                    press=custom(sheet="SRA3", margins="5mm", gripper="left"),
+                    lay="left",
+                    page=page,
+                )
+            self.assertIn("left gripper", str(caught.exception))
+
+    def test_a_top_gripper_pins_the_form_upward(self):
+        """Spare margin falls to the tail, which is the foot of a top gripper."""
+
+        def pinned(gripper):
+            press = custom(sheet="SRA3", margins="5mm", gripper=gripper)
+            return self.trim_bottom(
+                run(pages=4, schema="nup", columns=2, rows=1, press=press, lay="left")[
+                    1
+                ]
+            )
+
+        self.assertGreater(pinned("top"), pinned("bottom"))
 
 
 class TestUniformityGate(unittest.TestCase):

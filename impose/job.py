@@ -663,6 +663,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 name=machine.name,
                 sheet=sheet_size,
                 margins=Insets(),
+                # The border is gone from the file, the machine is not: the
+                # lead edge is still the lead edge, and the form is still
+                # pinned to it. Defaulting it here would lay a job against
+                # the wrong edge of a press that does not grip the bottom.
+                gripper=machine.gripper,
                 description=f"{machine.name} imageable area",
             )
         style = marks
