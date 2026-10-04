@@ -541,6 +541,28 @@ impose gang jobs.pdf --margins bottom=14mm
 gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 448 mm on indigo-5000; finished page 90 × 50 mm
 ```
 
+`--gripper` names the lead edge, the one that goes into the machine first. It
+is a fact about the sheet rather than about the artwork, and a gang never
+turns a page, so it moves nothing by itself: what it decides is which way the
+spare room falls, and with a pinned lay, which edge the first row sits
+against.
+
+```bash
+impose gang jobs.pdf --gripper top --margins top=14mm --lay left
+```
+
+```
+gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 444 mm on indigo-5000; finished page 90 × 50 mm
+```
+
+A left or right gripper has no side guide to pin against, since the side guide
+stands across the lead edge. A pinned lay is then refused rather than quietly
+centred:
+
+```
+impose: A left gripper has no left or right side guide. The side guide stands across the lead edge.
+```
+
 See [Your own machine](#your-own-machine) for how the three read together.
 
 A piece that will not fit is named, and measured against that same area less
