@@ -514,11 +514,34 @@ gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 440 mm on 
 
 `--imageable` is centred in the sheet, which no press is. Where the gripper
 edge differs from the tail, give the border with `--margins` instead, and the
-sheet itself with `--press` — see [Your own machine](#your-own-machine):
+sheet itself with `--press`:
 
 ```bash
 impose gang jobs.pdf --press 330mmx482mm --margins bottom=12mm,top=6mm,left=5mm,right=5mm
 ```
+
+```
+gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 320 × 464 mm on 330mmx482mm; finished page 90 × 50 mm
+```
+
+The two differ in where the pieces land, not only in how many fit. A border
+given as a centred area is wrong by half the difference at each edge, and the
+whole packed block moves with it. With `--lay left` or `--lay right` the block
+is pinned to the gripper and the side guide instead, so the gripper figure is
+exactly where the first row starts and an understated one prints into the
+strip.
+
+Name only the edge you measured; the rest keep the profile's:
+
+```bash
+impose gang jobs.pdf --margins bottom=14mm
+```
+
+```
+gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 448 mm on indigo-5000; finished page 90 × 50 mm
+```
+
+See [Your own machine](#your-own-machine) for how the three read together.
 
 A piece that will not fit is named, and measured against that same area less
 the room the marks and the bleed need:
