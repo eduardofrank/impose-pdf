@@ -486,86 +486,27 @@ impose nup cards.pdf --strip wedge.pdf
 
 ## Gang
 
-A book is one finished size, and a mixed file is refused there by name. A
-gang is the other job: several sizes on one sheet, cut apart afterwards.
+A book is one finished size, and a mixed file is refused there by name. A gang
+is the other job: several sizes on one sheet, cut apart afterwards. It is the
+only schema that takes a mixed file — `steprepeat` repeats one item, and `nup`
+wants every page the same size — so it is worth reaching for when the sizes
+differ, and not otherwise.
+
 Pages are placed in the order the file gives them, left to right, a new row
 when the row is full, and a new sheet when the next row does not fit. A page
-is not turned to make it fit. One that does not fit the area on its own is
-named.
+is not turned to make it fit. The sheet is printed one side, and each item is
+a page of the file, so twenty cards are twenty pages.
 
 ```bash
 impose gang jobs.pdf --gutter 4mm
 ```
 
-The sheet is printed one side. Each item is a page of the file, so twenty
-cards are twenty pages.
-
-Pieces are packed into the imageable area, so that area is what decides how
-many fit, where the rows break, and which page is too big. `--imageable` gives
-it directly, for a machine the profiles do not describe:
-
-```bash
-impose gang jobs.pdf --gutter 4mm --imageable 310mmx440mm
-```
-
-```
-gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 440 mm on indigo-5000; finished page 90 × 50 mm
-```
-
-`--imageable` is centred in the sheet, which no press is. Where the gripper
-edge differs from the tail, give the border with `--margins` instead, and the
-sheet itself with `--press`:
-
-```bash
-impose gang jobs.pdf --press 330mmx482mm --margins bottom=12mm,top=6mm,left=5mm,right=5mm
-```
-
-```
-gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 320 × 464 mm on 330mmx482mm; finished page 90 × 50 mm
-```
-
-The two differ in where the pieces land, not only in how many fit. A border
-given as a centred area is wrong by half the difference at each edge, and the
-whole packed block moves with it. With `--lay left` or `--lay right` the block
-is pinned to the gripper and the side guide instead, so the gripper figure is
-exactly where the first row starts and an understated one prints into the
-strip.
-
-Name only the edge you measured; the rest keep the profile's:
-
-```bash
-impose gang jobs.pdf --margins bottom=14mm
-```
-
-```
-gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 448 mm on indigo-5000; finished page 90 × 50 mm
-```
-
-`--gripper` names the lead edge, the one that goes into the machine first. It
-is a fact about the sheet rather than about the artwork, and a gang never
-turns a page, so it moves nothing by itself: what it decides is which way the
-spare room falls, and with a pinned lay, which edge the first row sits
-against.
-
-```bash
-impose gang jobs.pdf --gripper top --margins top=14mm --lay left
-```
-
-```
-gang: 16 pages onto 3 sheet(s) at 12 up (3 × 4 upright), page 310 × 444 mm on indigo-5000; finished page 90 × 50 mm
-```
-
-A left or right gripper has no side guide to pin against, since the side guide
-stands across the lead edge. A pinned lay is then refused rather than quietly
-centred:
-
-```
-impose: A left gripper has no left or right side guide. The side guide stands across the lead edge.
-```
-
-`--sheet` runs a sheet smaller than the press maximum. The border is measured
-from the sheet edges, so a short sheet keeps its gripper strip and loses the
-difference at the tail — and the tail is where a gang loses a row:
+Pieces are packed into the imageable area, so that area decides how many fit
+and which piece is too big. A gang takes the same press options as every other
+schema — `--press`, `--sheet`, `--imageable`, `--margins`, `--gripper`, under
+[Your own machine](#your-own-machine) — and feels a short sheet as a lost row,
+since the border is measured from the sheet edges and a short sheet gives up
+the tail:
 
 ```bash
 impose gang jobs.pdf --gutter 4mm --sheet 320mmx340mm
@@ -576,30 +517,23 @@ gang: 16 pages onto 4 sheet(s) at 9 up (3 × 3 upright), page 310 × 320 mm on i
 ```
 
 Three rows where the full sheet took four, and a fourth sheet to carry what
-came off. A sheet the press cannot take is refused with both figures:
+came off.
+
+Two refusals are the gang's own. A piece that will not fit is named, and
+measured against that area less the room the marks and the bleed need:
 
 ```
-impose: indigo-5000 takes at most 320 × 470 mm; asked for 400 × 600 mm.
+impose: Page 9 is 105 × 148 mm, and the area a gang can use is 140 × 140 mm. It does not fit, and a gang does not turn a page to make it.
 ```
 
-`--sheet fit`, which sizes the sheet to the form for the first pass of a
-two-stage job, measures that form as a grid of one repeated cell. A gang of
-mixed sizes has no such cell, and is refused by its sizes:
+And `--sheet fit`, which sizes a sheet from one repeated cell for the first
+pass of a two-stage job, has no cell to measure when the sizes differ:
 
 ```
 impose: A form-sized sheet is a grid of one repeated cell, and this gang has 4 finished sizes (90 × 50 mm, 105 × 148 mm, 210 × 99 mm, 148 × 210 mm). --sheet fit has no cell to measure here: give a sheet the press takes, or gang one size at a time.
 ```
 
 A gang that happens to be one size does have a cell, so it still gets a form.
-
-See [Your own machine](#your-own-machine) for how the four read together.
-
-A piece that will not fit is named, and measured against that same area less
-the room the marks and the bleed need:
-
-```
-impose: Page 9 is 105 × 148 mm, and the area a gang can use is 140 × 140 mm. It does not fit, and a gang does not turn a page to make it.
-```
 
 ## A job the shop can store
 
