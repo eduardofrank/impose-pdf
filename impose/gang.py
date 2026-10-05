@@ -148,6 +148,37 @@ def plan_for(pages: tuple[Size, ...], area: Size, gutter: float) -> Plan:
     )
 
 
+def check_one_cell(pages, same) -> None:
+    """Refuse a form-sized sheet for a gang of more than one finished size.
+
+    A form-sized sheet is a grid of one repeated cell, measured before the
+    pages are placed. A gang of mixed sizes has no such cell, so the sheet
+    would be built from the first page and every other size measured against
+    a form nobody asked for. A gang that happens to be one size does have a
+    cell, and keeps working.
+
+    *same* decides whether two finished sizes are the same page size. The
+    caller owns that tolerance, so one answer serves this and the uniformity
+    gate both. A document that is not a gang has nothing to check.
+    """
+    if not pages:
+        return
+    seen: list[Size] = []
+    for page in pages:
+        if not any(same(page.trim_size, size) for size in seen):
+            seen.append(page.trim_size)
+    if len(seen) == 1:
+        return
+    named = ", ".join(format_mm(size) for size in seen[:4])
+    more = f", and {len(seen) - 4} more" if len(seen) > 4 else ""
+    raise ImposeError(
+        f"A form-sized sheet is a grid of one repeated cell, and this gang "
+        f"has {len(seen)} finished sizes ({named}{more}). --sheet fit has no "
+        f"cell to measure here: give a sheet the press takes, or gang one "
+        f"size at a time."
+    )
+
+
 def _must_fit(index: int, size: Size, area: Size) -> None:
     """Refuse a page that cannot sit on the sheet even alone."""
     if size.width <= area.width + 1e-6 and size.height <= area.height + 1e-6:

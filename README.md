@@ -582,10 +582,15 @@ came off. A sheet the press cannot take is refused with both figures:
 impose: indigo-5000 takes at most 320 × 470 mm; asked for 400 × 600 mm.
 ```
 
-`--sheet fit` is not usable with a gang. It sizes the sheet to the form for the
-first pass of a two-stage job, and it measures that form as a grid of one
-repeated cell — which a gang does not have. The refusal quotes a form size
-that does not describe the gang, so give a real sheet here.
+`--sheet fit`, which sizes the sheet to the form for the first pass of a
+two-stage job, measures that form as a grid of one repeated cell. A gang of
+mixed sizes has no such cell, and is refused by its sizes:
+
+```
+impose: A form-sized sheet is a grid of one repeated cell, and this gang has 4 finished sizes (90 × 50 mm, 105 × 148 mm, 210 × 99 mm, 148 × 210 mm). --sheet fit has no cell to measure here: give a sheet the press takes, or gang one size at a time.
+```
+
+A gang that happens to be one size does have a cell, so it still gets a form.
 
 See [Your own machine](#your-own-machine) for how the four read together.
 

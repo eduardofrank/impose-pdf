@@ -66,5 +66,49 @@ class TestImposedGang(unittest.TestCase):
         self.assertIn("same size", str(caught.exception))
 
 
+class TestAFormSizedSheet(unittest.TestCase):
+    """--sheet fit measures a grid of one cell, which a mixed gang has not.
+
+    Sizing the sheet from the first page quoted a form nobody asked for, and
+    offered remedies -- a smaller gutter, shorter marks -- that cannot reach
+    it, because shrinking the form shrinks the target with it.
+    """
+
+    @staticmethod
+    def mixed():
+        card = make_pdf(pages=1, trim=Size(90 * MM, 50 * MM))
+        flyer = make_pdf(pages=1, trim=Size(105 * MM, 148 * MM))
+        card.pages.append(flyer.pages[0])
+        return card
+
+    def test_a_mixed_gang_is_refused_by_its_sizes(self):
+        with self.assertRaises(ImposeError) as caught:
+            impose_document(self.mixed(), io.BytesIO(), schema="gang", sheet="fit")
+        said = str(caught.exception)
+        self.assertIn("2 finished sizes", said)
+        self.assertIn("90 × 50 mm", said)
+        self.assertIn("105 × 148 mm", said)
+
+    def test_the_refusal_does_not_blame_the_marks_or_the_gutter(self):
+        """The old message sent the operator after things that cannot help."""
+        with self.assertRaises(ImposeError) as caught:
+            impose_document(self.mixed(), io.BytesIO(), schema="gang", sheet="fit")
+        self.assertNotIn("shorter marks", str(caught.exception))
+
+    def test_a_gang_of_one_size_still_gets_a_form(self):
+        """One size is one cell, so the form is measurable and it runs."""
+        result = impose_document(
+            make_pdf(pages=4, trim=Size(90 * MM, 50 * MM)),
+            io.BytesIO(),
+            schema="gang",
+            sheet="fit",
+        )
+        self.assertEqual(result.press, "form")
+
+    def test_a_real_sheet_still_gangs_mixed_sizes(self):
+        result = impose_document(self.mixed(), io.BytesIO(), schema="gang")
+        self.assertEqual(result.sheets, 1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

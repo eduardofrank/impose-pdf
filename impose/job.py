@@ -641,6 +641,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         if chose_turned and orientation == "auto":
             orientation = "turned"
         if fit_to_form:
+            gang.check_one_cell(gang_pages, _same_size)
             # The form is made of cells, and a turned page has a cell the
             # other way round. Building it from the upright size gives a form
             # the layout then cannot fit into.
@@ -664,9 +665,8 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 sheet=sheet_size,
                 margins=Insets(),
                 # The border is gone from the file, the machine is not: the
-                # lead edge is still the lead edge, and the form is still
-                # pinned to it. Defaulting it here would lay a job against
-                # the wrong edge of a press that does not grip the bottom.
+                # lead edge is still the lead edge, and the form still pins
+                # to it.
                 gripper=machine.gripper,
                 description=f"{machine.name} imageable area",
             )
