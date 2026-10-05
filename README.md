@@ -563,7 +563,31 @@ centred:
 impose: A left gripper has no left or right side guide. The side guide stands across the lead edge.
 ```
 
-See [Your own machine](#your-own-machine) for how the three read together.
+`--sheet` runs a sheet smaller than the press maximum. The border is measured
+from the sheet edges, so a short sheet keeps its gripper strip and loses the
+difference at the tail — and the tail is where a gang loses a row:
+
+```bash
+impose gang jobs.pdf --gutter 4mm --sheet 320mmx340mm
+```
+
+```
+gang: 16 pages onto 4 sheet(s) at 9 up (3 × 3 upright), page 310 × 320 mm on indigo-5000; finished page 90 × 50 mm
+```
+
+Three rows where the full sheet took four, and a fourth sheet to carry what
+came off. A sheet the press cannot take is refused with both figures:
+
+```
+impose: indigo-5000 takes at most 320 × 470 mm; asked for 400 × 600 mm.
+```
+
+`--sheet fit` is not usable with a gang. It sizes the sheet to the form for the
+first pass of a two-stage job, and it measures that form as a grid of one
+repeated cell — which a gang does not have. The refusal quotes a form size
+that does not describe the gang, so give a real sheet here.
+
+See [Your own machine](#your-own-machine) for how the four read together.
 
 A piece that will not fit is named, and measured against that same area less
 the room the marks and the bleed need:
