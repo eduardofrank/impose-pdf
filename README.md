@@ -4,8 +4,9 @@ Imposition for commercial print.
 
 `impose` arranges finished pages onto press sheets. It works from the page
 boxes a print-ready PDF already carries — TrimBox is the finished page,
-BleedBox is the margin that gets trimmed away — and targets a named press whose
-sheet size and imageable area it knows.
+BleedBox is the margin that gets trimmed away — and targets a press profile it
+knows, or one you describe: its sheet, the border it cannot image, and the edge
+the grippers hold.
 
 > **Status: complete.** Every schema, the fitting, the marks and furniture,
 > creep, PDF/X passthrough and the slug line all work from the library and the
@@ -159,9 +160,9 @@ slug and marks, and placing those into a gutter is worse than placing nothing.
 
 ## Command line
 
-One job of each schema, then where the form sits, a cutter path, and a
-control strip. The press file is written beside the input, with `-imposed`
-on the name: `book.pdf` becomes `book-imposed.pdf`.
+One job of each schema, then the machine, where the form sits, a cutter path,
+and a control strip. The press file is written beside the input, with
+`-imposed` on the name: `book.pdf` becomes `book-imposed.pdf`.
 
 ```bash
 # Saddle stitch: sheets nested, stapled through the fold.
@@ -187,6 +188,10 @@ impose cover novel.pdf --paper-caliper 0.1mm --hinge 5mm
 
 # A card and a flyer on one sheet, each at its own size.
 impose gang jobs.pdf --gutter 4mm
+
+# A machine there is no profile for: its sheet, and the border it cannot image.
+impose nup cards.pdf --up 2x2 --press 330mmx482mm \
+    --margins bottom=12mm,top=6mm,left=5mm,right=5mm
 
 # Pin the form to the side guide. The spare falls to the tail and the far side.
 impose nup cards.pdf --lay left
