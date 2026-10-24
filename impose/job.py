@@ -34,8 +34,9 @@ from .boxes import (
 )
 from .finishing import layer_note, open_strip, outlines, prepare_cut, strip_slots
 from .fit import DEFAULT_GUTTER, best, largest_signature
+from .fold import check_section_pages
 from .font import load as load_font
-from .geometry import Insets, Rect, Size, approx
+from .geometry import Insets, Rect, Size, same_rect, same_size
 from .layout import Gutters, lay_out
 from .marks import MarkStyle, all_folds, furniture, sheet_marks
 from .plan import Plan, Surface
@@ -171,30 +172,6 @@ def source_boxes(pdf: pikepdf.Pdf) -> PageBoxes:
     return first
 
 
-#: How far apart two coordinates may be and still describe the same page.
-#: PDF writes coordinates to six decimal places, so a width obtained by
-#: subtracting two of them carries up to 2e-6 pt of rounding -- which is
-#: enough to make two identical pages compare unequal. A hundredth of a point
-#: is three microns, far below anything a press can hold and far above the
-#: rounding.
-SAME_PAGE_TOLERANCE = 0.01
-
-
-def _same_rect(a, b) -> bool:
-    """Whether two boxes are the same to within press-irrelevant noise."""
-    return all(
-        approx(getattr(a, edge), getattr(b, edge), tolerance=SAME_PAGE_TOLERANCE)
-        for edge in ("x0", "y0", "x1", "y1")
-    )
-
-
-def _same_size(a: Size, b: Size) -> bool:
-    """Whether two finished sizes are the same page size."""
-    return approx(a.width, b.width, tolerance=SAME_PAGE_TOLERANCE) and approx(
-        a.height, b.height, tolerance=SAME_PAGE_TOLERANCE
-    )
-
-
 def _uniformity_complaint(
     number: int, boxes: PageBoxes, first: PageBoxes
 ) -> str | None:
@@ -205,8 +182,8 @@ def _uniformity_complaint(
     document that does not agree is not something to impose part of: it is
     artwork to send back, and this is the sentence that says why.
     """
-    if not _same_size(boxes.trim_size, first.trim_size):
-        turned = _same_size(boxes.trim_size, first.trim_size.swapped())
+    if not same_size(boxes.trim_size, first.trim_size):
+        turned = same_size(boxes.trim_size, first.trim_size.swapped())
         if turned and boxes.rotation != first.rotation:
             reason = (
                 f" -- the same size, but page {number} carries /Rotate "
@@ -223,7 +200,7 @@ def _uniformity_complaint(
             f"{format_mm(first.trim_size)}{reason}. Every page must be the "
             f"same size and the same way up to go on one grid."
         )
-    if not _same_rect(boxes.trim, first.trim):
+    if not same_rect(boxes.trim, first.trim):
         return (
             f"Page {number} is the right size, {format_mm(boxes.trim_size)}, "
             f"but its TrimBox sits at a different place on the sheet than "
@@ -332,14 +309,14 @@ def choose_signature(  # pylint: disable=too-many-arguments
 ) -> tuple[int, int]:
     """The signature to fold, as a grid.
 
-    Without *section_pages* this is the biggest that fits, because bigger is
-    simply better: every doubling of the grid halves the sheets the book takes,
-    and unlike a flat job there is nothing to weigh that against.
-
-    With it, the section is the size the binder asked for -- a sixteen-page
-    signature, not a four-by-two grid -- and which grid delivers sixteen is
-    worked out from the page and the press.
+    Without *section_pages* this is the biggest that fits: every doubling of
+    the grid halves the sheets the book takes, and unlike a flat job there is
+    nothing to weigh that against. With it, the section is the size the binder
+    asked for -- a sixteen-page signature, not a four-by-two grid -- and which
+    grid delivers sixteen is worked out from the page and the press. A count
+    no fold can make is refused before any of that is measured.
     """
+    check_section_pages(section_pages)
     area = press.imageable_area(sheet)
     arrangement = largest_signature(
         trim, area, allowance=allowance, pages=section_pages
@@ -641,7 +618,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         if chose_turned and orientation == "auto":
             orientation = "turned"
         if fit_to_form:
-            gang.check_one_cell(gang_pages, _same_size)
+            gang.check_one_cell(gang_pages, same_size)
             # The form is made of cells, and a turned page has a cell the
             # other way round. Building it from the upright size gives a form
             # the layout then cannot fit into.

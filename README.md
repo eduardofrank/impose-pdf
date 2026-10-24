@@ -811,6 +811,22 @@ Omit both and the largest signature the press can fold is chosen. On an Indigo
 5000 a half-letter book reaches 8 pages a sheet and a quarter-letter one 16 —
 against 4 for a sheet folded once.
 
+A fold halves the sheet, so a section holds 4, 8, 16 or 32 pages and nothing
+between. A count off that ladder is refused for what it is, rather than
+reported as a form that will not fit — no sheet size makes twelve reachable:
+
+```
+$ impose signature book.pdf --section-pages 12
+impose: A folded section holds 4, 8, 16 or 32 pages, not 12: each fold halves
+the sheet, so the count doubles from four and no sheet size makes 12 reachable.
+Ask for 8 or 16, or nest sheets instead -- perfect binding gathers any count.
+```
+
+A count that is on the ladder but too big for the press is the other question,
+and answers with the figures: `--section-pages 32` of A6 reports what an
+Indigo 5000 can image and that 16 is the largest that fits. Nesting takes any
+count, so `perfect --section-pages 12` gathers twelve as three sheets.
+
 **Folding across the sheet turns half the pages upside down.** That is not a
 convention to pick; it is what the paper does. Fold a sheet, fold it again, and
 the half that went over comes back the other way up:

@@ -16,8 +16,10 @@ from impose import ImposeError
 from impose.fold import (
     FOOT_TO_FOOT,
     HEAD_TO_HEAD,
+    SECTION_PAGES,
     Face,
     Fold,
+    check_section_pages,
     leaves,
     pages_per_sheet,
     signature_folds,
@@ -158,6 +160,52 @@ class TestRefusals(unittest.TestCase):
     def test_a_fold_moves_one_half_or_the_other(self):
         with self.assertRaises(ValueError):
             Fold("vertical", 1, "sideways")
+
+
+class TestSectionPages(unittest.TestCase):
+    """A count no fold can make is refused before any sheet is measured.
+
+    Reporting twelve pages as a form that does not fit sent an operator to
+    measure paper for a product that cannot be folded at any size, and named
+    sixteen as the largest that fits -- larger than the twelve it refused.
+    """
+
+    def test_every_doubling_from_four_is_a_section(self):
+        for pages in SECTION_PAGES:
+            with self.subTest(pages=pages):
+                check_section_pages(pages)  # raises if it is not
+
+    def test_no_count_asked_for_is_no_complaint(self):
+        self.assertIsNone(check_section_pages(None))
+
+    def test_a_count_between_doublings_is_refused_for_what_it_is(self):
+        with self.assertRaises(ImposeError) as caught:
+            check_section_pages(12)
+        said = str(caught.exception)
+        self.assertIn("doubles from four", said)
+        self.assertIn("no sheet size makes 12 reachable", said)
+
+    def test_the_refusal_does_not_blame_the_sheet(self):
+        with self.assertRaises(ImposeError) as caught:
+            check_section_pages(12)
+        self.assertNotIn("does not fit", str(caught.exception))
+
+    def test_the_refusal_names_the_counts_either_side(self):
+        for pages, instead in ((6, "4 or 8"), (12, "8 or 16"), (20, "16 or 32")):
+            with self.subTest(pages=pages), self.assertRaises(ImposeError) as caught:
+                check_section_pages(pages)
+            self.assertIn(f"Ask for {instead}", str(caught.exception))
+
+    def test_a_count_below_the_smallest_section_names_only_it(self):
+        """Two pages is a sheet nobody folded; four is the first section."""
+        with self.assertRaises(ImposeError) as caught:
+            check_section_pages(2)
+        self.assertIn("Ask for 4,", str(caught.exception))
+
+    def test_a_count_past_the_folding_limit_names_only_the_limit(self):
+        with self.assertRaises(ImposeError) as caught:
+            check_section_pages(48)
+        self.assertIn("Ask for 32,", str(caught.exception))
 
 
 class TestFaceIdentity(unittest.TestCase):

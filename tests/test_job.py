@@ -498,6 +498,42 @@ class TestPageSize(unittest.TestCase):
         self.assertLess(width, 310.0)
 
 
+class TestSignatureSectionCounts(unittest.TestCase):
+    """Two different reasons a section can be refused, told apart.
+
+    A count no fold can make is structural and no sheet helps. A count that
+    folds but will not fit this press is geometry, and the figures are what
+    the operator needs. Reporting the first as the second named a larger
+    section as the largest that fits.
+    """
+
+    def test_a_count_no_fold_can_make_is_refused_structurally(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(pages=64, schema="signature", section_pages=12)
+        said = str(caught.exception)
+        self.assertIn("doubles from four", said)
+        self.assertNotIn("does not fit", said)
+
+    def test_a_count_that_folds_but_will_not_fit_still_reports_geometry(self):
+        """32 pages of A6 needs more than an Indigo 5000 can image."""
+        with self.assertRaises(ImposeError) as caught:
+            run(pages=64, schema="signature", section_pages=32)
+        said = str(caught.exception)
+        self.assertIn("does not fit", said)
+        self.assertIn("largest that fits is 16 pages", said)
+
+    def test_the_sections_a_fold_makes_still_impose(self):
+        for pages in (4, 8, 16):
+            with self.subTest(section_pages=pages):
+                result, _ = run(pages=64, schema="signature", section_pages=pages)
+                self.assertEqual(result.plan.schema, "signature")
+
+    def test_nesting_still_takes_any_count(self):
+        """perfect gathers twelve as three sheets; only folding cannot."""
+        result, _ = run(pages=64, schema="perfect", section_pages=12)
+        self.assertEqual(result.plan.schema, "perfect-bound")
+
+
 class TestTheGripperSurvivesThePage(unittest.TestCase):
     """The page loses the border; the machine keeps its lead edge.
 

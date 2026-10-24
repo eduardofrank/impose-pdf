@@ -235,6 +235,30 @@ def approx(value: float, other: float, *, tolerance: float = 1e-6) -> bool:
     return math.isclose(value, other, abs_tol=tolerance)
 
 
+#: How far apart two coordinates may be and still describe the same page.
+#: PDF writes coordinates to six decimal places, so a width obtained by
+#: subtracting two of them carries up to 2e-6 pt of rounding -- which is
+#: enough to make two identical pages compare unequal. A hundredth of a point
+#: is three microns, far below anything a press can hold and far above the
+#: rounding.
+SAME_PAGE_TOLERANCE = 0.01
+
+
+def same_rect(a, b) -> bool:
+    """Whether two boxes are the same box, to within press-irrelevant noise."""
+    return all(
+        approx(getattr(a, edge), getattr(b, edge), tolerance=SAME_PAGE_TOLERANCE)
+        for edge in ("x0", "y0", "x1", "y1")
+    )
+
+
+def same_size(a: Size, b: Size) -> bool:
+    """Whether two finished sizes are the same page size."""
+    return approx(a.width, b.width, tolerance=SAME_PAGE_TOLERANCE) and approx(
+        a.height, b.height, tolerance=SAME_PAGE_TOLERANCE
+    )
+
+
 def placement_matrix(clip: Rect, paint: Rect, rotation: int) -> tuple[float, ...]:
     """The matrix carrying *clip* in source space onto *paint* on the sheet.
 

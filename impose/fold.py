@@ -48,6 +48,11 @@ STYLES = (HEAD_TO_HEAD, FOOT_TO_FOOT)
 #: Pages on one leaf: a leaf is a sheet of paper and has two sides.
 PAGES_PER_LEAF = 2
 
+#: Sections a fold can make. Each fold halves the sheet and doubles the
+#: leaves, so the count doubles from four, and nothing between is reachable at
+#: any sheet size. Thirty-two is as many as ordinary folding equipment manages.
+SECTION_PAGES = (4, 8, 16, 32)
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Fold:
@@ -221,3 +226,25 @@ def _halve(axis: str, count: int, moves: str) -> list[Fold]:
 def pages_per_sheet(columns: int, rows: int) -> int:
     """Pages a folded sheet of this grid carries, both sides counted."""
     return columns * rows * PAGES_PER_LEAF
+
+
+def check_section_pages(pages: int | None) -> None:
+    """Refuse a section no fold can make, before any sheet is measured.
+
+    A count that is not a doubling from four is not a question of the sheet
+    being big enough: no press makes twelve pages reachable, so reporting it
+    as a form that does not fit sends an operator to measure paper for a
+    product that cannot be folded at all.
+    """
+    if pages is None or pages in SECTION_PAGES:
+        return
+    under = [count for count in SECTION_PAGES if count < pages][-1:]
+    over = [count for count in SECTION_PAGES if count > pages][:1]
+    instead = " or ".join(str(count) for count in under + over)
+    raise ImposeError(
+        f"A folded section holds {', '.join(str(n) for n in SECTION_PAGES[:-1])} "
+        f"or {SECTION_PAGES[-1]} pages, not {pages}: each fold halves the sheet, "
+        f"so the count doubles from four and no sheet size makes {pages} "
+        f"reachable. Ask for {instead}, or nest sheets instead -- perfect "
+        f"binding gathers any count."
+    )
