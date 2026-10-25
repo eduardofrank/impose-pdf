@@ -80,6 +80,16 @@ the lead edge of the sheet.
 impose nup cards.pdf --lay left
 ```
 
+A side guide stands across the lead edge, so pinning to one asks the grippers
+to be at the head or the tail. On a press fed from a side there is no left or
+right guide to pin to, and saying so is refused rather than quietly centred:
+
+```
+$ impose nup cards.pdf --lay left --gripper left
+impose: A left gripper has no left or right side guide. The side guide stands
+across the lead edge.
+```
+
 **Pages are turned if that is what fits.** Six A6 pages will not go on an
 Indigo upright — two across by three down is 462 mm tall against a 450 mm
 imageable area — but the same six fit comfortably on their sides, at 310 × 333
@@ -216,7 +226,8 @@ sheet 1 front
 sheet 1 back
      2   15
 ...
-  16 pages, 4 sheet(s), 8 surface(s); finished page 105 × 148 mm
+  saddle-stitch: 16 pages onto 4 sheet(s) at 2 up (2 × 1 upright),
+  page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 ```
 
 `--proof` writes the sheet an operator signs. Each surface is a page at the
@@ -274,6 +285,7 @@ series.
 |---|---|---|
 | `INPUT` | — | the PDF to impose |
 | `-o`, `--output FILE` | `INPUT-imposed.pdf` | where to write |
+| `--record FILE` | off | write this job as JSON, then impose it; `impose run` imposes that file again |
 | `--press NAME` | `indigo-5000` | press profile; see `impose presses`. A size such as `320mmx450mm` names a machine there is no profile for |
 | `--sheet SIZE` | the press maximum | run a smaller sheet than the press takes |
 | `--imageable SIZE` | from the profile | the part of the sheet that can carry ink, centred in it |
@@ -305,9 +317,9 @@ series.
 
 | option | schemas | default | what it does |
 |---|---|---|---|
-| `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat` | chosen for you | pages across and down |
+| `--up COLUMNSxROWS` | `nup`, `cutstack`, `steprepeat`, `signature` | chosen for you | pages across and down; on `signature`, cells before folding, so both are powers of two |
 | `--sides N` | `nup`, `cutstack`, `steprepeat` | 2, or from the page count for `steprepeat` | 1 for fronts only, 2 for a front and a back |
-| `--flip {long-edge,short-edge}` | `cutstack`, `steprepeat` | `long-edge` | which way the press turns the sheet for the back |
+| `--flip {long-edge,short-edge}` | `cutstack`, `steprepeat`, `signature` | `long-edge` | which way the press turns the sheet for the back |
 | `--section-pages N` | `perfect`, `signature`, `cover` | `4` for perfect and cover | pages per section; on `signature`, an alternative to `--up`. On `cover`, leaves added to finish a section are in the spine |
 | `--folded` | `perfect` | off | make each section by folding one sheet rather than nesting several |
 | `--fold-style {head-to-head,foot-to-foot}` | `signature` | `head-to-head` | which way the sheet folds across itself |
@@ -323,8 +335,29 @@ series.
 
 `saddle` and `perfect` have no `--up`: a spread is two pages by definition, and
 asking for another grid is refused rather than quietly ignored. They have no
-`--sides` either — a bound book is printed both sides — and no `--flip`, since
-their sheets are folded rather than cut apart.
+`--sides` either — a bound book is printed both sides.
+
+They have no `--flip`, and `signature` does. Both of them assume the turn a
+folded spread needs — across the fold, so the two halves of a leaf meet — and
+there is nothing else a spread can be turned for. A signature's order is
+derived by folding the sheet rather than tabulated, and that model has to be
+told which way the press turns it: either turn gives a signature that reads,
+but not the same imposition. Set the wrong one and every page is backed by the
+wrong neighbour, exactly as on a sheet that gets cut:
+
+```
+$ impose signature book.pdf --up 2x2 --dry-run --flip long-edge
+sheet 1 back
+     3*    6*
+     2    7
+
+$ impose signature book.pdf --up 2x2 --dry-run --flip short-edge
+sheet 1 back
+     7    2
+     6*    3*
+```
+
+Read it off the duplex setting on the press.
 
 `--sides` reads the same at the terminal for all three, and means two things
 underneath. `steprepeat` counts the sides of an **item**, which is how it tells
@@ -543,9 +576,11 @@ A gang that happens to be one size does have a cell, so it still gets a form.
 ## A job the shop can store
 
 A command line is gone when the terminal is. `--record` writes the job just
-run as JSON, and `impose run` imposes that file. The keys are the same fields
-the command takes. Paths in the file are read relative to the file, so a
-folder of jobs can move with its artwork.
+run as JSON, and `impose run` imposes that file. The keys are the options the
+command takes, with two that are spelled out rather than negated or prefixed:
+`--no-collation` is `"collation": false`, and `--fold-style` is `"style"`.
+Paths in the file are read relative to the file, so a folder of jobs can move
+with its artwork.
 
 ```bash
 impose perfect novel.pdf --section-pages 16 --grind 3mm --record novel.json
@@ -563,8 +598,12 @@ impose run novel.json
 ```
 
 Lengths are written the same way as on the command line, or as a bare number
-of PDF points. `"marks": "none"` draws no cut marks. A quote system or a hot
-folder writes the same file.
+of PDF points — which is what `--record` itself writes, since that is the unit
+it holds them in. `"marks": "none"` draws no cut marks. `"sides"` is read for
+every schema; on the schemas that count the sheet's sides rather than an
+item's, a recorded job carries the same answer as `"duplex": true` or `false`.
+A quote system or a hot folder writes the same file, and the one above is the
+whole of a job — the keys left out keep their defaults.
 
 `"press"` is a profile name, and a job that names one reads the profile of the
 day it is imposed. A press the profiles do not describe is written out in
@@ -1256,6 +1295,16 @@ border, so give `--margins`.
 machine first. It is fixed with respect to the sheet, not to the artwork:
 turning a form to make it fit turns the form, never the gripper.
 
+`--sheet` runs a sheet smaller than the press maximum. The border is measured
+in from the sheet edges, so a short sheet keeps its gripper strip and loses
+the difference at the tail. A sheet the press cannot take is refused with both
+figures rather than imposed onto paper that will not feed:
+
+```
+$ impose nup cards.pdf --sheet 400mmx600mm
+impose: indigo-5000 takes at most 320 × 470 mm; asked for 400 × 600 mm.
+```
+
 Check what the options came to before committing a job:
 
 ```bash
@@ -1471,7 +1520,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 660 tests, no system libraries, under two seconds. The suite asserts
+Over 790 tests, no system libraries, under three seconds. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.
