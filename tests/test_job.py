@@ -91,6 +91,35 @@ class TestSchemas(unittest.TestCase):
     def test_build_plan_defaults_the_grid_for_open_schemas(self):
         self.assertEqual(build_plan("nup", 8).grid, (2, 1))
 
+    def test_an_option_of_another_schema_is_refused_in_a_sentence(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(schema="nup", style="foot-to-foot")
+        self.assertEqual(
+            str(caught.exception),
+            "The nup schema takes no 'style'. It is an option of signature.",
+        )
+
+    def test_the_refusal_names_every_schema_that_does_take_it(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(schema="saddle", flip="short-edge")
+        self.assertEqual(
+            str(caught.exception),
+            "The saddle schema takes no 'flip'. It is an option of "
+            "cutstack, signature and steprepeat.",
+        )
+
+    def test_an_option_no_schema_takes_is_refused_without_an_alternative(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(schema="nup", wibble=1)
+        self.assertEqual(str(caught.exception), "The nup schema takes no 'wibble'.")
+
+    def test_a_gang_answers_for_its_own_options(self):
+        # Its ordering takes anything and refuses a page count by name, which
+        # is the more useful sentence than one about a keyword.
+        with self.assertRaises(ImposeError) as caught:
+            build_plan("gang", 4, flip="short-edge")
+        self.assertIn("packed from the pages' own sizes", str(caught.exception))
+
     def test_registry_matches_the_documented_schemas(self):
         self.assertEqual(
             set(SCHEMAS),

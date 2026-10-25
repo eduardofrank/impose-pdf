@@ -77,6 +77,32 @@ class TestStoredJob(unittest.TestCase):
             self.assertEqual(status, 1)
             self.assertIn("plate", err)
 
+    def test_a_field_belonging_to_another_schema_is_a_sentence(self):
+        # 'style' is a field of a job, so the unknown-field check passes it,
+        # and the nup ordering has no use for it. A hand-written or hand-edited
+        # job used to reach that ordering and raise a TypeError about a
+        # keyword argument, with a traceback.
+        with workspace(pages=4) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {
+                        "source": source.name,
+                        "schema": "nup",
+                        "up": "2x2",
+                        "style": "foot-to-foot",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status, _, err = run("run", str(job))
+            self.assertEqual(status, 1)
+            self.assertNotIn("Traceback", err)
+            self.assertIn(
+                "The nup schema takes no 'style'. It is an option of signature.",
+                err,
+            )
+
     def test_the_library_refuses_a_missing_source(self):
         with workspace(pages=4) as source:
             job = source.with_name("job.json")

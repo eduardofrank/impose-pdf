@@ -11,7 +11,11 @@ in which cell.
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Callable, Mapping
 from typing import Literal
+
+from .. import ImposeError
 
 #: How the press turns the sheet to print its reverse.
 #:
@@ -62,3 +66,75 @@ def check_grid(columns: int, rows: int) -> None:
     """Refuse a grid that cannot hold anything."""
     if columns < 1 or rows < 1:
         raise ValueError(f"Grid must be at least 1x1, got {columns}x{rows}.")
+
+
+def accepted_options(build: Callable[..., object]) -> frozenset[str] | None:
+    """The options an ordering takes, or ``None`` where it takes any.
+
+    Read off the function's own signature rather than tabulated beside it, so
+    the answer cannot drift from the schema it describes.
+
+    >>> def impose(pages, *, columns, rows, flip="long-edge"): ...
+    >>> sorted(accepted_options(impose))
+    ['columns', 'flip', 'rows']
+    >>> accepted_options(lambda pages, **rest: None) is None
+    True
+    """
+    parameters = inspect.signature(build).parameters
+    if any(p.kind is p.VAR_KEYWORD for p in parameters.values()):
+        return None
+    return frozenset(parameters) - {"pages"}
+
+
+def check_options(
+    schema: str, builds: Mapping[str, Callable[..., object]], options: dict
+) -> None:
+    """Refuse an option the named schema has no use for.
+
+    The schemas take different options, and a stored job or a library call can
+    carry one belonging to a different schema -- a fold style on a sheet
+    nobody folds, a section size on one that gathers nothing. Left alone it
+    reaches the ordering as a stray keyword argument, and Python's own answer
+    is a TypeError about a keyword: a traceback, saying nothing about
+    imposition, where everything else this tool refuses is a sentence.
+
+    Where another schema does take the option, the refusal says which, because
+    that is usually where the mistake is -- the schema named in the job is
+    wrong rather than the option.
+
+    >>> builds = {"nup": lambda pages, *, columns, rows: None,
+    ...           "signature": lambda pages, *, columns, style="x": None}
+    >>> check_options("nup", builds, {"columns": 2, "rows": 1})
+    >>> check_options("nup", builds, {"style": "foot-to-foot"})
+    Traceback (most recent call last):
+        ...
+    impose.ImposeError: The nup schema takes no 'style'. It is an option of \
+signature.
+    """
+    accepted = accepted_options(builds[schema])
+    if accepted is None:
+        return
+    stray = sorted(set(options) - accepted)
+    if not stray:
+        return
+    name = stray[0]
+    elsewhere = sorted(
+        other
+        for other, build in builds.items()
+        if other != schema and name in (accepted_options(build) or ())
+    )
+    belongs = f" It is an option of {_spoken(elsewhere)}." if elsewhere else ""
+    raise ImposeError(f"The {schema} schema takes no {name!r}.{belongs}")
+
+
+def _spoken(names: list[str]) -> str:
+    """Names as a reader would say them.
+
+    >>> _spoken(["perfect"])
+    'perfect'
+    >>> _spoken(["cutstack", "signature", "steprepeat"])
+    'cutstack, signature and steprepeat'
+    """
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"

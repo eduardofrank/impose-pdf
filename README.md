@@ -582,6 +582,14 @@ command takes, with two that are spelled out rather than negated or prefixed:
 Paths in the file are read relative to the file, so a folder of jobs can move
 with its artwork.
 
+A field no schema has is named, and so is one that belongs to a different
+schema than the job asks for — the mistake there is usually the schema:
+
+```
+$ impose run cards.json
+impose: The nup schema takes no 'style'. It is an option of signature.
+```
+
 ```bash
 impose perfect novel.pdf --section-pages 16 --grind 3mm --record novel.json
 impose run novel.json

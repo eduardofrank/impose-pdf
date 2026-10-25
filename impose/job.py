@@ -44,6 +44,7 @@ from .press import FIT_SHEET, Press
 from .press import resolve as resolve_press
 from .proof import write_proof
 from .repeat import repeated
+from .schemas import check_options
 from .schemas import cover as cover_schema
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .slug import DEFAULT_SIZE as SLUG_SIZE
@@ -236,6 +237,7 @@ def build_plan(schema: str, pages: int, **options: Any) -> Plan:
     else:
         options.setdefault("columns", 2)
         options.setdefault("rows", 1)
+    check_options(schema, SCHEMAS, options)
     return build(pages, **{k: v for k, v in options.items() if v is not None})
 
 

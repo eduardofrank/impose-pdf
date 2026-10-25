@@ -60,6 +60,58 @@ class TestImposing(unittest.TestCase):
                 self.assertTrue(output.exists())
                 self.assertIn("sheet(s)", text)
 
+    def test_every_schema_runs_with_all_of_its_own_options(self):
+        """An option a schema offers has to reach an ordering that takes it.
+
+        A stray option is refused by name now, which is only right while the
+        options each command offers are ones its schema accepts. This runs
+        every schema with the whole of its own set, so an option that stops
+        being accepted fails here rather than in a shop's hot folder.
+        """
+        cases = {
+            "saddle": ("--max-nested-sheets", "20", "--paper-caliper", "0.1mm"),
+            "perfect": ("--section-pages", "8", "--grind", "3mm", "--lap", "10mm"),
+            "nup": ("--up", "2x2", "--sides", "1"),
+            "cutstack": ("--up", "2x2", "--sides", "2", "--flip", "short-edge"),
+            "steprepeat": ("--sides", "2", "--flip", "short-edge"),
+            "signature": (
+                "--up",
+                "2x2",
+                "--fold-style",
+                "foot-to-foot",
+                "--flip",
+                "short-edge",
+                "--no-collation",
+                "--grind",
+                "3mm",
+            ),
+        }
+        for schema, extra in cases.items():
+            with self.subTest(schema=schema), workspace() as source:
+                output = source.with_name("out.pdf")
+                status, _, err = run(schema, str(source), "-o", str(output), *extra)
+                self.assertEqual(status, 0, err)
+                self.assertTrue(output.exists())
+
+    def test_perfect_in_folded_sections_runs(self):
+        # --folded is the signature schema under another name, so the options
+        # of both have to arrive at the one ordering.
+        with workspace() as source:
+            output = source.with_name("out.pdf")
+            status, _, err = run(
+                "perfect",
+                str(source),
+                "-o",
+                str(output),
+                "--section-pages",
+                "8",
+                "--folded",
+                "--grind",
+                "3mm",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())
+
     def test_step_and_repeat_runs_on_a_two_page_source(self):
         """Business cards, 85 x 55 mm, which is what the schema is for."""
         with workspace(pages=2, trim=Size(85 * MM, 55 * MM)) as source:
