@@ -210,7 +210,7 @@ def impose_cover(  # pylint: disable=too-many-arguments
     )
     document = build_flat(cover, artwork, bleed=bleed)
     result = impose_document(document, output, schema="cover", bleed=bleed, **options)
-    return cover, result, measured.warnings
+    return cover, result
 
 
 def _open(path) -> pikepdf.Pdf:

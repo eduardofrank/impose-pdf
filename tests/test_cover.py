@@ -86,7 +86,7 @@ class TestImposedCover(unittest.TestCase):
     def test_the_scores_are_fold_marks_on_the_press_sheet(self):
         source = make_pdf(8)
         output = io.BytesIO()
-        cover, result, _ = impose_cover(
+        cover, result = impose_cover(
             source, output, paper_caliper=1 * MM, plan_only=False
         )
         self.assertAlmostEqual(cover.spine, 4 * MM, places=5)
@@ -102,8 +102,6 @@ class TestImposedCover(unittest.TestCase):
         """Turning the flat keeps the spine square to the faces."""
         source = make_pdf(200, trim=Size(210 * MM, 297 * MM))
         output = io.BytesIO()
-        _, result, _ = impose_cover(
-            source, output, paper_caliper=0.1 * MM, plan_only=True
-        )
+        _, result = impose_cover(source, output, paper_caliper=0.1 * MM, plan_only=True)
         self.assertTrue(result.turned)
         self.assertFalse(result.pages_turned)

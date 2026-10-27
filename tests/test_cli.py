@@ -582,55 +582,49 @@ class TestProofSheet(unittest.TestCase):
             self.assertTrue(proof.exists())
 
 
-class TestAssumedTrimWarning(unittest.TestCase):
-    """A file that never said its finished size still gets imposed, and the
-    operator is told what size was used instead of finding out at the knife."""
+class TestMissingTrimBox(unittest.TestCase):
+    """A file that never said its finished size is not imposed from a guess.
 
-    def test_imposing_warns_and_still_runs(self):
+    The size would have come from whatever the artwork was drawn on, and
+    nothing about the sheet looks wrong until it is cut -- so the job stops at
+    the command and not at the knife."""
+
+    def test_imposing_is_refused_and_nothing_is_written(self):
         with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
             output = source.with_name("out.pdf")
             status, _, err = run("nup", str(source), "-o", str(output))
-            self.assertEqual(status, 0)
-            self.assertTrue(output.exists())
+            self.assertEqual(status, 1)
+            self.assertFalse(output.exists())
             self.assertIn("no TrimBox", err)
             self.assertIn("MediaBox", err)
+            self.assertNotIn("Traceback", err)
 
-    def test_the_warned_size_is_the_one_imposed(self):
+    def test_the_refusal_names_the_size_it_would_have_used(self):
+        """What makes it actionable: the operator can see at a glance whether
+        the file is missing a box or is the wrong artwork."""
         with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
-            _, text, err = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
-            size = text.splitlines()[0].split("finished page ")[1].strip()
-            self.assertIn(size, err)
-
-    def test_a_declared_trim_warns_about_nothing(self):
-        with workspace(pages=8) as source:
             _, _, err = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
+            self.assertIn("123 × 166 mm", err)
+            self.assertIn("Add a TrimBox", err)
+
+    def test_a_declared_trim_is_imposed_in_silence(self):
+        with workspace(pages=8) as source:
+            status, _, err = run(
+                "nup", str(source), "-o", str(source.with_name("o.pdf"))
+            )
+            self.assertEqual(status, 0)
             self.assertNotIn("TrimBox", err)
 
-    def test_it_is_a_warning_and_not_a_refusal(self):
-        """A plain PDF is often its own trim; refusing would block ordinary
-        work. Only a PDF/X file, which promised a TrimBox, is refused."""
-        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
-            status, _, _ = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
-            self.assertEqual(status, 0)
-
-    def test_quiet_does_not_silence_it(self):
-        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
-            _, text, err = run(
-                "nup", str(source), "-o", str(source.with_name("o.pdf")), "-q"
-            )
-            self.assertEqual(text, "")
-            self.assertIn("no TrimBox", err)
-
-    def test_fit_warns_too(self):
-        """fit answers how many fit from the same assumed size, so it owes the
-        same warning."""
+    def test_fit_refuses_too(self):
+        """fit would answer how many fit from the same guessed size, so it
+        owes the same refusal."""
         with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
             status, text, err = run("fit", str(source), "--schema", "nup")
-            self.assertEqual(status, 0)
+            self.assertEqual(status, 1)
             self.assertIn("no TrimBox", err)
-            self.assertIn("up,", text)
+            self.assertNotIn("up,", text)
 
-    def test_fit_on_a_typed_size_warns_about_nothing(self):
+    def test_fit_on_a_typed_size_says_nothing_about_boxes(self):
         _, _, err = run("fit", "A6")
         self.assertEqual(err, "")
 

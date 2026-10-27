@@ -663,8 +663,6 @@ class _Subject:
     allowance: float
     #: Sheets one bound copy takes, when the subject is a bound document.
     forms: int = 0
-    #: What is worth saying about the measurement, chiefly an assumed trim.
-    warnings: tuple[str, ...] = ()
 
 
 def _fit_subject(args: argparse.Namespace) -> _Subject:
@@ -708,7 +706,7 @@ def _fit_subject(args: argparse.Namespace) -> _Subject:
     if schema in _SPREAD_SCHEMAS:
         label += f" spread ({format_mm(measured.trim_size)} page)"
         forms = build_plan(schema, measured.pages).sheets
-    return _Subject(unit, label, max(0, quantity), allowance, forms, measured.warnings)
+    return _Subject(unit, label, max(0, quantity), allowance, forms)
 
 
 def _two_stage_advice(args: argparse.Namespace, arrangement) -> str:
@@ -794,9 +792,6 @@ def _fit(  # pylint: disable=too-many-locals,too-many-branches
                 file=out,
             )
 
-    for warning in subject.warnings:
-        print(f"impose: warning: {warning}", file=sys.stderr)
-
     if quantity:
         advice = runs[0].advice()
         if advice:
@@ -877,7 +872,7 @@ def _cover(args: argparse.Namespace, out) -> int:
         raise ImposeError(f"No such file: {args.artwork}")
     proof = _proof_path(args)
     output = args.output or _default_output(args.input)
-    cover, result, warnings = impose_cover(
+    cover, result = impose_cover(
         args.input,
         output,
         paper_caliper=args.paper_caliper,
@@ -907,7 +902,7 @@ def _cover(args: argparse.Namespace, out) -> int:
         print(f"wrote {output}", file=out)
     if proof is not None and (args.dry_run or not args.quiet):
         print(f"proof {proof}", file=out)
-    for warning in (*warnings, *result.warnings):
+    for warning in result.warnings:
         print(f"impose: warning: {warning}", file=sys.stderr)
     return 0
 

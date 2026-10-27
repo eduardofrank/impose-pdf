@@ -12,7 +12,6 @@ import pikepdf
 from impose import ImposeError
 from impose.boxes import (
     PageBoxes,
-    assumed_trim_warning,
     has_output_intent,
     pdfx_version,
     read_boxes,
@@ -150,13 +149,14 @@ def dataclasses_replace_rotation(boxes: PageBoxes, rotation: int) -> PageBoxes:
     return dataclasses.replace(boxes, rotation=rotation)
 
 
-class TestAssumedTrim(unittest.TestCase):
+class TestRequireTrim(unittest.TestCase):
     """A file that never said what its finished size is.
 
-    Only a PDF/X file is refused for it. A plain PDF is often its own trim and
-    refusing it would block ordinary work -- but the size was assumed, and an
-    operator who is not told cannot tell the difference between a size the file
-    declared and one the specification's defaults supplied.
+    The specification's defaults answer, but with whatever the artwork was
+    drawn on. That is the one measurement imposition cannot get anywhere else,
+    so the page is refused and the refusal names the size that would have been
+    assumed -- which is what tells the operator whether a box is missing or the
+    artwork is wrong.
     """
 
     @staticmethod
@@ -164,26 +164,31 @@ class TestAssumedTrim(unittest.TestCase):
         pdf = make_pdf(1, **kwargs)
         return read_boxes(pdf.pages[0])
 
-    def test_a_declared_trim_says_nothing(self):
-        self.assertIsNone(assumed_trim_warning(self.boxes()))
+    def refusal(self, **kwargs) -> str:
+        boxes = self.boxes(**kwargs)
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(boxes, page_number=1)
+        return str(caught.exception)
+
+    def test_a_declared_trim_passes_in_silence(self):
+        self.assertIsNone(require_trim(self.boxes(), page_number=1))
         self.assertEqual(self.boxes().trim_source, "TrimBox")
 
     def test_without_a_trimbox_the_size_is_named_and_so_is_its_box(self):
         boxes = self.boxes(with_trimbox=False, with_bleedbox=False)
         self.assertEqual(boxes.trim_source, "MediaBox")
-        warning = assumed_trim_warning(boxes)
-        self.assertIn("no TrimBox", warning)
-        self.assertIn("MediaBox", warning)
-        self.assertIn(format_mm(boxes.trim_size), warning)
+        message = self.refusal(with_trimbox=False, with_bleedbox=False)
+        self.assertIn("no TrimBox", message)
+        self.assertIn("MediaBox", message)
+        self.assertIn(format_mm(boxes.trim_size), message)
 
     def test_a_bleedbox_without_a_trimbox_is_said_more_plainly(self):
         """The file has declared bleed and not declared a page, so the size
-        taken is definitely the bleed rather than merely possibly it."""
-        boxes = self.boxes(with_trimbox=False)
-        self.assertTrue(boxes.has_explicit_bleed)
-        warning = assumed_trim_warning(boxes)
-        self.assertIn("BleedBox", warning)
-        self.assertIn("bleed, not the page", warning)
+        taken would definitely be the bleed rather than merely possibly it."""
+        self.assertTrue(self.boxes(with_trimbox=False).has_explicit_bleed)
+        message = self.refusal(with_trimbox=False)
+        self.assertIn("BleedBox", message)
+        self.assertIn("certainly bigger than the finished page", message)
 
     def test_a_cropbox_is_named_when_it_is_the_one_that_answered(self):
         pdf = make_pdf(1, with_trimbox=False, with_bleedbox=False)
@@ -194,13 +199,25 @@ class TestAssumedTrim(unittest.TestCase):
             )
         boxes = read_boxes(pdf.pages[0])
         self.assertEqual(boxes.trim_source, "CropBox")
-        self.assertIn("CropBox", assumed_trim_warning(boxes))
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(boxes, page_number=1)
+        self.assertIn("CropBox", str(caught.exception))
 
-    def test_the_size_named_is_the_size_used(self):
-        """The whole value of the warning: it is checkable at a glance."""
+    def test_the_size_named_is_the_size_that_was_on_offer(self):
+        """The whole value of naming it: it is checkable at a glance, and it
+        is not the finished size the artwork was drawn to."""
         boxes = self.boxes(with_trimbox=False, with_bleedbox=False)
-        self.assertIn(format_mm(boxes.trim_size), assumed_trim_warning(boxes))
+        self.assertIn(
+            format_mm(boxes.trim_size),
+            self.refusal(with_trimbox=False, with_bleedbox=False),
+        )
         self.assertNotEqual(boxes.trim_size, Size(105 * MM, 148 * MM))
+
+    def test_the_page_that_is_wrong_is_the_one_named(self):
+        boxes = self.boxes(with_trimbox=False, with_bleedbox=False)
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(boxes, page_number=7)
+        self.assertIn("Page 7", str(caught.exception))
 
 
 class TestPdfX(unittest.TestCase):
@@ -212,20 +229,18 @@ class TestPdfX(unittest.TestCase):
         pdf = declare_pdfx(make_pdf(1), "PDF/X-4")
         self.assertIn("PDF/X-4", pdfx_version(pdf) or "")
 
-    def test_pdfx_without_trimbox_is_refused(self):
-        """The finished size is exactly what we would have to guess."""
+    def test_pdfx_without_trimbox_is_refused_as_non_conformance(self):
+        """Every file without a TrimBox is refused. This one is told that the
+        standard it claims requires the box, because then the fault is in the
+        export rather than in the hand-off."""
         pdf = make_pdf(1, with_trimbox=False)
         boxes = read_boxes(pdf.pages[0])
         with self.assertRaises(ImposeError) as caught:
             require_trim(boxes, page_number=1, pdfx="PDF/X-4")
-        self.assertIn("TrimBox", str(caught.exception))
+        self.assertIn("PDF/X-4", str(caught.exception))
+        self.assertIn("that standard requires", str(caught.exception))
 
     def test_trimbox_present_is_accepted(self):
         pdf = make_pdf(1)
         boxes = read_boxes(pdf.pages[0])
         self.assertIsNone(require_trim(boxes, page_number=1, pdfx="PDF/X-4"))
-
-    def test_no_pdfx_claim_means_no_requirement(self):
-        pdf = make_pdf(1, with_trimbox=False)
-        boxes = read_boxes(pdf.pages[0])
-        self.assertIsNone(require_trim(boxes, page_number=1, pdfx=None))

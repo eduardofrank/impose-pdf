@@ -138,29 +138,30 @@ decimal places, so a width obtained by subtracting two of them carries rounding
 — comparing exactly once reported two identical pages as different sizes and
 hid the real fault behind it.
 
-**A size that was assumed is said out loud.** TrimBox is the finished page, and
-a file that carries none has not told us the one measurement imposition depends
-on. The specification's defaults still yield a rectangle — CropBox, and
-MediaBox behind that — so the job runs, but that rectangle is whatever the
-artwork was drawn on, which on a file carrying bleed or a slug is bigger than
-the finished page. So `impose` names the size it used and the box it came
-from, and leaves the judgement to the operator:
+**A size the file never gave is not guessed at.** TrimBox is the finished page,
+and a file that carries none has not told us the one measurement imposition
+depends on. The specification's defaults still yield a rectangle — CropBox, and
+MediaBox behind that — but that rectangle is whatever the artwork was drawn on,
+which on a file carrying bleed or a slug is bigger than the finished page. The
+marks would then go around the artwork instead of around the page, and nothing
+about the sheet looks wrong until it is cut. So the job stops at the command:
 
 ```
 $ impose nup client-artwork.pdf
-impose: warning: Page 1 carries no TrimBox, so its finished size was taken
-from the MediaBox: 123 × 166 mm. If the artwork carries bleed or a slug, that
-is bigger than the finished page and the marks will be placed around the
-artwork instead. Add a TrimBox to say what the finished size is.
-n-up: 8 pages onto 1 sheet(s) at 4 up (2 × 2 upright), page 310 × 450 mm on
-indigo-5000; finished page 123 × 166 mm
+impose: Page 1 carries no TrimBox, so the file does not say what the finished
+page measures. Its MediaBox is 123 × 166 mm, which includes whatever bleed and
+slug the artwork carries. Add a TrimBox to say what the finished size is.
 ```
 
-A file that declares a BleedBox and no TrimBox is told more plainly, because
-then the size taken is definitely the bleed rather than merely possibly it.
-A PDF/X file is refused outright: it promised a TrimBox. A plain PDF is often
-its own trim, so refusing it would block ordinary work — the warning goes to
-stderr, `--quiet` does not silence it, and the exit code stays 0.
+The size that would have been assumed is named, and so is the box it came from,
+because that is what says whether the file is merely missing a box or is the
+wrong artwork altogether. `impose fit` refuses the same file for the same
+reason: it would be answering how many fit from the same guess.
+
+A file that declares a BleedBox and no TrimBox is told more plainly, because it
+has said where its bleed is and not where its page is, so the size on offer is
+certainly too big. A PDF/X file is told that the standard it claims requires
+the box, because then the fault is in the export rather than in the hand-off.
 
 **Bleed is not invented.** Where two pages meet at a spine they share one cut
 line, so bleed is shaved to nothing there and the two trims are snapped onto
@@ -466,8 +467,8 @@ least waste.
 | `1` | the job cannot be done: file missing, unknown press, form will not fit |
 | `2` | the arguments do not parse |
 
-Warnings — a book too thick to staple, a finished size that had to be assumed
-— go to stderr and do **not** change the exit code. The job still runs; it is
+Warnings — a book too thick to staple, a colour bar left off because a control
+strip took its place — go to stderr and do **not** change the exit code. The job still runs; it is
 your press and your stapler. `--quiet` suppresses the summary, never a
 warning.
 
@@ -702,7 +703,7 @@ flat, and imposes that:
 ```python
 from impose.cover import impose_cover
 
-cover, result, warnings = impose_cover(
+cover, result = impose_cover(
     "novel.pdf", "novel-cover.pdf",
     paper_caliper="0.1mm",
     hinge="5mm",

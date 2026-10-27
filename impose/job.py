@@ -9,9 +9,9 @@ write the sheets.
 
 The checks before any geometry are the part that matters. A document whose
 pages are not all the same finished size cannot go on a uniform grid, and a
-PDF/X file with no TrimBox has not told us the one measurement imposition
-depends on. Both are refused by name here rather than discovered as a wrong
-sheet on the press.
+file with no TrimBox has not told us the one measurement imposition depends
+on. Both are refused by name here rather than discovered as a wrong sheet on
+the press.
 """
 
 from __future__ import annotations
@@ -25,13 +25,7 @@ import pikepdf
 
 from . import ImposeError, gang
 from .bindery import bindery_request, lip_cell, marks_for
-from .boxes import (
-    PageBoxes,
-    assumed_trim_warning,
-    pdfx_version,
-    read_boxes,
-    require_trim,
-)
+from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
 from .finishing import layer_note, open_strip, outlines, prepare_cut, strip_slots
 from .fit import DEFAULT_GUTTER, best, largest_signature
 from .fold import check_section_pages
@@ -254,8 +248,6 @@ class Measurement:
     pages: int
     bleed_insets: Insets
     pdfx: str | None = None
-    #: What is worth saying about the measurement, chiefly an assumed trim.
-    warnings: tuple[str, ...] = ()
 
 
 def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
@@ -268,13 +260,11 @@ def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
     pdf = _open(source)
     try:
         boxes = source_boxes(pdf)
-        assumed = assumed_trim_warning(boxes)
         return Measurement(
             boxes.trim_size,
             len(pdf.pages),
             boxes.bleed_insets,
             pdfx_version(pdf),
-            () if assumed is None else (assumed,),
         )
     finally:
         if pdf is not source:
@@ -673,7 +663,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             gang_bleeds=bleeds,
         )
         turned = any(layout.turned for layout in layouts)
-        warnings = _warnings(plan, schema, max_nested_sheets, boxes)
+        warnings = _warnings(plan, schema, max_nested_sheets)
         spot = prepare_cut(schema, cut, cut_name)
         wedge = open_strip(strip) if strip else None
         slots, bar_note = strip_slots(wedge, layouts, style, colour_bar)
@@ -866,14 +856,9 @@ def _form_press(
     )
 
 
-def _warnings(
-    plan: Plan, schema: str, max_nested_sheets: int, boxes: PageBoxes
-) -> tuple[str, ...]:
+def _warnings(plan: Plan, schema: str, max_nested_sheets: int) -> tuple[str, ...]:
     """Things worth saying about a job that is otherwise imposable."""
     found = []
-    assumed = assumed_trim_warning(boxes)
-    if assumed:
-        found.append(assumed)
     if schema == "saddle":
         warning = saddle.nesting_warning(plan.sheets, max_nested_sheets)
         if warning:

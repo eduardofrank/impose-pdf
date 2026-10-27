@@ -250,7 +250,7 @@ def _run_cover(  # pylint: disable=too-many-arguments
         hinge = job.pop("cover_caliper", 0) or 0
     else:
         job.pop("cover_caliper", None)
-    cover, result, warnings = impose_cover(
+    cover, result = impose_cover(
         source,
         output,
         paper_caliper=job.pop("paper_caliper"),
@@ -266,15 +266,11 @@ def _run_cover(  # pylint: disable=too-many-arguments
         **job,
     )
     print(cover.describe(), file=out)
-    for warning in (*warnings, *result.warnings):
-        print(f"impose: warning: {warning}", file=sys.stderr)
-    _report(out, result, output, proof, dry=dry, warnings=())
+    _report(out, result, output, proof, dry=dry)
     return result
 
 
-def _report(  # pylint: disable=too-many-arguments
-    out, result, output, proof, *, dry: bool, warnings=None
-) -> None:
+def _report(out, result, output, proof, *, dry: bool) -> None:
     """Say what the job did, in the same words the command line uses."""
     if dry:
         print(result.plan.describe(), file=out)
@@ -283,8 +279,7 @@ def _report(  # pylint: disable=too-many-arguments
         print(f"wrote {output}", file=out)
     if proof is not None:
         print(f"proof {proof}", file=out)
-    pending = result.warnings if warnings is None else warnings
-    for warning in pending:
+    for warning in result.warnings:
         print(f"impose: warning: {warning}", file=sys.stderr)
 
 

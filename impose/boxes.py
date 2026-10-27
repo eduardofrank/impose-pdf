@@ -9,7 +9,9 @@ usually with room for the marks the supplier added.
 
 Imposition works from TrimBox. Laying out from MediaBox, as tools do when they
 treat a page as a picture, places whatever slug and marks the supplier left in
-the file, and gets the finished size wrong by however much bleed there is.
+the file, and gets the finished size wrong by however much bleed there is. So a
+page carrying no TrimBox is refused rather than imposed from the defaults: they
+would answer, but with the size of whatever the artwork was drawn on.
 """
 
 from __future__ import annotations
@@ -238,49 +240,46 @@ def has_output_intent(pdf: pikepdf.Pdf) -> bool:
     return bool(intents) and len(intents) > 0
 
 
-def assumed_trim_warning(boxes: PageBoxes) -> str | None:
-    """What to say when the finished size had to be assumed.
+def require_trim(
+    boxes: PageBoxes, *, page_number: int, pdfx: str | None = None
+) -> None:
+    """Refuse a page that has not said what its finished size is.
 
-    A page with no TrimBox has not told us the one measurement imposition
-    depends on. The specification's defaults still yield a rectangle, so the
-    job runs -- but that rectangle is whatever the artwork was drawn on, which
-    on a file carrying bleed or a slug is bigger than the finished page. The
-    marks then go around the artwork instead of around the page, and nothing
-    about the output looks wrong until it is cut.
+    The specification's defaults still yield a rectangle -- TrimBox falls back
+    to CropBox, and CropBox to MediaBox -- so a job could be imposed off one.
+    But that rectangle is whatever the artwork happened to be drawn on, which
+    on a file carrying bleed or a slug is bigger than the finished page: the
+    marks would go around the artwork instead of around the page, and nothing
+    about the sheet looks wrong until it is cut. The finished size is the one
+    measurement imposition has nowhere else to get, so it is asked for rather
+    than assumed.
 
-    Only PDF/X files are refused outright, by :func:`require_trim`; a plain PDF
-    is often its own trim and refusing it would block ordinary work. So this is
-    a warning, and it names the size and the box it came from so the operator
-    can see at a glance whether it is the size they expected.
+    Each message names the size that would have been assumed and the box it
+    came from, because that is what says whether the file is merely missing a
+    box or is the wrong artwork altogether. A PDF/X file is told separately:
+    the standard requires a TrimBox, so the fault is in the export and not in
+    the hand-off.
     """
     if boxes.has_explicit_trim:
-        return None
+        return
     size = format_mm(boxes.trim_size)
-    if boxes.has_explicit_bleed:
-        return (
-            f"Page 1 declares a BleedBox but no TrimBox, so its finished size "
-            f"was taken from the {boxes.trim_source}: {size}. That is the "
-            f"bleed, not the page, and the marks will be placed around it. "
-            f"Add a TrimBox to say what the finished size is."
-        )
-    return (
-        f"Page 1 carries no TrimBox, so its finished size was taken from the "
-        f"{boxes.trim_source}: {size}. If the artwork carries bleed or a slug, "
-        f"that is bigger than the finished page and the marks will be placed "
-        f"around the artwork instead. Add a TrimBox to say what the finished "
-        f"size is."
-    )
-
-
-def require_trim(boxes: PageBoxes, *, page_number: int, pdfx: str | None) -> None:
-    """Refuse a PDF/X page with no TrimBox.
-
-    PDF/X requires a TrimBox (or an ArtBox) on every page. A file that claims
-    conformance and omits it is not something to guess about: the finished size
-    is exactly what we would be guessing.
-    """
-    if pdfx and not boxes.has_explicit_trim:
+    if pdfx:
         raise ImposeError(
-            f"Page {page_number} declares {pdfx} but carries no TrimBox. "
-            f"The finished page size cannot be determined."
+            f"Page {page_number} declares {pdfx} but carries no TrimBox, "
+            f"which that standard requires. Its {boxes.trim_source} is "
+            f"{size}. The finished page size cannot be determined."
         )
+    if boxes.has_explicit_bleed:
+        raise ImposeError(
+            f"Page {page_number} declares a BleedBox but no TrimBox, so the "
+            f"finished size would have to come from its {boxes.trim_source}: "
+            f"{size}. The file has said where its bleed is and not where its "
+            f"page is, so that size is certainly bigger than the finished "
+            f"page. Add a TrimBox to say what the finished size is."
+        )
+    raise ImposeError(
+        f"Page {page_number} carries no TrimBox, so the file does not say "
+        f"what the finished page measures. Its {boxes.trim_source} is {size}, "
+        f"which includes whatever bleed and slug the artwork carries. Add a "
+        f"TrimBox to say what the finished size is."
+    )

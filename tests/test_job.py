@@ -190,10 +190,12 @@ class TestSourceChecks(unittest.TestCase):
             run(source=source)
         self.assertIn("TrimBox", str(caught.exception))
 
-    def test_a_plain_file_without_a_trimbox_is_accepted(self):
-        """Without a PDF/X claim, CropBox is a reasonable finished size."""
-        result, _ = run(source=make_pdf(4, with_trimbox=False))
-        self.assertEqual(result.sheets, 1)
+    def test_a_plain_file_without_a_trimbox_is_refused_as_well(self):
+        """The defaults would answer with whatever the artwork was drawn on,
+        which is the finished size only by luck."""
+        with self.assertRaises(ImposeError) as caught:
+            run(source=make_pdf(4, with_trimbox=False))
+        self.assertIn("no TrimBox", str(caught.exception))
 
     def test_source_boxes_returns_the_shared_geometry(self):
         source = make_pdf(4)
