@@ -14,7 +14,7 @@ from __future__ import annotations
 import pikepdf
 
 from . import ImposeError
-from .boxes import pdfx_version, read_boxes, require_trim
+from .boxes import assumed_trim_notes, pdfx_version, read_boxes, require_trim
 from .geometry import Size
 from .plan import Placement, Plan, Surface
 from .units import format_mm, length
@@ -45,25 +45,35 @@ def allowance(marks, bleeds) -> float:
     return max(reach, *edges)
 
 
-def read_pages(pdf: pikepdf.Pdf, bleed_cap):
-    """Every page's boxes and its bleed, capped. Sizes are not required to agree."""
+def read_pages(pdf: pikepdf.Pdf, bleed_cap, *, trim_from: str = "trimbox"):
+    """Every page's boxes and its bleed, capped, and what had to be assumed.
+
+    Sizes are not required to agree. *trim_from* is the same opt-in the rest of
+    the tool takes, and here it can be exercised a page at a time: a gang is
+    often one supplier's artwork beside a label somebody printed to PDF, so the
+    notes name which pages had no finished size of their own.
+    """
     cap = length(bleed_cap)
     version = pdfx_version(pdf)
     found = []
+    assumed = []
     for number, page in enumerate(pdf.pages, start=1):
-        boxes = read_boxes(page)
+        boxes = read_boxes(page, trim_from=trim_from)
         require_trim(boxes, page_number=number, pdfx=version)
         if boxes.rotation:
             raise ImposeError(
                 f"Page {number} of a gang carries /Rotate {boxes.rotation}. "
                 "Build each item upright; a gang does not turn a page."
             )
+        if boxes.assumed_from:
+            assumed.append((number, boxes))
         found.append(boxes)
     if not found:
         raise ImposeError("A gang needs at least one page.")
     pages = tuple(found)
     bleeds = tuple(page.bleed_insets.capped(cap) for page in pages)
-    return pages, bleeds
+    notes = assumed_trim_notes(assumed, pages=len(pages), pdfx=version)
+    return pages, bleeds, notes
 
 
 def impose(pages: int, **_options) -> Plan:

@@ -12,6 +12,7 @@ import pikepdf
 from impose import ImposeError
 from impose.boxes import (
     PageBoxes,
+    assumed_trim_notes,
     has_output_intent,
     pdfx_version,
     read_boxes,
@@ -244,3 +245,129 @@ class TestPdfX(unittest.TestCase):
         pdf = make_pdf(1)
         boxes = read_boxes(pdf.pages[0])
         self.assertIsNone(require_trim(boxes, page_number=1, pdfx="PDF/X-4"))
+
+
+class TestTrimFromMediaBox(unittest.TestCase):
+    """The opt-in for a file that never declared its finished size.
+
+    An office export, a print-to-PDF or a scan has a MediaBox that genuinely
+    is the finished page. Saying so is allowed; having it assumed is not.
+    """
+
+    @staticmethod
+    def boxes(trim_from, **kwargs):
+        pdf = make_pdf(1, with_trimbox=False, with_bleedbox=False, **kwargs)
+        return read_boxes(pdf.pages[0], trim_from=trim_from)
+
+    def test_the_size_comes_from_the_mediabox_and_says_so(self):
+        boxes = self.boxes("mediabox")
+        self.assertEqual(boxes.trim, boxes.media)
+        self.assertEqual(boxes.trim_source, "MediaBox")
+        self.assertEqual(boxes.assumed_from, "MediaBox")
+        self.assertFalse(boxes.has_explicit_trim)
+
+    def test_the_page_is_no_longer_refused(self):
+        self.assertIsNone(require_trim(self.boxes("mediabox"), page_number=1))
+
+    def test_a_pdfx_page_is_let_through_as_well(self):
+        """The standard is broken either way. Whether to run the file anyway is
+        the operator's call, and this is the operator making it."""
+        boxes = self.boxes("mediabox")
+        self.assertIsNone(require_trim(boxes, page_number=1, pdfx="PDF/X-4"))
+
+    def test_a_cropbox_is_not_what_was_asked_for(self):
+        """The specification would fall back to the CropBox, but a CropBox is a
+        view somebody set in a reader. The opt-in names the MediaBox and gets
+        the MediaBox."""
+        pdf = make_pdf(1, with_trimbox=False, with_bleedbox=False)
+        media = [float(value) for value in pdf.pages[0].obj["/MediaBox"]]
+        pdf.pages[0].obj["/CropBox"] = pikepdf.Array(
+            [media[0] + 6, media[1] + 6, media[2] - 6, media[3] - 6]
+        )
+        boxes = read_boxes(pdf.pages[0], trim_from="mediabox")
+        self.assertEqual(boxes.trim, boxes.media)
+        self.assertEqual(boxes.trim_source, "MediaBox")
+
+    def test_a_declared_trim_is_read_off_the_trimbox_regardless(self):
+        """The opt-in answers a question this file already answered."""
+        pdf = make_pdf(1)
+        declared = read_boxes(pdf.pages[0])
+        opted_in = read_boxes(pdf.pages[0], trim_from="mediabox")
+        self.assertEqual(opted_in.trim, declared.trim)
+        self.assertEqual(opted_in.trim_source, "TrimBox")
+        self.assertEqual(opted_in.assumed_from, "")
+
+    def test_an_undeclared_bleed_is_still_no_bleed(self):
+        """Taking the page from the MediaBox says nothing about bleed: there is
+        no room outside the page to place any."""
+        self.assertEqual(self.boxes("mediabox").bleed_insets, Insets())
+
+    def test_an_unknown_box_is_refused_by_name(self):
+        with self.assertRaises(ImposeError) as caught:
+            self.boxes("bleedbox")
+        self.assertIn("bleedbox", str(caught.exception))
+        self.assertIn("trimbox or mediabox", str(caught.exception))
+
+    def test_the_refusal_mentions_the_way_past_it(self):
+        """Only the plainest refusal does. The operator who has 200 office
+        exports to run should not have to find the option by accident."""
+        boxes = self.boxes("trimbox")
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(boxes, page_number=1)
+        self.assertIn("ask for the MediaBox explicitly", str(caught.exception))
+
+    def test_a_bleedbox_refusal_does_not_mention_it(self):
+        """That file has said its MediaBox is bigger than its page, so the
+        opt-in would be advice to impose a known-wrong size."""
+        pdf = make_pdf(1, with_trimbox=False)
+        boxes = read_boxes(pdf.pages[0])
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(boxes, page_number=1)
+        self.assertNotIn("MediaBox explicitly", str(caught.exception))
+
+
+class TestAssumedTrimNotes(unittest.TestCase):
+    """What gets said about a size that was taken rather than declared."""
+
+    @staticmethod
+    def assumed(count, pages=None, **kwargs):
+        pdf = make_pdf(
+            pages or count, with_trimbox=False, with_bleedbox=False, **kwargs
+        )
+        return [
+            (number, read_boxes(pdf.pages[number - 1], trim_from="mediabox"))
+            for number in range(1, count + 1)
+        ]
+
+    def test_a_declared_document_is_not_news(self):
+        self.assertEqual(assumed_trim_notes([], pages=8), ())
+
+    def test_the_size_taken_is_named(self):
+        """The whole point of the note: 105 × 148 mm is a page, 123 × 166 mm is
+        a page with something added to it, and only the number says which."""
+        notes = assumed_trim_notes(self.assumed(4), pages=4)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("123 × 166 mm", notes[0])
+        self.assertIn("MediaBox", notes[0])
+        self.assertIn("all 4 pages", notes[0])
+
+    def test_one_page_of_several_is_named_as_itself(self):
+        notes = assumed_trim_notes(self.assumed(1, pages=8), pages=8)
+        self.assertIn("page 1", notes[0])
+        self.assertNotIn("all", notes[0])
+
+    def test_pages_of_different_sizes_are_not_given_one_size(self):
+        other = make_pdf(1, trim=Size(50 * MM, 90 * MM), with_trimbox=False)
+        mixed = self.assumed(1, pages=1) + [
+            (2, read_boxes(other.pages[0], trim_from="mediabox"))
+        ]
+        notes = assumed_trim_notes(mixed, pages=2)
+        self.assertIn("each finished size", notes[0])
+
+    def test_a_pdfx_claim_earns_a_second_sentence(self):
+        """A file that claims the standard has lost a box it was required to
+        write, which is a reason to doubt the size more, not less."""
+        notes = assumed_trim_notes(self.assumed(2), pages=2, pdfx="PDF/X-4")
+        self.assertEqual(len(notes), 2)
+        self.assertIn("PDF/X-4", notes[1])
+        self.assertIn("export", notes[1])

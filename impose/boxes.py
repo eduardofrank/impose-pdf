@@ -12,12 +12,21 @@ treat a page as a picture, places whatever slug and marks the supplier left in
 the file, and gets the finished size wrong by however much bleed there is. So a
 page carrying no TrimBox is refused rather than imposed from the defaults: they
 would answer, but with the size of whatever the artwork was drawn on.
+
+An office export, a print-to-PDF or a scan is the case where that refusal is
+pure friction: the MediaBox genuinely is the finished page, and the file is
+missing nothing but the declaration. ``trim_from="mediabox"`` is the operator
+saying so. It is not a default and it is never inferred, because the same
+missing box also describes artwork that has been through a converter, where the
+MediaBox is the page plus everything drawn around it. What was assumed is
+reported rather than passed over in silence: see :func:`assumed_trim_notes`.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import re
+from collections.abc import Sequence
 
 import pikepdf
 from pikepdf import Array, Dictionary
@@ -31,6 +40,11 @@ from .units import format_mm
 _INHERITABLE = frozenset({"/MediaBox", "/CropBox", "/Rotate"})
 
 _PDFX_RE = re.compile(r"PDF/X[-\w:.]*", re.IGNORECASE)
+
+#: Where a finished size may be read from. ``"trimbox"`` is the only box that
+#: states one; ``"mediabox"`` is an operator taking responsibility for a file
+#: that never did.
+TRIM_FROM_CHOICES = ("trimbox", "mediabox")
 
 # A page displays rotated clockwise by /Rotate. Turning a portrait sheet a
 # quarter turn clockwise carries its left edge to the top of the display, so
@@ -61,6 +75,9 @@ class PageBoxes:  # pylint: disable=too-many-instance-attributes
     has_explicit_trim: bool = False
     has_explicit_bleed: bool = False
     has_explicit_crop: bool = False
+    #: The box an opt-in took the finished size from, on a page that carried no
+    #: TrimBox: ``"MediaBox"``, or empty when nothing was assumed.
+    assumed_from: str = ""
     #: Where this page folds, in its own user space, as (vertical, horizontal).
     #: Only a page imposed by this tool carries one; everything else has none.
     folds: tuple[tuple[float, ...], tuple[float, ...]] = ((), ())
@@ -76,6 +93,8 @@ class PageBoxes:  # pylint: disable=too-many-instance-attributes
         """
         if self.has_explicit_trim:
             return "TrimBox"
+        if self.assumed_from:
+            return self.assumed_from
         return "CropBox" if self.has_explicit_crop else "MediaBox"
 
     @property
@@ -152,12 +171,24 @@ def _rotation(page: pikepdf.Page) -> int:
     return degrees % 360
 
 
-def read_boxes(page: pikepdf.Page) -> PageBoxes:
+def read_boxes(page: pikepdf.Page, *, trim_from: str = "trimbox") -> PageBoxes:
     """Read the boxes of *page*, applying the specification's defaults.
 
     CropBox defaults to MediaBox; BleedBox and TrimBox default to CropBox. Each
     is clipped to the MediaBox, since content outside it is not imageable.
+
+    *trim_from* is the opt-in for a page that declares no TrimBox.
+    ``"mediabox"`` takes the finished size from the MediaBox itself -- not from
+    the CropBox the specification would have fallen back to, because a CropBox
+    is a view somebody set and nobody asked for that one -- and records on the
+    page that the size was assumed. A page that does carry a TrimBox is read
+    off it either way: the opt-in answers a question that was never asked.
     """
+    if trim_from not in TRIM_FROM_CHOICES:
+        raise ImposeError(
+            f"Unknown trim_from {trim_from!r}; use "
+            f"{' or '.join(TRIM_FROM_CHOICES)}."
+        )
     media = _rect(page.mediabox)
     crop = _intersect(_rect(page.cropbox), media, what="CropBox")
     has_trim = "/TrimBox" in page.obj
@@ -167,6 +198,10 @@ def read_boxes(page: pikepdf.Page) -> PageBoxes:
     bleed = (
         _intersect(_rect(page.bleedbox), media, what="BleedBox") if has_bleed else crop
     )
+    assumed_from = ""
+    if not has_trim and trim_from == "mediabox":
+        trim = media
+        assumed_from = "MediaBox"
     return PageBoxes(
         media=media,
         crop=crop,
@@ -176,6 +211,7 @@ def read_boxes(page: pikepdf.Page) -> PageBoxes:
         has_explicit_trim=has_trim,
         has_explicit_bleed=has_bleed,
         has_explicit_crop=has_crop,
+        assumed_from=assumed_from,
         folds=_read_folds(page),
     )
 
@@ -259,8 +295,18 @@ def require_trim(
     box or is the wrong artwork altogether. A PDF/X file is told separately:
     the standard requires a TrimBox, so the fault is in the export and not in
     the hand-off.
+
+    Only the plainest of the three mentions the opt-in, because only there is
+    it sound advice. A file with a BleedBox has said its size is bigger than
+    the page, and a PDF/X file has broken the standard it claims; pointing
+    either at the MediaBox would be pointing at a size already known to be
+    wrong.
+
+    A page read with ``trim_from="mediabox"`` passes: the size was still not
+    declared, but somebody has said which box to take it from, and that is an
+    answer where the defaults were only a guess.
     """
-    if boxes.has_explicit_trim:
+    if boxes.has_explicit_trim or boxes.assumed_from:
         return
     size = format_mm(boxes.trim_size)
     if pdfx:
@@ -281,5 +327,67 @@ def require_trim(
         f"Page {page_number} carries no TrimBox, so the file does not say "
         f"what the finished page measures. Its {boxes.trim_source} is {size}, "
         f"which includes whatever bleed and slug the artwork carries. Add a "
-        f"TrimBox to say what the finished size is."
+        f"TrimBox to say what the finished size is, or ask for the MediaBox "
+        f"explicitly if {size} is the finished page."
     )
+
+
+def assumed_trim_notes(
+    assumed: Sequence[tuple[int, PageBoxes]],
+    *,
+    pages: int,
+    pdfx: str | None = None,
+) -> tuple[str, ...]:
+    """What to say about a finished size that was taken rather than declared.
+
+    *assumed* is the pages read with an opt-in that had no TrimBox of their
+    own, as ``(page number, boxes)``. Nothing is said about a document that
+    declared its sizes, which is the ordinary case and not news.
+
+    The note exists because the operator opting in is usually right -- an
+    office export's MediaBox is its finished page -- and occasionally very
+    wrong, about a file that has been through a converter and whose MediaBox is
+    the page with marks drawn around it. Only the size can tell those apart, so
+    the size is printed rather than assumed quietly: 105 x 148 mm is a page,
+    123 x 166 mm is a page with something added to it.
+    """
+    if not assumed:
+        return ()
+    sizes = {format_mm(boxes.trim_size) for _, boxes in assumed}
+    where = _page_phrase([number for number, _ in assumed], pages)
+    if len(sizes) == 1:
+        taken = f"the finished size {sizes.pop()} was taken from the MediaBox"
+    else:
+        taken = "each finished size was taken from that page's own MediaBox"
+    notes = [
+        f"No TrimBox on {where}: {taken}, as this run asked. Check it is the "
+        f"finished page and not the sheet the artwork was drawn on, which "
+        f"carries whatever bleed and marks came with it."
+    ]
+    if pdfx:
+        notes.append(
+            f"That file declares {pdfx}, which requires a TrimBox on every "
+            f"page. The box is missing from the export rather than merely "
+            f"undeclared, so the size taken is worth more doubt, not less."
+        )
+    return tuple(notes)
+
+
+def _page_phrase(numbers: Sequence[int], pages: int) -> str:
+    """Which pages, in as few words as say it exactly.
+
+    >>> _page_phrase([1], 8)
+    'page 1'
+    >>> _page_phrase([1, 2, 3, 4], 4)
+    'all 4 pages'
+    >>> _page_phrase([2, 5], 8)
+    'pages 2, 5 of 8'
+    """
+    if len(numbers) == 1:
+        return f"page {numbers[0]}"
+    if len(numbers) == pages:
+        return f"all {pages} pages"
+    listed = ", ".join(str(number) for number in numbers[:4])
+    if len(numbers) > 4:
+        listed += f" and {len(numbers) - 4} more"
+    return f"pages {listed} of {pages}"

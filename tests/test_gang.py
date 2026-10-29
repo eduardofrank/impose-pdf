@@ -112,3 +112,43 @@ class TestAFormSizedSheet(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TestTrimFromMediaBox(unittest.TestCase):
+    """A gang is often one supplier's artwork beside something printed to PDF.
+
+    So the opt-in is exercised a page at a time here, and the note names which
+    pages had no finished size of their own rather than tarring the file.
+    """
+
+    @staticmethod
+    def mixed():
+        card = make_pdf(pages=1, trim=Size(90 * MM, 50 * MM))
+        label = make_pdf(
+            pages=1,
+            trim=Size(60 * MM, 40 * MM),
+            with_trimbox=False,
+            with_bleedbox=False,
+        )
+        card.pages.append(label.pages[0])
+        return card
+
+    def test_the_page_with_no_box_is_packed_from_its_mediabox(self):
+        result = impose_document(
+            self.mixed(), io.BytesIO(), schema="gang", trim_from="mediabox"
+        )
+        self.assertEqual(result.plan.schema, "gang")
+        self.assertEqual(result.plan.surfaces[0].sources, (0, 1))
+
+    def test_only_the_page_that_was_assumed_is_named(self):
+        result = impose_document(
+            self.mixed(), io.BytesIO(), schema="gang", trim_from="mediabox"
+        )
+        self.assertIn("page 2", result.warnings[0])
+        self.assertIn("78 × 58 mm", result.warnings[0])
+
+    def test_without_the_opt_in_the_gang_is_refused(self):
+        with self.assertRaises(ImposeError) as caught:
+            impose_document(self.mixed(), io.BytesIO(), schema="gang")
+        self.assertIn("Page 2", str(caught.exception))
+        self.assertIn("no TrimBox", str(caught.exception))

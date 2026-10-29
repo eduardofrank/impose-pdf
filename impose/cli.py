@@ -22,6 +22,7 @@ import sys
 from collections.abc import Sequence
 
 from . import ImposeError, __version__
+from .boxes import TRIM_FROM_CHOICES
 from .cover import impose_cover
 from .finishing import add_arguments as add_finishing_arguments
 from .fit import DEFAULT_GUTTER, arrangements, compare
@@ -155,6 +156,26 @@ def _add_mark_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_trim_from(parser: argparse.ArgumentParser) -> None:
+    """The opt-in for a page that declares no finished size.
+
+    `fit` takes it as well, because it would otherwise refuse a file the job
+    about to be run accepts, and answer about no size at all.
+    """
+    parser.add_argument(
+        "--trim-from",
+        choices=TRIM_FROM_CHOICES,
+        default="trimbox",
+        help="Where a finished size comes from on a page that declares no "
+        "TrimBox. trimbox refuses such a page, because the defaults would "
+        "answer with whatever the artwork was drawn on. mediabox takes it "
+        "from the MediaBox -- for an office export, a print-to-PDF or a scan, "
+        "whose MediaBox is the finished page -- and says what size that was. "
+        "This run only: it is not written into a recorded job. "
+        "Default: %(default)s.",
+    )
+
+
 def _mark_reach(args: argparse.Namespace) -> float:
     """How far the marks described by *args* reach past the trim."""
     if args.marks == "none":
@@ -228,6 +249,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "rather than asking for it: 5 mm is shaved to this, 1 mm stays 1 mm, "
         "and none stays none. Default: 2mm.",
     )
+    _add_trim_from(parser)
     _add_mark_options(parser)
     add_finishing_arguments(parser)
     parser.add_argument(
@@ -595,6 +617,7 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
         help="Bleed to allow room for, capped the same way imposing caps it. "
         "Default: 2mm.",
     )
+    _add_trim_from(fit)
     fit.add_argument(
         "--allowance",
         type=_length,
@@ -663,6 +686,8 @@ class _Subject:
     allowance: float
     #: Sheets one bound copy takes, when the subject is a bound document.
     forms: int = 0
+    #: What had to be assumed to read the size off a document.
+    notes: tuple[str, ...] = ()
 
 
 def _fit_subject(args: argparse.Namespace) -> _Subject:
@@ -683,7 +708,7 @@ def _fit_subject(args: argparse.Namespace) -> _Subject:
             unit, format_mm(unit), max(0, args.quantity), _fit_allowance(args)
         )
 
-    measured = measure(path)
+    measured = measure(path, trim_from=args.trim_from)
     unit = repeating_unit(measured.trim_size, schema) if schema else measured.trim_size
     # Imposing caps the artwork's bleed rather than inventing it, so a file
     # with none needs no room for any. Match that, or fit answers a question
@@ -706,7 +731,7 @@ def _fit_subject(args: argparse.Namespace) -> _Subject:
     if schema in _SPREAD_SCHEMAS:
         label += f" spread ({format_mm(measured.trim_size)} page)"
         forms = build_plan(schema, measured.pages).sheets
-    return _Subject(unit, label, max(0, quantity), allowance, forms)
+    return _Subject(unit, label, max(0, quantity), allowance, forms, measured.notes)
 
 
 def _two_stage_advice(args: argparse.Namespace, arrangement) -> str:
@@ -804,6 +829,10 @@ def _fit(  # pylint: disable=too-many-locals,too-many-branches
                 f"{densest.waste} instead of {runs[0].waste}.",
                 file=out,
             )
+    # A size that was assumed rather than read is the premise of every figure
+    # above it, so it is said even though the answer looks complete without it.
+    for note in subject.notes:
+        print(f"impose: warning: {note}", file=sys.stderr)
     return 0
 
 
@@ -828,6 +857,7 @@ def _options(args: argparse.Namespace) -> dict:
         "max_nested_sheets": getattr(args, "max_nested_sheets", SADDLE_NESTING_LIMIT),
         "paper_caliper": getattr(args, "paper_caliper", 0.0),
         "bleed": args.bleed,
+        "trim_from": args.trim_from,
         "page": args.page,
         "fold": args.fold,
         "registration": args.registration,
@@ -843,6 +873,24 @@ def _options(args: argparse.Namespace) -> dict:
         "collation": False if getattr(args, "no_collation", False) else None,
         **schema_options(args, schema),
     }
+
+
+def _record(args: argparse.Namespace, output, proof) -> None:
+    """Store the job this command describes, and say what it leaves out.
+
+    A job file is run again by a hot folder, on whatever arrives. An assumed
+    finished size is a judgement about the file in front of somebody now, so it
+    is not stored -- and not storing it silently would be its own surprise, the
+    next run refusing a file this one imposed.
+    """
+    dump(args.record, recorded(args, _options(args), output, proof))
+    if args.trim_from != "trimbox":
+        print(
+            f"impose: warning: --trim-from {args.trim_from} applies to this "
+            f"run only and is not in {args.record}. That job will refuse a "
+            f"page with no TrimBox, as any stored job does.",
+            file=sys.stderr,
+        )
 
 
 def _cover_hinge(args: argparse.Namespace) -> float:
@@ -881,6 +929,7 @@ def _cover(args: argparse.Namespace, out) -> int:
         section_pages=args.section_pages,
         artwork=args.artwork,
         bleed=args.bleed,
+        trim_from=args.trim_from,
         press=chosen_press(args),
         sheet=args.sheet,
         gutters=0.0 if args.gutters is None else args.gutters,
@@ -960,7 +1009,7 @@ def main(  # pylint: disable=too-many-return-statements
         proof = _proof_path(args)
         output = args.output or _default_output(args.input)
         if getattr(args, "record", None) is not None:
-            dump(args.record, recorded(args, _options(args), output, proof))
+            _record(args, output, proof)
         if args.command == "cover":
             return _cover(args, out)
         if args.dry_run:

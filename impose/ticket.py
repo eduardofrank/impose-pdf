@@ -30,6 +30,13 @@ from .units import length, to_mm
 #: The only edition of the file this version of impose reads.
 VERSION = 1
 
+#: Options a run may make but a job file may not. Taking a finished size from
+#: the MediaBox is a judgement about one file in front of somebody, not a
+#: standing instruction: a job that carried it would go on assuming a size for
+#: every file a hot folder ever hands it, including the one that arrives next
+#: year with its boxes dropped by a converter.
+_PER_RUN = frozenset({"trim_from"})
+
 #: Keys a job may carry. Anything else is a mistake to name, not to ignore.
 _KEYS = frozenset(
     {
@@ -124,11 +131,16 @@ def add_command(subcommands) -> None:
 
 
 def recorded(args, options: dict, output, proof) -> dict:
-    """The job a command just described, ready to store."""
+    """The job a command just described, ready to store.
+
+    Everything except the options that are a run's to make and not a file's:
+    see :data:`_PER_RUN`. Dropping one here is why :data:`_KEYS` has no name
+    for it, so a job file that names it is refused rather than obeyed.
+    """
     job = {
         key: value
         for key, value in options.items()
-        if value is not None and key != "collation"
+        if value is not None and key != "collation" and key not in _PER_RUN
     }
     if options.get("collation") is False:
         job["collation"] = False

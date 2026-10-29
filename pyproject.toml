@@ -72,6 +72,13 @@ good-names = ["i", "j", "x", "y", "dx", "dy"]
 # not, and splitting a record to satisfy a count would make it harder to read.
 max-attributes = 10
 
+[tool.pylint.format]
+# cli.py is mostly help text: every option carries the paragraph that explains
+# it to an operator at a terminal, and those paragraphs are the module. Cutting
+# the parser across files to satisfy a line count would put an option's
+# spelling and its explanation in two places.
+max-module-lines = 1200
+
 [tool.pylint.messages_control]
 disable = ["duplicate-code"]
 

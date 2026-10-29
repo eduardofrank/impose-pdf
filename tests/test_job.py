@@ -10,13 +10,14 @@ import unittest
 import pikepdf
 
 from impose import ImposeError
-from impose.geometry import Size
+from impose.geometry import Size, same_size
 from impose.job import (
     DEFAULT_MARKS,
     SCHEMAS,
     build_plan,
     default_gutter,
     impose_document,
+    measure,
     source_boxes,
 )
 from impose.marks import MarkStyle
@@ -199,8 +200,9 @@ class TestSourceChecks(unittest.TestCase):
 
     def test_source_boxes_returns_the_shared_geometry(self):
         source = make_pdf(4)
-        boxes = source_boxes(source)
+        boxes, notes = source_boxes(source)
         self.assertAlmostEqual(to_mm(boxes.trim_size.width), 105.0, places=3)
+        self.assertEqual(notes, ())
 
     def test_unopenable_source_is_reported(self):
         with self.assertRaises(ImposeError) as caught:
@@ -633,7 +635,8 @@ class TestUniformityGate(unittest.TestCase):
         return str(caught.exception)
 
     def test_a_uniform_document_passes(self):
-        self.assertIsNotNone(source_boxes(make_pdf(8, trim=self.A6)))
+        boxes, _ = source_boxes(make_pdf(8, trim=self.A6))
+        self.assertTrue(same_size(boxes.trim_size, self.A6))
 
     def test_a_turned_page_is_named_as_turned(self):
         """The commonest fault, and the one an operator can act on fastest."""
@@ -738,3 +741,68 @@ class TestChosenGrid(unittest.TestCase):
         label = make_pdf(2, trim=Size(40 * MM, 55 * MM))
         result, _ = run(source=label, schema="steprepeat", columns=2, rows=2)
         self.assertEqual(result.plan.grid, (2, 2))
+
+
+class TestTrimFromMediaBox(unittest.TestCase):
+    """Imposing a file that never declared its finished size, on purpose.
+
+    The refusal is the default because the size would otherwise be a guess.
+    Asked for explicitly, the MediaBox is an answer -- and the sheet still says
+    what it was, because an operator who is right about an office export is
+    occasionally very wrong about a file that has been through a converter.
+    """
+
+    MEDIA = Size(123 * MM, 166 * MM)  # A6 plus make_pdf's bleed and slug
+
+    def test_the_file_imposes_from_its_mediabox(self):
+        result, data = run(source=make_pdf(8, with_trimbox=False), trim_from="mediabox")
+        self.assertTrue(same_size(result.trim_size, self.MEDIA))
+        self.assertGreater(len(data), 0)
+
+    def test_what_was_assumed_is_the_first_thing_reported(self):
+        result, _ = run(source=make_pdf(8, with_trimbox=False), trim_from="mediabox")
+        self.assertIn("No TrimBox on all 8 pages", result.warnings[0])
+        self.assertIn("123 × 166 mm", result.warnings[0])
+
+    def test_a_declared_file_is_imposed_in_silence_either_way(self):
+        """The opt-in is not a mode: a file that says its own size is read off
+        its TrimBox and has nothing to report."""
+        result, _ = run(pages=8, trim_from="mediabox")
+        self.assertEqual(result.warnings, ())
+        self.assertTrue(same_size(result.trim_size, Size(105 * MM, 148 * MM)))
+
+    def test_a_dry_run_says_the_same_thing(self):
+        """The point of a dry run is to see the job before sending it, and an
+        assumed finished size is the part worth seeing."""
+        result, _ = run(
+            source=make_pdf(8, with_trimbox=False),
+            trim_from="mediabox",
+            plan_only=True,
+        )
+        self.assertIn("No TrimBox", result.warnings[0])
+
+    def test_a_pdfx_file_is_let_through_with_the_standard_named(self):
+        source = declare_pdfx(make_pdf(4, with_trimbox=False))
+        result, _ = run(source=source, trim_from="mediabox")
+        self.assertIn("No TrimBox", result.warnings[0])
+        self.assertIn("PDF/X", result.warnings[1])
+
+    def test_pages_of_different_sizes_are_still_refused(self):
+        """The opt-in supplies a missing box. It does not make a mixed
+        document impossible to lay on one grid any less mixed."""
+        source = make_pdf(2, with_trimbox=False)
+        odd = make_pdf(1, trim=Size(80 * MM, 100 * MM), with_trimbox=False)
+        source.pages.append(odd.pages[0])
+        with self.assertRaises(ImposeError) as caught:
+            run(source=source, trim_from="mediabox")
+        self.assertIn("same size", str(caught.exception))
+
+    def test_measuring_answers_about_the_same_size(self):
+        measured = measure(make_pdf(8, with_trimbox=False), trim_from="mediabox")
+        self.assertTrue(same_size(measured.trim_size, self.MEDIA))
+        self.assertIn("No TrimBox", measured.notes[0])
+
+    def test_an_unknown_box_is_refused_before_anything_is_written(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(pages=8, trim_from="cropbox")
+        self.assertIn("trimbox or mediabox", str(caught.exception))

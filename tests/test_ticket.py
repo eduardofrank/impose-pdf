@@ -203,3 +203,84 @@ class TestStoredPress(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TestPerRunOptions(unittest.TestCase):
+    """--trim-from is a judgement about the file in front of somebody.
+
+    A job file is run again tomorrow, by a hot folder, on whatever arrives. An
+    assumption that was sound once would there become a standing instruction to
+    assume a finished size for every file, including the one whose boxes a
+    converter dropped. So it is not a field of a job, and recording a run that
+    used it says so rather than storing it quietly.
+    """
+
+    def test_it_is_not_written_into_the_job(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "--trim-from",
+                "mediabox",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertNotIn("trim_from", stored)
+
+    def test_recording_one_says_it_was_not_recorded(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            job = source.with_name("job.json")
+            _, _, err = run(
+                "nup",
+                str(source),
+                "--trim-from",
+                "mediabox",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            self.assertIn("applies to this run only", err)
+
+    def test_the_stored_job_refuses_the_file_again(self):
+        """Which is the point: the next run makes its own decision."""
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            job = source.with_name("job.json")
+            run(
+                "nup",
+                str(source),
+                "--trim-from",
+                "mediabox",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            status, _, err = run("run", str(job), "--dry-run")
+            self.assertEqual(status, 1)
+            self.assertIn("no TrimBox", err)
+
+    def test_a_job_naming_it_is_refused_as_not_a_field(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {
+                        "source": source.name,
+                        "schema": "nup",
+                        "trim_from": "mediabox",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status, _, err = run("run", str(job))
+            self.assertEqual(status, 1)
+            self.assertIn("'trim_from', which is not a field of a job", err)
+
+    def test_a_run_that_did_not_use_it_says_nothing(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            _, _, err = run("nup", str(source), "--record", str(job), "--dry-run")
+            self.assertEqual(err, "")

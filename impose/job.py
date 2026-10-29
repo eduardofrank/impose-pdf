@@ -11,7 +11,9 @@ The checks before any geometry are the part that matters. A document whose
 pages are not all the same finished size cannot go on a uniform grid, and a
 file with no TrimBox has not told us the one measurement imposition depends
 on. Both are refused by name here rather than discovered as a wrong sheet on
-the press.
+the press. ``trim_from="mediabox"`` is the one way past the second of those,
+for the office export whose MediaBox really is its finished page; what it
+assumed comes back in :attr:`Result.warnings` rather than going unsaid.
 """
 
 from __future__ import annotations
@@ -25,7 +27,13 @@ import pikepdf
 
 from . import ImposeError, gang
 from .bindery import bindery_request, lip_cell, marks_for
-from .boxes import PageBoxes, pdfx_version, read_boxes, require_trim
+from .boxes import (
+    PageBoxes,
+    assumed_trim_notes,
+    pdfx_version,
+    read_boxes,
+    require_trim,
+)
 from .finishing import layer_note, open_strip, outlines, prepare_cut, strip_slots
 from .fit import DEFAULT_GUTTER, best, largest_signature
 from .fold import check_section_pages
@@ -148,23 +156,33 @@ class Result:  # pylint: disable=too-many-instance-attributes
         )
 
 
-def source_boxes(pdf: pikepdf.Pdf) -> PageBoxes:
-    """The page geometry shared by every page, or an error saying which differs.
+def source_boxes(
+    pdf: pikepdf.Pdf, *, trim_from: str = "trimbox"
+) -> tuple[PageBoxes, tuple[str, ...]]:
+    """The geometry every page shares, and what had to be assumed to get it.
 
     Imposition puts pages into a grid of one cell size, so the pages have to
     agree on their finished size. They must also agree on where the TrimBox
     sits inside the sheet, because that offset is what positions the artwork.
+
+    *trim_from* is passed to :func:`impose.boxes.read_boxes`. The notes that
+    come back name any size it had to assume; they are empty for a file that
+    declared its own, which is every file that should be going to press.
     """
     version = pdfx_version(pdf)
-    first = read_boxes(pdf.pages[0])
+    first = read_boxes(pdf.pages[0], trim_from=trim_from)
     require_trim(first, page_number=1, pdfx=version)
+    assumed = []
     for number, page in enumerate(pdf.pages, start=1):
-        boxes = read_boxes(page)
+        boxes = read_boxes(page, trim_from=trim_from)
         require_trim(boxes, page_number=number, pdfx=version)
         complaint = _uniformity_complaint(number, boxes, first)
         if complaint:
             raise ImposeError(complaint)
-    return first
+        if boxes.assumed_from:
+            assumed.append((number, boxes))
+    notes = assumed_trim_notes(assumed, pages=len(pdf.pages), pdfx=version)
+    return first, notes
 
 
 def _uniformity_complaint(
@@ -248,23 +266,31 @@ class Measurement:
     pages: int
     bleed_insets: Insets
     pdfx: str | None = None
+    #: What was assumed to arrive at :attr:`trim_size`, when it was not
+    #: declared. Empty for a file carrying a TrimBox, which is to say almost
+    #: always: only ``trim_from="mediabox"`` can put anything here.
+    notes: tuple[str, ...] = ()
 
 
-def measure(source: pikepdf.Pdf | str | pathlib.Path) -> Measurement:
+def measure(
+    source: pikepdf.Pdf | str | pathlib.Path, *, trim_from: str = "trimbox"
+) -> Measurement:
     """Read the finished size and page count off a document.
 
     The same checks imposing makes: a document whose pages disagree on their
     finished size has no single size to fit, and says so here rather than on
-    the press.
+    the press. *trim_from* is the same opt-in imposing takes, so that fitting
+    a file and imposing it answer about one size.
     """
     pdf = _open(source)
     try:
-        boxes = source_boxes(pdf)
+        boxes, notes = source_boxes(pdf, trim_from=trim_from)
         return Measurement(
             boxes.trim_size,
             len(pdf.pages),
             boxes.bleed_insets,
             pdfx_version(pdf),
+            notes,
         )
     finally:
         if pdf is not source:
@@ -439,6 +465,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     max_nested_sheets: int = saddle.MAX_NESTED_SHEETS,
     paper_caliper: float | str = 0.0,
     bleed: float | str = DEFAULT_BLEED,
+    trim_from: str = "trimbox",
     registration: bool = False,
     colour_bar: bool = False,
     cut: bool = False,
@@ -493,6 +520,13 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     2 mm, one supplied with 1 mm keeps its 1 mm, and one with none stays with
     none. Bleed that is not there cannot be invented.
 
+    *trim_from* decides where a finished size comes from on a page that
+    declares no TrimBox. The default refuses such a page. ``"mediabox"``
+    imposes it from its MediaBox instead -- for the office export, the
+    print-to-PDF or the scan whose MediaBox is the finished page -- and names
+    the size it took in :attr:`Result.warnings`, because the same missing box
+    also describes artwork that lost its own.
+
     *paper_caliper* is the thickness of one sheet of the stock being run, and
     turns on creep compensation: nested sheets push out at the fore edge, and
     each sheet's image is slid toward the spine by as much as its own fold has
@@ -533,6 +567,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 "max_nested_sheets": max_nested_sheets,
                 "paper_caliper": paper_caliper,
                 "bleed": bleed,
+                "trim_from": trim_from,
                 "registration": registration,
                 "colour_bar": colour_bar,
                 "cut": cut,
@@ -567,12 +602,14 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 f"Unknown page {page!r}; use {' or '.join(PAGE_CHOICES)}."
             )
         if schema == "gang":
-            gang_pages, bleeds = gang.read_pages(opened, bleed)
+            gang_pages, bleeds, trim_notes = gang.read_pages(
+                opened, bleed, trim_from=trim_from
+            )
             boxes = gang_pages[0]
             bleed_insets = bleeds[0]
         else:
             gang_pages, bleeds = None, None
-            boxes = source_boxes(opened)
+            boxes, trim_notes = source_boxes(opened, trim_from=trim_from)
             bleed_insets = boxes.bleed_insets.capped(length(bleed))
 
         gaps = _gutters(default_gutter(schema) if gutters is None else gutters)
@@ -663,7 +700,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             gang_bleeds=bleeds,
         )
         turned = any(layout.turned for layout in layouts)
-        warnings = _warnings(plan, schema, max_nested_sheets)
+        # The assumed size leads: a sheet whose finished size was taken rather
+        # than read is the thing to check before anything else on the list.
+        warnings = (*trim_notes, *_warnings(plan, schema, max_nested_sheets))
         spot = prepare_cut(schema, cut, cut_name)
         wedge = open_strip(strip) if strip else None
         slots, bar_note = strip_slots(wedge, layouts, style, colour_bar)

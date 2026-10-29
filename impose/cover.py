@@ -155,6 +155,7 @@ def build_flat(
     artwork: pikepdf.Pdf | str | None = None,
     *,
     bleed: float | str = 2 * MM,
+    trim_from: str = "trimbox",
 ) -> pikepdf.Pdf:
     """A one- or two-page PDF of the flat, with the scores recorded on it.
 
@@ -164,13 +165,16 @@ def build_flat(
     inside -- and it has to be the calculated size. Either way the scores are
     a private ``/Impose`` record, which the imposition draws as fold marks
     outside the trim.
+
+    *trim_from* reads an artwork flat that declares no TrimBox the way the rest
+    of the run reads one. A template this tool draws always carries its own.
     """
     margin = length(bleed)
     if artwork is None:
         return _template(cover, margin)
     opened = artwork if isinstance(artwork, pikepdf.Pdf) else _open(artwork)
     try:
-        return _from_artwork(opened, cover)
+        return _from_artwork(opened, cover, trim_from=trim_from)
     finally:
         if opened is not artwork:
             opened.close()
@@ -186,6 +190,7 @@ def impose_cover(  # pylint: disable=too-many-arguments
     section_pages: int = _SECTION,
     artwork=None,
     bleed: float | str = 2 * MM,
+    trim_from: str = "trimbox",
     **options,
 ):
     """Build the flat for *source* and impose it onto the press.
@@ -194,12 +199,17 @@ def impose_cover(  # pylint: disable=too-many-arguments
     out to a whole section, decide the spine. The returned cover describes
     that flat; the result is the imposition of it, the same object
     :func:`impose.job.impose_document` returns.
+
+    *trim_from* applies to the text block and to the artwork flat alike. The
+    block's own note is carried into the result's warnings, because on a cover
+    an assumed finished size is also an assumed spine: it decides the panel the
+    book is glued into, and that is worth reading before the sheet is run.
     """
     # Imported here so that calculating a spine does not pull the renderer in,
     # and so this module and job.py do not import each other at load time.
     from .job import impose_document, measure  # pylint: disable=C0415
 
-    measured = measure(source)
+    measured = measure(source, trim_from=trim_from)
     cover = flat(
         measured.trim_size,
         measured.pages,
@@ -208,8 +218,18 @@ def impose_cover(  # pylint: disable=too-many-arguments
         glue=length(glue),
         section_pages=section_pages,
     )
-    document = build_flat(cover, artwork, bleed=bleed)
-    result = impose_document(document, output, schema="cover", bleed=bleed, **options)
+    result = impose_document(
+        build_flat(cover, artwork, bleed=bleed, trim_from=trim_from),
+        output,
+        schema="cover",
+        bleed=bleed,
+        trim_from=trim_from,
+        **options,
+    )
+    if measured.notes:
+        result = dataclasses.replace(
+            result, warnings=(*measured.notes, *result.warnings)
+        )
     return cover, result
 
 
@@ -221,7 +241,9 @@ def _open(path) -> pikepdf.Pdf:
         raise ImposeError(f"Cannot open {path}: {error}") from error
 
 
-def _from_artwork(artwork: pikepdf.Pdf, cover: Cover) -> pikepdf.Pdf:
+def _from_artwork(
+    artwork: pikepdf.Pdf, cover: Cover, *, trim_from: str = "trimbox"
+) -> pikepdf.Pdf:
     """Copy *artwork* and note the scores on each page."""
     count = len(artwork.pages)
     if count not in (1, 2):
@@ -230,7 +252,7 @@ def _from_artwork(artwork: pikepdf.Pdf, cover: Cover) -> pikepdf.Pdf:
             f"got {count} pages."
         )
     for number, page in enumerate(artwork.pages, start=1):
-        boxes = read_boxes(page)
+        boxes = read_boxes(page, trim_from=trim_from)
         if boxes.rotation:
             raise ImposeError(
                 f"Page {number} of the cover artwork carries /Rotate "
@@ -246,7 +268,7 @@ def _from_artwork(artwork: pikepdf.Pdf, cover: Cover) -> pikepdf.Pdf:
     for page in artwork.pages:
         flat_pdf.pages.append(page)
     for page in flat_pdf.pages:
-        _record_scores(page, cover)
+        _record_scores(page, cover, trim_from=trim_from)
     return flat_pdf
 
 
@@ -296,9 +318,9 @@ def _score_lines(cover: Cover, origin: float, bottom: float, top: float) -> str:
     return "".join(parts)
 
 
-def _record_scores(page, cover: Cover) -> None:
+def _record_scores(page, cover: Cover, *, trim_from: str = "trimbox") -> None:
     """Note the scores in this page's own space, for the imposition to draw."""
-    boxes = read_boxes(page)
+    boxes = read_boxes(page, trim_from=trim_from)
     page.obj["/Impose"] = Dictionary(
         Version=1,
         Folds=Dictionary(

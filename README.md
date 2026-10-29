@@ -150,7 +150,8 @@ about the sheet looks wrong until it is cut. So the job stops at the command:
 $ impose nup client-artwork.pdf
 impose: Page 1 carries no TrimBox, so the file does not say what the finished
 page measures. Its MediaBox is 123 × 166 mm, which includes whatever bleed and
-slug the artwork carries. Add a TrimBox to say what the finished size is.
+slug the artwork carries. Add a TrimBox to say what the finished size is, or
+ask for the MediaBox explicitly if 123 × 166 mm is the finished page.
 ```
 
 The size that would have been assumed is named, and so is the box it came from,
@@ -162,6 +163,52 @@ A file that declares a BleedBox and no TrimBox is told more plainly, because it
 has said where its bleed is and not where its page is, so the size on offer is
 certainly too big. A PDF/X file is told that the standard it claims requires
 the box, because then the fault is in the export rather than in the hand-off.
+Neither of those is pointed at the MediaBox: one has said that size is bigger
+than its page, and the other has broken the standard it claims, so the option
+below would be advice to impose a size already known to be wrong.
+
+**Two populations, one missing box.** On an office export, a print-to-PDF or a
+scan, the MediaBox genuinely is the finished page: Word, Chrome, reportlab and
+a scanner all write one box and nothing else, and the file is missing the
+declaration rather than the page. On a file that went through a flattener, a
+compressor or a page-extraction tool, the MediaBox is the page plus whatever
+was drawn around it, and the box it lost is the one that said so. Nothing in
+the file tells those apart, so the refusal is the default — and
+`--trim-from mediabox` is the operator saying which this is:
+
+```
+$ impose nup scan.pdf --trim-from mediabox
+impose: warning: No TrimBox on all 8 pages: the finished size 210 × 297 mm was
+taken from the MediaBox, as this run asked. Check it is the finished page and
+not the sheet the artwork was drawn on, which carries whatever bleed and marks
+came with it.
+n-up: 8 pages onto 2 sheet(s) at 2 up (1 × 2 turned), page 310 × 450 mm on
+indigo-5000; finished page 210 × 297 mm
+```
+
+It takes the size from the MediaBox and not from the CropBox the specification
+would have fallen back to, because a CropBox is a view somebody set in a reader
+and nobody asked for that one. A page that does carry a TrimBox is read off it
+as usual; the option answers a question such a file already answered.
+
+The size it took is printed rather than assumed in silence, because the
+operator opting in is usually right about an office export and occasionally
+very wrong about a converted file, and only the number tells them apart: 210 ×
+297 mm is a page, 216 × 303 mm is a page with bleed on it. The note survives
+`--quiet`, and a PDF/X file earns a second sentence saying the standard it
+claims required the box it is missing.
+
+It is a per-run option. `--record` does not write it into the job file, and a
+job file naming `trim_from` is refused as a field a job does not have, because
+a stored job is run again tomorrow by a hot folder on whatever arrives — where
+it would mean "assume a finished size for every file", including the one whose
+boxes a converter dropped. Recording a run that used it says so:
+
+```
+$ impose nup scan.pdf --trim-from mediabox --record scan.json
+impose: warning: --trim-from mediabox applies to this run only and is not in
+scan.json. That job will refuse a page with no TrimBox, as any stored job does.
+```
 
 **Bleed is not invented.** Where two pages meet at a spine they share one cut
 line, so bleed is shaved to nothing there and the two trims are snapped onto
@@ -293,6 +340,7 @@ series.
 | `--margins SPEC` | from the profile | the border the press cannot image: `5mm`, or `bottom=12mm,top=5mm`; an edge not named keeps the profile's |
 | `--gripper {bottom,top,left,right}` | from the profile | which edge the grippers hold, and so goes in first |
 | `--page {imageable,sheet}` | `imageable` | what the output page is |
+| `--trim-from {trimbox,mediabox}` | `trimbox` | where a finished size comes from on a page with no TrimBox. `mediabox` imposes it from the MediaBox and says what size that was. This run only; not recorded in a job |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
 | `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
 | `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |
@@ -393,6 +441,7 @@ off the TrimBox and the page count stands in for the quantity.
 | `--mark-offset LENGTH` | `2mm` | gap between the trim and the start of a mark |
 | `--mark-length LENGTH` | `3mm` | how long each mark is |
 | `--bleed LENGTH` | `2mm` | bleed to allow room for |
+| `--trim-from {trimbox,mediabox}` | `trimbox` | where a finished size comes from when the PDF's pages carry no TrimBox |
 | `--allowance LENGTH` | from the marks and bleed | override the room kept clear each edge |
 
 `fit` takes the same mark options as the schemas and works the allowance out
@@ -583,6 +632,9 @@ command takes, with two that are spelled out rather than negated or prefixed:
 Paths in the file are read relative to the file, so a folder of jobs can move
 with its artwork.
 
+`--trim-from` is the one option a job cannot carry. It is a judgement about the
+file in front of somebody, not a standing instruction to a hot folder.
+
 A field no schema has is named, and so is one that belongs to a different
 schema than the job asks for — the mistake there is usually the schema:
 
@@ -696,6 +748,22 @@ grid schemas, `section_pages` for perfect binding and for signatures, `sides`
 for step and repeat, `style` and `flip` for signatures. `marks=None` draws
 none, and `plan_only=True` works everything out and writes no press file.
 `proof=` writes the sign-off sheet either way.
+
+`trim_from="mediabox"` is the same opt-in the command line has, and
+`measure(source, trim_from="mediabox")` reads a size the same way. What was
+assumed comes back in `result.warnings` and in `Measurement.notes` rather than
+only on a terminal, so a caller imposing a folder can log it, refuse it, or
+show it to whoever has to sign the sheet:
+
+```python
+result = impose_document(
+    "scan.pdf", "scan-imposed.pdf",
+    schema="nup",
+    trim_from="mediabox",   # this file's MediaBox is its finished page
+)
+for note in result.warnings:
+    log.warning(note)
+```
 
 A perfect-bound cover is a separate call. It reads the text block, builds the
 flat, and imposes that:

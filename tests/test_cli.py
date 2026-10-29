@@ -899,3 +899,92 @@ class TestFitAllowance(unittest.TestCase):
                 # n-up is duplex, so a sheet carries twice what fits on a side.
                 sheets = -(-8 // (predicted * 2))
                 self.assertIn(f"{sheets} sheet(s)", summary)
+
+
+class TestTrimFromMediaBox(unittest.TestCase):
+    """--trim-from mediabox: the way past the refusal, for the file that
+    deserves it.
+
+    An office export, a print-to-PDF or a scan has a MediaBox that is its
+    finished page. The flag is the operator saying so, for one run.
+    """
+
+    @staticmethod
+    def impose(*extra, pages=8):
+        """Impose a file with no TrimBox. The press file is checked inside the
+        workspace, which is gone by the time this returns."""
+        with workspace(pages=pages, with_trimbox=False, with_bleedbox=False) as source:
+            output = source.with_name("out.pdf")
+            status, text, err = run("nup", str(source), "-o", str(output), *extra)
+            return status, text, err, output.exists()
+
+    def test_the_file_that_was_refused_is_imposed(self):
+        status, _, err, written = self.impose("--trim-from", "mediabox")
+        self.assertEqual(status, 0, err)
+        self.assertTrue(written)
+
+    def test_the_size_it_took_is_printed_as_a_warning(self):
+        """The operator is usually right about an office export and
+        occasionally very wrong about a converted file. Only the size says
+        which, so the size is printed."""
+        _, text, err, _ = self.impose("--trim-from", "mediabox")
+        self.assertIn("No TrimBox on all 8 pages", err)
+        self.assertIn("123 × 166 mm", err)
+        self.assertIn("MediaBox", err)
+        self.assertIn("finished page 123 × 166 mm", text)
+
+    def test_the_warning_survives_quiet(self):
+        """--quiet suppresses the summary, not the thing worth checking."""
+        _, text, err, _ = self.impose("--trim-from", "mediabox", "-q")
+        self.assertEqual(text, "")
+        self.assertIn("No TrimBox", err)
+
+    def test_a_dry_run_says_it_too(self):
+        _, _, err, written = self.impose("--trim-from", "mediabox", "--dry-run")
+        self.assertIn("No TrimBox", err)
+        self.assertFalse(written)
+
+    def test_the_refusal_points_at_the_option(self):
+        """Discoverability: the operator with 200 exports to run should meet
+        the way past the refusal in the refusal itself."""
+        status, _, err, _ = self.impose()
+        self.assertEqual(status, 1)
+        self.assertIn("ask for the MediaBox explicitly", err)
+
+    def test_trimbox_is_the_default_and_still_refuses(self):
+        status, _, err, written = self.impose("--trim-from", "trimbox")
+        self.assertEqual(status, 1)
+        self.assertFalse(written)
+        self.assertIn("no TrimBox", err)
+
+    def test_an_unknown_box_is_argparse_s_to_refuse(self):
+        status, _, err, _ = self.impose("--trim-from", "bleedbox")
+        self.assertEqual(status, 2)
+        self.assertIn("invalid choice", err)
+
+    def test_fit_answers_for_the_same_size(self):
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            status, text, err = run(
+                "fit", str(source), "--schema", "nup", "--trim-from", "mediabox"
+            )
+            self.assertEqual(status, 0, err)
+            self.assertIn("123 × 166 mm", text)
+            self.assertIn("No TrimBox", err)
+
+    def test_a_cover_assumes_the_spine_from_the_same_size(self):
+        """On a cover the finished size is also the spine, so the note is
+        carried out of the measurement and into the job's warnings."""
+        with workspace(pages=8, with_trimbox=False, with_bleedbox=False) as source:
+            status, text, err = run(
+                "cover",
+                str(source),
+                "-o",
+                str(source.with_name("cover.pdf")),
+                "--paper-caliper",
+                "0.1mm",
+                "--trim-from",
+                "mediabox",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertIn("spine", text)
+            self.assertIn("No TrimBox", err)
