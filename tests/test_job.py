@@ -24,7 +24,7 @@ from impose.marks import MarkStyle
 from impose.press import custom
 from impose.units import MM, to_mm
 
-from .support import declare_pdfx, make_pdf
+from .support import OFFICE_SIZE, declare_pdfx, make_office_pdf, make_pdf
 
 
 def run(pages=16, **kwargs):
@@ -806,3 +806,47 @@ class TestTrimFromMediaBox(unittest.TestCase):
         with self.assertRaises(ImposeError) as caught:
             run(pages=8, trim_from="cropbox")
         self.assertIn("trimbox or mediabox", str(caught.exception))
+
+
+class TestOfficeExportImposed(unittest.TestCase):
+    """An A4 file with one box, imposed the way the shop would run it.
+
+    The tests above take a supplier's export and strip its TrimBox, which
+    makes the opt-in take a size 18 mm too big on every edge -- deliberately,
+    because that is the case the warning is for. This is the other one: the
+    size taken is the size wanted, and the job should come out the same as
+    if the file had declared it.
+    """
+
+    def test_two_up_on_a4_gives_the_finished_size_the_file_is(self):
+        result, data = run(
+            source=make_office_pdf(8),
+            schema="nup",
+            columns=2,
+            rows=1,
+            trim_from="mediabox",
+        )
+        self.assertTrue(same_size(result.trim_size, OFFICE_SIZE))
+        self.assertGreater(len(data), 0)
+
+    def test_the_sheet_is_told_what_it_was_given(self):
+        """Right or not, the size was taken rather than read, and that is
+        what the note says. The operator confirms 210 × 297 mm and moves on."""
+        result, _ = run(source=make_office_pdf(8), trim_from="mediabox")
+        self.assertIn("210 × 297 mm", result.warnings[0])
+        self.assertIn("all 8 pages", result.warnings[0])
+
+    def test_it_imposes_the_same_as_a_file_that_declared_the_size(self):
+        """The opt-in supplies the box; it does not change the imposition.
+        Same geometry, same sheet, one warning more."""
+        assumed, _ = run(source=make_office_pdf(8), trim_from="mediabox")
+        declared, _ = run(source=make_pdf(8, trim=OFFICE_SIZE, bleed=0, slug=0))
+        self.assertTrue(same_size(assumed.trim_size, declared.trim_size))
+        self.assertTrue(same_size(assumed.sheet_size, declared.sheet_size))
+        self.assertEqual(assumed.sheets, declared.sheets)
+        self.assertEqual(declared.warnings, ())
+
+    def test_without_the_opt_in_it_is_refused_like_anything_else(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(source=make_office_pdf(8))
+        self.assertIn("no TrimBox", str(caught.exception))

@@ -116,3 +116,59 @@ def set_trapped(pdf: pikepdf.Pdf, value: str = "/True") -> pikepdf.Pdf:
     """Set the /Trapped key, which PDF/X requires to be definite."""
     pdf.docinfo["/Trapped"] = pikepdf.Name(value)
     return pdf
+
+
+#: The paper an office export is laid out on, not the A6 a supplier sends.
+OFFICE_SIZE = Size(210 * MM, 297 * MM)  # A4
+
+#: Colour of the body block an office export draws inside its margins.
+BODY_FILL = (0.8, 0.8, 0.8)
+
+
+def make_office_pdf(
+    pages: int = 4,
+    *,
+    size: Size | None = None,
+    margin: float = 20 * MM,
+    rotation: int = 0,
+) -> pikepdf.Pdf:
+    """A document of the shape Word, Chrome, reportlab and scanners emit.
+
+    One box: the MediaBox, which here genuinely *is* the finished page. No
+    TrimBox, because nothing in the chain ever had a finished size to declare;
+    no BleedBox, because there is no bleed to declare; no CropBox, because
+    nobody set a view. :func:`make_pdf` with ``with_trimbox=False`` is the
+    other population entirely — a supplier's export that lost the box it had,
+    whose MediaBox still carries bleed and slug around the page — and a test
+    that wants the opt-in to be *right* needs this one.
+
+    The ink stops *inside* the margins, so a test can tell the difference
+    between placing the page and placing a page-sized crop of something
+    larger: white runs to all four edges, and there is nothing beyond them.
+    """
+    size = size or OFFICE_SIZE
+    page_rect = Rect.from_size(size)
+    body = page_rect.shrunk(Insets.uniform(margin))
+
+    pdf = pikepdf.Pdf.new()
+    for index in range(pages):
+        page = pdf.add_blank_page(page_size=(size.width, size.height))
+        page.contents_add(
+            pikepdf.Stream(pdf, _fill(body, BODY_FILL) + _page_number(body, index + 1))
+        )
+        if rotation:
+            page.obj["/Rotate"] = rotation
+    return pdf
+
+
+#: Every box a page can declare, in the order the specification falls back.
+BOX_KEYS = ("/MediaBox", "/CropBox", "/BleedBox", "/TrimBox", "/ArtBox")
+
+
+def declared_boxes(page) -> tuple[str, ...]:
+    """The boxes *page* actually carries, for asserting what a fixture is.
+
+    A fixture whose defining property is a box it has *not* got should say so
+    out loud, or a later edit quietly gives it one back.
+    """
+    return tuple(key for key in BOX_KEYS if key in page.obj)

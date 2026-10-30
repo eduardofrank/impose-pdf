@@ -19,10 +19,16 @@ from impose.boxes import (
     require_trim,
     rotate_insets,
 )
-from impose.geometry import Insets, Rect, Size
+from impose.geometry import Insets, Rect, Size, same_size
 from impose.units import MM, format_mm, to_mm
 
-from .support import declare_pdfx, make_pdf
+from .support import (
+    OFFICE_SIZE,
+    declare_pdfx,
+    declared_boxes,
+    make_office_pdf,
+    make_pdf,
+)
 
 
 class TestReadBoxes(unittest.TestCase):
@@ -324,6 +330,57 @@ class TestTrimFromMediaBox(unittest.TestCase):
         with self.assertRaises(ImposeError) as caught:
             require_trim(boxes, page_number=1)
         self.assertNotIn("MediaBox explicitly", str(caught.exception))
+
+
+class TestOfficeExport(unittest.TestCase):
+    """The population the opt-in exists for, in a file of that actual shape.
+
+    :func:`make_pdf` with ``with_trimbox=False`` is a supplier's export with
+    the box taken off it: the MediaBox still has bleed and slug around the
+    page, so the opt-in there takes a size that is wrong by 18 mm. This file
+    never had a finished size to declare, and its MediaBox is the page.
+    """
+
+    def setUp(self):
+        # Held for the test's lifetime: a page outlives its document only as
+        # far as the next collection, and then reads as destroyed.
+        self.pdf = make_office_pdf(1)
+
+    def page(self):
+        return self.pdf.pages[0]
+
+    def test_the_file_carries_one_box_and_only_one(self):
+        """The property under test is a box that is absent, so assert it: an
+        edit that hands the fixture a TrimBox back would otherwise pass."""
+        self.assertEqual(declared_boxes(self.page()), ("/MediaBox",))
+
+    def test_it_is_refused_by_default_like_any_other(self):
+        """Being the honest case does not make it a readable one. Nothing in
+        the file distinguishes it from the converted one."""
+        with self.assertRaises(ImposeError) as caught:
+            require_trim(read_boxes(self.page()), page_number=1)
+        self.assertIn("210 × 297 mm", str(caught.exception))
+
+    def test_the_opt_in_lands_on_the_finished_page_exactly(self):
+        """Not approximately, and with nothing to subtract: this is the whole
+        point of the option."""
+        boxes = read_boxes(self.page(), trim_from="mediabox")
+        self.assertTrue(same_size(boxes.trim_size, OFFICE_SIZE))
+        self.assertEqual(boxes.assumed_from, "MediaBox")
+
+    def test_there_is_nothing_outside_the_page_to_bleed_into(self):
+        boxes = read_boxes(self.page(), trim_from="mediabox")
+        self.assertEqual(boxes.trim, boxes.media)
+        self.assertEqual(boxes.bleed_insets, Insets())
+        self.assertFalse(boxes.has_bleed)
+
+    def test_what_gets_reported_is_the_size_an_operator_recognises(self):
+        """A4. An operator reading the warning can confirm it at a glance,
+        which is the only check there is."""
+        boxes = read_boxes(self.page(), trim_from="mediabox")
+        note = assumed_trim_notes([(1, boxes)], pages=1)[0]
+        self.assertIn("210 × 297 mm", note)
+        self.assertIn("page 1", note)
 
 
 class TestAssumedTrimNotes(unittest.TestCase):

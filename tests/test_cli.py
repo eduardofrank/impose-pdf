@@ -19,17 +19,21 @@ import pikepdf
 
 from impose.cli import _default_output, _grid, main
 from impose.geometry import Size
-from impose.units import MM
+from impose.units import MM, to_mm
 
-from .support import make_pdf
+from .support import make_office_pdf, make_pdf
 
 
 @contextlib.contextmanager
-def workspace(pages=16, name="book.pdf", **kwargs):
-    """A directory holding a source document."""
+def workspace(pages=16, name="book.pdf", build=make_pdf, **kwargs):
+    """A directory holding a source document.
+
+    *build* is the builder: :func:`make_pdf` for a supplier's export, and
+    :func:`make_office_pdf` for a file whose only box is its MediaBox.
+    """
     with tempfile.TemporaryDirectory() as folder:
         path = pathlib.Path(folder) / name
-        make_pdf(pages, **kwargs).save(path)
+        build(pages, **kwargs).save(path)
         yield path
 
 
@@ -627,6 +631,62 @@ class TestMissingTrimBox(unittest.TestCase):
     def test_fit_on_a_typed_size_says_nothing_about_boxes(self):
         _, _, err = run("fit", "A6")
         self.assertEqual(err, "")
+
+
+class TestOfficeExportAtTheCommand(unittest.TestCase):
+    """The run the option was written for, on a file saved to disk.
+
+    An A4 export with one box, imposed two-up on a press sheet, which is the
+    job the shop actually has when somebody sends a Word document.
+    """
+
+    def test_it_imposes_and_says_what_it_took(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            output = source.with_name("out.pdf")
+            status, text, err = run(
+                "nup", str(source), "-o", str(output), "--trim-from", "mediabox"
+            )
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertIn("210 × 297 mm", err)
+            self.assertIn("warning", err)
+            self.assertIn("2 sheet", text)
+
+    def test_the_written_file_is_a_real_press_file(self):
+        """Through the whole command and back off the disk: the thing the
+        operator sends to the press, not a return value. Eight pages two-up
+        on both sides is two sheets, which is four surfaces."""
+        with workspace(pages=8, build=make_office_pdf) as source:
+            output = source.with_name("out.pdf")
+            run("nup", str(source), "-o", str(output), "--trim-from", "mediabox")
+            with pikepdf.open(output) as written:
+                self.assertEqual(len(written.pages), 4)
+                for number, page in enumerate(written.pages, start=1):
+                    with self.subTest(surface=number):
+                        self.assertIn("/TrimBox", page.obj)
+                box = [float(value) for value in written.pages[0].obj["/TrimBox"]]
+                short, long_ = sorted((to_mm(box[2] - box[0]), to_mm(box[3] - box[1])))
+                # Two A4 pages turned, so 297 mm across and 420 mm of page
+                # down it, plus whatever gutter the press asked for.
+                self.assertAlmostEqual(short, 297.0, places=3)
+                self.assertGreaterEqual(long_, 420.0)
+
+    def test_fit_answers_about_it_too(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            status, text, err = run(
+                "fit", str(source), "--schema", "nup", "--trim-from", "mediabox"
+            )
+            self.assertEqual(status, 0)
+            self.assertIn("210 × 297 mm", err)
+            self.assertIn("up,", text)
+
+    def test_without_the_option_it_is_refused(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            output = source.with_name("out.pdf")
+            status, _, err = run("nup", str(source), "-o", str(output))
+            self.assertEqual(status, 1)
+            self.assertFalse(output.exists())
+            self.assertIn("210 × 297 mm", err)
 
 
 class TestFitFromADocument(unittest.TestCase):
