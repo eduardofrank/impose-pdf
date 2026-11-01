@@ -10,10 +10,14 @@ marks are laid down in.
 """
 
 import io
+import pathlib
+import tempfile
 import unittest
+from unittest import mock
 
 import pikepdf
 
+from impose import DestinationError
 from impose.boxes import read_boxes
 from impose.geometry import Rect, placement_matrix
 from impose.layout import lay_out
@@ -305,3 +309,49 @@ class TestSave(unittest.TestCase):
         buffer.seek(0)
         with pikepdf.open(buffer) as written:
             self.assertEqual(len(written.pages), 1)
+
+    def test_a_path_is_written_through_a_temporary_and_moved(self):
+        """Nothing watching the folder sees the press file half written, so
+        the only name that ever appears at the destination is the whole
+        thing. What the temporary is called is this module's business; that
+        it is gone afterwards is the contract."""
+        renderer, _ = build()
+        with tempfile.TemporaryDirectory() as folder:
+            output = pathlib.Path(folder) / "sheet.pdf"
+            renderer.save(output)
+            self.assertEqual(
+                sorted(p.name for p in pathlib.Path(folder).iterdir()),
+                ["sheet.pdf"],
+            )
+            with pikepdf.open(output) as written:
+                self.assertEqual(len(written.pages), 1)
+
+    def test_a_failed_write_leaves_the_previous_file_whole(self):
+        """The case the move exists for: a run that dies partway through
+        must not have eaten what was there."""
+        renderer, _ = build()
+        with tempfile.TemporaryDirectory() as folder:
+            output = pathlib.Path(folder) / "sheet.pdf"
+            output.write_bytes(b"yesterday's press file")
+            with mock.patch.object(
+                renderer.pdf, "save", side_effect=RuntimeError("disk on fire")
+            ):
+                with self.assertRaises(RuntimeError):
+                    renderer.save(output)
+            self.assertEqual(output.read_bytes(), b"yesterday's press file")
+            self.assertEqual(
+                sorted(p.name for p in pathlib.Path(folder).iterdir()),
+                ["sheet.pdf"],
+            )
+
+    def test_a_device_is_written_straight_to(self):
+        """`os.replace` onto /dev/null would replace the device."""
+        renderer, _ = build()
+        renderer.save(pathlib.Path("/dev/null"))
+        self.assertTrue(pathlib.Path("/dev/null").is_char_device())
+
+    def test_an_unwritable_directory_is_a_sentence(self):
+        renderer, _ = build()
+        with self.assertRaises(DestinationError) as caught:
+            renderer.save(pathlib.Path("/nonexistent-impose-dir/sheet.pdf"))
+        self.assertIn("has to be writable", str(caught.exception))

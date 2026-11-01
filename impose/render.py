@@ -20,6 +20,7 @@ import pikepdf
 from pikepdf import Array, Dictionary, Name
 
 from . import __version__
+from .destination import writing
 from .font import describe as describe_font
 from .font import load as load_font
 from .font import reserve as reserve_font
@@ -477,13 +478,16 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
             if self._min_version >= "1.5"
             else pikepdf.ObjectStreamMode.disable
         )
-        self.pdf.save(
-            path,
-            compress_streams=True,
-            object_stream_mode=streams,
-            linearize=linearize,
-            min_version=self._min_version,
-        )
+        # Written beside the destination and moved onto it: nothing watching
+        # the output folder sees a press file at a partial size.
+        with writing(path) as target:
+            self.pdf.save(
+                target,
+                compress_streams=True,
+                object_stream_mode=streams,
+                linearize=linearize,
+                min_version=self._min_version,
+            )
 
 
 def _set_boxes(

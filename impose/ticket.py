@@ -20,6 +20,7 @@ import sys
 
 from . import ImposeError
 from .cover import impose_cover
+from .destination import writing
 from .job import SCHEMAS, impose_document
 from .layout import Gutters
 from .marks import MarkStyle
@@ -203,7 +204,10 @@ def dump(path: str | pathlib.Path, job: dict) -> None:
         if key == "version" or job[key] is None:
             continue
         body[key] = _plain(job[key])
-    pathlib.Path(path).write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    with writing(path) as target:
+        pathlib.Path(target).write_text(
+            json.dumps(body, indent=2) + "\n", encoding="utf-8"
+        )
 
 
 def run(path: str | pathlib.Path, out, *, plan_only: bool = False):

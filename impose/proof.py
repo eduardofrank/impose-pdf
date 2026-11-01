@@ -15,6 +15,7 @@ import pikepdf
 from pikepdf import Array, Name
 
 from . import ImposeError, __version__
+from .destination import writing
 from .font import describe, load, reserve
 from .geometry import Rect, approx
 from .plan import Plan
@@ -62,7 +63,8 @@ def write_proof(destination, plan: Plan, layouts, folds) -> None:
     with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
         meta["dc:creator"] = ["impose"]
         meta["pdf:Producer"] = f"impose {__version__}"
-    pdf.save(destination, compress_streams=True, min_version="1.4")
+    with writing(destination) as target:
+        pdf.save(target, compress_streams=True, min_version="1.4")
 
 
 def _add_surface(  # pylint: disable=too-many-arguments
