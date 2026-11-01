@@ -75,7 +75,7 @@ def open_source(
         return source, ()
     try:
         pdf = pikepdf.open(source)
-    except Exception as error:  # pylint: disable=broad-exception-caught
+    except Exception as error:
         raise SourceError(f"Cannot open {source}: {error}") from error
     # Once only: QPDF hands the list over and forgets it, so a second call
     # reports a clean file and the damage goes unmentioned.
