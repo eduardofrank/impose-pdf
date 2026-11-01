@@ -9,7 +9,7 @@ import unittest
 
 import pikepdf
 
-from impose import ImposeError
+from impose import ImposeError, SourceError
 from impose.geometry import Size, same_size
 from impose.job import (
     DEFAULT_MARKS,
@@ -24,7 +24,14 @@ from impose.marks import MarkStyle
 from impose.press import custom
 from impose.units import MM, to_mm
 
-from .support import OFFICE_SIZE, declare_pdfx, make_office_pdf, make_pdf
+from .support import (
+    OFFICE_SIZE,
+    declare_pdfx,
+    make_office_pdf,
+    make_pdf,
+    stale_startxref_pdf,
+    truncated_pdf,
+)
 
 
 def run(pages=16, **kwargs):
@@ -850,3 +857,85 @@ class TestOfficeExportImposed(unittest.TestCase):
         with self.assertRaises(ImposeError) as caught:
             run(source=make_office_pdf(8))
         self.assertIn("no TrimBox", str(caught.exception))
+
+
+class TestDamagedSource(unittest.TestCase):
+    """A file that cannot say how many pages it has.
+
+    QPDF reads a truncated document by rebuilding its cross-reference table,
+    and that table is the page count. Before this was refused, a sixteen-page
+    book arriving over a slow share imposed as fifteen pages at exit 0 with
+    nothing on stderr -- and the grid chosen for the sheet moved with however
+    much of the file had landed.
+    """
+
+    @staticmethod
+    def impose(data, **kwargs):
+        return impose_document(io.BytesIO(data), io.BytesIO(), **kwargs)
+
+    def test_a_file_still_arriving_is_refused_at_every_length(self):
+        """The counts here are what the old code imposed, silently. They are
+        pinned so that a regression reads as this test failing rather than as
+        a short book on a press.
+
+        This is also the pinning test for the warning text the refusal is
+        matched on: if a qpdf release rewords "reconstruct cross-reference",
+        this fails. Fix the matcher -- do not delete the test, or the refusal
+        goes quietly missing on files in a shop somewhere.
+        """
+        for fraction, read in ((0.2, 7), (0.4, 15), (0.6, 16)):
+            with self.subTest(fraction=fraction):
+                with self.assertRaises(SourceError) as caught:
+                    self.impose(truncated_pdf(make_pdf(16), fraction))
+                message = str(caught.exception)
+                self.assertIn("cross-reference table", message)
+                self.assertIn(f"{read} pages", message)
+
+    def test_a_whole_file_is_imposed_in_silence(self):
+        """The matcher must not fire on a clean file, which is every file a
+        shop actually sends."""
+        result, _ = run(pages=16)
+        self.assertEqual(result.warnings, ())
+
+    def test_reading_past_it_is_possible_and_reported(self):
+        result = self.impose(
+            truncated_pdf(make_pdf(16), 0.4), schema="nup", damaged="recover"
+        )
+        self.assertIn("15 pages were read", result.warnings[0])
+        self.assertIn("check it against what was sent", result.warnings[0])
+
+    def test_the_damage_leads_the_warnings(self):
+        """Ahead of an assumed finished size: a page count out of a broken
+        file is the larger doubt of the two."""
+        data = truncated_pdf(make_office_pdf(8), 0.5)
+        result = self.impose(data, trim_from="mediabox", damaged="recover")
+        self.assertIn("cross-reference table", result.warnings[0])
+        self.assertIn("No TrimBox", result.warnings[1])
+
+    def test_an_intact_body_with_a_stale_offset_is_refused_too(self):
+        """The false positive, named out loud. This file's page count is
+        right, and nothing in it says so -- which is why `recover` exists
+        rather than the refusal simply being the end of it."""
+        data = stale_startxref_pdf(make_pdf(4))
+        with self.assertRaises(SourceError):
+            self.impose(data)
+        result = self.impose(data, damaged="recover")
+        self.assertEqual(result.plan.pages, 4)
+        self.assertIn("4 pages were read", result.warnings[0])
+
+    def test_a_document_with_no_pages_is_a_sentence(self):
+        """Not an IndexError off the end of the page list."""
+        with self.assertRaises(SourceError) as caught:
+            impose_document(pikepdf.Pdf.new(), io.BytesIO(), schema="nup")
+        self.assertIn("no pages", str(caught.exception))
+
+    def test_measuring_refuses_what_imposing_refuses(self):
+        """`fit` would otherwise answer about a page count the run is about
+        to turn away."""
+        with self.assertRaises(SourceError):
+            measure(io.BytesIO(truncated_pdf(make_pdf(16), 0.4)))
+
+    def test_an_unknown_choice_is_refused_by_name(self):
+        with self.assertRaises(SourceError) as caught:
+            self.impose(truncated_pdf(make_pdf(16), 0.4), damaged="maybe")
+        self.assertIn("refuse or recover", str(caught.exception))

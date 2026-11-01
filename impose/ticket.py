@@ -34,8 +34,10 @@ VERSION = 1
 #: the MediaBox is a judgement about one file in front of somebody, not a
 #: standing instruction: a job that carried it would go on assuming a size for
 #: every file a hot folder ever hands it, including the one that arrives next
-#: year with its boxes dropped by a converter.
-_PER_RUN = frozenset({"trim_from"})
+#: year with its boxes dropped by a converter. Reading past a rebuilt page
+#: count is the same judgement and worse as a standing one -- stored, it means
+#: "impose whatever survived the copy", for every file, for ever.
+_PER_RUN = frozenset({"trim_from", "damaged"})
 
 #: Keys a job may carry. Anything else is a mistake to name, not to ignore.
 _KEYS = frozenset(

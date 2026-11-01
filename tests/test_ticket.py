@@ -3,14 +3,27 @@
 # pylint: disable=missing-function-docstring
 """A job file is the same job as the command that wrote it."""
 
+import contextlib
 import json
+import pathlib
+import tempfile
 import unittest
 
 from impose import ImposeError
 from impose.ticket import load
 from impose.units import MM
 
+from .support import make_pdf, truncated_pdf
 from .test_cli import run, workspace
+
+
+@contextlib.contextmanager
+def damaged_workspace(pages=16, fraction=0.4):
+    """A directory holding a file that is still being copied."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = pathlib.Path(folder) / "book.pdf"
+        path.write_bytes(truncated_pdf(make_pdf(pages), fraction))
+        yield path
 
 
 class TestStoredJob(unittest.TestCase):
@@ -284,3 +297,59 @@ class TestPerRunOptions(unittest.TestCase):
             job = source.with_name("job.json")
             _, _, err = run("nup", str(source), "--record", str(job), "--dry-run")
             self.assertEqual(err, "")
+
+
+class TestDamagedIsPerRunToo(unittest.TestCase):
+    """And for a stronger reason than --trim-from has.
+
+    Stored, `--damaged recover` is a standing instruction to impose whatever
+    survived the copy -- for every file the folder is ever handed, for ever.
+    That is the defect the refusal was added to close, written into a file.
+    """
+
+    def test_it_is_not_written_into_the_job(self):
+        with damaged_workspace() as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "--damaged",
+                "recover",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertNotIn("damaged", stored)
+            self.assertIn("applies to this run only", err)
+            self.assertIn("page count had to be rebuilt", err)
+
+    def test_the_stored_job_refuses_the_file_again(self):
+        with damaged_workspace() as source:
+            job = source.with_name("job.json")
+            run(
+                "nup",
+                str(source),
+                "--damaged",
+                "recover",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            status, _, err = run("run", str(job), "--dry-run")
+            self.assertNotEqual(status, 0)
+            self.assertIn("cross-reference table", err)
+
+    def test_a_job_naming_it_is_refused_as_not_a_field(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {"source": source.name, "schema": "nup", "damaged": "recover"}
+                ),
+                encoding="utf-8",
+            )
+            status, _, err = run("run", str(job))
+            self.assertEqual(status, 1)
+            self.assertIn("'damaged', which is not a field of a job", err)

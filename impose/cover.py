@@ -34,6 +34,7 @@ from .boxes import read_boxes
 from .font import describe, load, reserve
 from .geometry import Rect, Size, approx
 from .plan import blanks_needed
+from .source import open_source
 from .units import MM, format_mm, length, to_mm
 
 #: How close two finished sizes must be to be the same cover.
@@ -233,12 +234,14 @@ def impose_cover(  # pylint: disable=too-many-arguments
     return cover, result
 
 
-def _open(path) -> pikepdf.Pdf:
-    """Open a cover artwork, as a sentence if it cannot be read."""
-    try:
-        return pikepdf.open(path)
-    except Exception as error:
-        raise ImposeError(f"Cannot open {path}: {error}") from error
+def _open(path, *, damaged: str = "refuse") -> pikepdf.Pdf:
+    """Open a cover artwork, as a sentence if it cannot be read.
+
+    Damage notes are dropped rather than carried: the flat is what gets
+    imposed, and :func:`impose_cover` already reports the text block's own.
+    A reconstructed page count still refuses here.
+    """
+    return open_source(path, what="cover artwork", damaged=damaged)[0]
 
 
 def _from_artwork(

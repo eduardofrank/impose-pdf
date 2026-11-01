@@ -25,7 +25,7 @@ from typing import IO, Any
 
 import pikepdf
 
-from . import ImposeError, gang
+from . import ImposeError, SourceError, gang
 from .bindery import bindery_request, lip_cell, marks_for
 from .boxes import (
     PageBoxes,
@@ -51,6 +51,7 @@ from .schemas import cover as cover_schema
 from .schemas import cutstack, nup, perfect, saddle, signature, steprepeat
 from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .slug import Slug, compose, place
+from .source import open_source
 from .units import format_mm, length, paper
 
 #: Schemas by the name a person would type.
@@ -169,6 +170,8 @@ def source_boxes(
     come back name any size it had to assume; they are empty for a file that
     declared its own, which is every file that should be going to press.
     """
+    if not pdf.pages:
+        raise SourceError("The file has no pages. There is nothing to impose.")
     version = pdfx_version(pdf)
     first = read_boxes(pdf.pages[0], trim_from=trim_from)
     require_trim(first, page_number=1, pdfx=version)
@@ -273,16 +276,20 @@ class Measurement:
 
 
 def measure(
-    source: pikepdf.Pdf | str | pathlib.Path, *, trim_from: str = "trimbox"
+    source: pikepdf.Pdf | str | pathlib.Path,
+    *,
+    trim_from: str = "trimbox",
+    damaged: str = "refuse",
 ) -> Measurement:
     """Read the finished size and page count off a document.
 
     The same checks imposing makes: a document whose pages disagree on their
     finished size has no single size to fit, and says so here rather than on
     the press. *trim_from* is the same opt-in imposing takes, so that fitting
-    a file and imposing it answer about one size.
+    a file and imposing it answer about one size. *damaged* likewise, so a
+    file imposing would refuse is not measured as though it were whole.
     """
-    pdf = _open(source)
+    pdf, damage = _open(source, damaged=damaged)
     try:
         boxes, notes = source_boxes(pdf, trim_from=trim_from)
         return Measurement(
@@ -290,7 +297,7 @@ def measure(
             len(pdf.pages),
             boxes.bleed_insets,
             pdfx_version(pdf),
-            notes,
+            (*damage, *notes),
         )
     finally:
         if pdf is not source:
@@ -466,6 +473,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     paper_caliper: float | str = 0.0,
     bleed: float | str = DEFAULT_BLEED,
     trim_from: str = "trimbox",
+    damaged: str = "refuse",
     registration: bool = False,
     colour_bar: bool = False,
     cut: bool = False,
@@ -583,7 +591,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             impose=impose_document,
         )
 
-    opened = _open(source)
+    opened, damage = _open(source, damaged=damaged)
     wedge = None
     try:
         fit_to_form = isinstance(sheet, str) and sheet.strip().lower() == FIT_SHEET
@@ -702,7 +710,11 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         turned = any(layout.turned for layout in layouts)
         # The assumed size leads: a sheet whose finished size was taken rather
         # than read is the thing to check before anything else on the list.
-        warnings = (*trim_notes, *_warnings(plan, schema, max_nested_sheets))
+        warnings = (
+            *damage,
+            *trim_notes,
+            *_warnings(plan, schema, max_nested_sheets),
+        )
         spot = prepare_cut(schema, cut, cut_name)
         wedge = open_strip(strip) if strip else None
         slots, bar_note = strip_slots(wedge, layouts, style, colour_bar)
@@ -981,14 +993,15 @@ def _gutters(value: Gutters | float | str) -> Gutters:
     return Gutters.uniform(length(value))
 
 
-def _open(source: pikepdf.Pdf | str | pathlib.Path) -> pikepdf.Pdf:
-    """Open *source*, or pass an already-open document through."""
-    if isinstance(source, pikepdf.Pdf):
-        return source
-    try:
-        return pikepdf.open(source)
-    except Exception as error:
-        raise ImposeError(f"Cannot open {source}: {error}") from error
+def _open(
+    source: pikepdf.Pdf | str | pathlib.Path, *, damaged: str = "refuse"
+) -> tuple[pikepdf.Pdf, tuple[str, ...]]:
+    """Open *source*, refusing a page count that had to be rebuilt.
+
+    See :func:`impose.source.open_source`, which is where the judgement is.
+    The notes come back so a run that read past damage says so on the sheet.
+    """
+    return open_source(source, damaged=damaged)
 
 
 __all__ = [

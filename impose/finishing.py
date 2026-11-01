@@ -23,6 +23,7 @@ import pikepdf
 from . import ImposeError
 from .boxes import read_boxes
 from .geometry import Rect, Size
+from .source import open_source
 from .units import format_mm
 
 #: Work the knife separates. A bound schema is trimmed on a guillotine after
@@ -123,10 +124,7 @@ def outlines(layout) -> list[Rect]:
 def open_strip(path: str | pathlib.Path) -> Strip:
     """Open a one-page control strip. The page is kept whole."""
     file = pathlib.Path(path)
-    try:
-        pdf = pikepdf.open(file)
-    except Exception as error:
-        raise ImposeError(f"Cannot open {file}: {error}") from error
+    pdf = open_source(file, what="control strip")[0]
     try:
         return _checked(file, pdf)
     except Exception:

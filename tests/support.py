@@ -10,6 +10,9 @@ the bleed or cut it away.
 
 from __future__ import annotations
 
+import io
+import re
+
 import pikepdf
 
 from impose.geometry import Insets, Rect, Size
@@ -172,3 +175,33 @@ def declared_boxes(page) -> tuple[str, ...]:
     out loud, or a later edit quietly gives it one back.
     """
     return tuple(key for key in BOX_KEYS if key in page.obj)
+
+
+def pdf_bytes(pdf: pikepdf.Pdf) -> bytes:
+    """A document as the bytes a file would hold."""
+    buffer = io.BytesIO()
+    pdf.save(buffer)
+    return buffer.getvalue()
+
+
+def truncated_pdf(pdf: pikepdf.Pdf, fraction: float) -> bytes:
+    """The first *fraction* of a document: a file still being copied.
+
+    What a watched folder hands over when it fires on the arrival of a file
+    rather than on the close of it. QPDF reads such a file by rebuilding the
+    cross-reference table, and the rebuilt table reports however many pages
+    happened to have arrived.
+    """
+    whole = pdf_bytes(pdf)
+    return whole[: int(len(whole) * fraction)]
+
+
+def stale_startxref_pdf(pdf: pikepdf.Pdf) -> bytes:
+    """A document whose body is intact but whose xref offset is wrong.
+
+    The population the damaged-file refusal is unfair to: QPDF has to rebuild
+    the table here too, and arrives at the *correct* page count. Some
+    producers and some incremental saves leave a file in this state, which is
+    why reading past the rebuild has to be possible at all.
+    """
+    return re.sub(rb"startxref\s+\d+", b"startxref\n999", pdf_bytes(pdf))

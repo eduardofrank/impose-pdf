@@ -26,3 +26,27 @@ class ImposeError(Exception):
     It derives from :class:`Exception`, so an embedding application's
     ``except Exception`` handles it.
     """
+
+
+class SourceError(ImposeError):
+    """A file handed in cannot be trusted to say what it contains.
+
+    A document still being copied, one whose cross-reference table had to be
+    reconstructed, one that cannot be opened at all, or one with no pages.
+    Separate from :class:`ImposeError` because the answer is different: an
+    unattended caller should stop and wait for, or send back, the file --
+    where a job that merely cannot be imposed as described needs the
+    description changed. It derives from :class:`ImposeError`, so an existing
+    ``except ImposeError`` still catches it.
+    """
+
+
+class DestinationError(ImposeError):
+    """Where the work would be written refuses to take it.
+
+    A press file that already exists, an output path that is also the input,
+    a directory that is not there. Separate for the same reason
+    :class:`SourceError` is: nothing about the artwork or the schema is wrong,
+    and a watched folder retries this class of failure once somebody has
+    fixed the shelf it writes to.
+    """

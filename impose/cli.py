@@ -47,6 +47,7 @@ from .press import resolve as resolve_press
 from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .slug import DEFAULT_SIZE as SLUG_SIZE
+from .source import DAMAGED_CHOICES
 from .ticket import add_command, dump, recorded
 from .ticket import run as run_job
 from .ticket import schema_options
@@ -176,6 +177,25 @@ def _add_trim_from(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_damaged(parser: argparse.ArgumentParser) -> None:
+    """The opt-in for a file whose page count had to be rebuilt.
+
+    `fit` takes it too, for the same reason it takes --trim-from: it would
+    otherwise answer about a page count the imposition is going to refuse.
+    """
+    parser.add_argument(
+        "--damaged",
+        choices=DAMAGED_CHOICES,
+        default="refuse",
+        help="What to do with a file whose cross-reference table had to be "
+        "reconstructed to read it. refuse stops, because that table is what "
+        "states the page count and a file still being copied reads short. "
+        "recover imposes however many pages can be read and says so. "
+        "This run only: it is not written into a recorded job. "
+        "Default: %(default)s.",
+    )
+
+
 def _mark_reach(args: argparse.Namespace) -> float:
     """How far the marks described by *args* reach past the trim."""
     if args.marks == "none":
@@ -250,6 +270,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "and none stays none. Default: 2mm.",
     )
     _add_trim_from(parser)
+    _add_damaged(parser)
     _add_mark_options(parser)
     add_finishing_arguments(parser)
     parser.add_argument(
@@ -618,6 +639,7 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
         "Default: 2mm.",
     )
     _add_trim_from(fit)
+    _add_damaged(fit)
     fit.add_argument(
         "--allowance",
         type=_length,
@@ -858,6 +880,7 @@ def _options(args: argparse.Namespace) -> dict:
         "paper_caliper": getattr(args, "paper_caliper", 0.0),
         "bleed": args.bleed,
         "trim_from": args.trim_from,
+        "damaged": args.damaged,
         "page": args.page,
         "fold": args.fold,
         "registration": args.registration,
@@ -885,12 +908,26 @@ def _record(args: argparse.Namespace, output, proof) -> None:
     """
     dump(args.record, recorded(args, _options(args), output, proof))
     if args.trim_from != "trimbox":
-        print(
-            f"impose: warning: --trim-from {args.trim_from} applies to this "
-            f"run only and is not in {args.record}. That job will refuse a "
-            f"page with no TrimBox, as any stored job does.",
-            file=sys.stderr,
+        _left_out(
+            f"--trim-from {args.trim_from}",
+            args.record,
+            "refuse a page with no TrimBox",
         )
+    if args.damaged != "refuse":
+        _left_out(
+            f"--damaged {args.damaged}",
+            args.record,
+            "refuse a file whose page count had to be rebuilt",
+        )
+
+
+def _left_out(option: str, record, consequence: str) -> None:
+    """Say that a per-run option is not in the job just stored."""
+    print(
+        f"impose: warning: {option} applies to this run only and is not in "
+        f"{record}. That job will {consequence}, as any stored job does.",
+        file=sys.stderr,
+    )
 
 
 def _cover_hinge(args: argparse.Namespace) -> float:

@@ -21,7 +21,7 @@ from impose.cli import _default_output, _grid, main
 from impose.geometry import Size
 from impose.units import MM, to_mm
 
-from .support import make_office_pdf, make_pdf
+from .support import make_office_pdf, make_pdf, truncated_pdf
 
 
 @contextlib.contextmanager
@@ -687,6 +687,78 @@ class TestOfficeExportAtTheCommand(unittest.TestCase):
             self.assertEqual(status, 1)
             self.assertFalse(output.exists())
             self.assertIn("210 × 297 mm", err)
+
+
+class TestDamagedAtTheCommand(unittest.TestCase):
+    """A file still being copied, which is what a watched folder hands over.
+
+    The whole point is that this used to be exit 0 and a clean summary.
+    """
+
+    @staticmethod
+    @contextlib.contextmanager
+    def partial(fraction=0.4, pages=16):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "book.pdf"
+            path.write_bytes(truncated_pdf(make_pdf(pages), fraction))
+            yield path
+
+    def test_it_is_refused_and_nothing_is_written(self):
+        with self.partial() as source:
+            output = source.with_name("out.pdf")
+            status, text, err = run("saddle", str(source), "-o", str(output))
+            self.assertNotEqual(status, 0)
+            self.assertFalse(output.exists())
+            self.assertIn("cross-reference table", err)
+            self.assertIn("15 pages", err)
+            self.assertNotIn("Traceback", err)
+            self.assertEqual(text, "")
+
+    def test_the_opt_in_imposes_and_warns(self):
+        with self.partial() as source:
+            output = source.with_name("out.pdf")
+            status, text, err = run(
+                "saddle", str(source), "-o", str(output), "--damaged", "recover"
+            )
+            self.assertEqual(status, 0)
+            self.assertTrue(output.exists())
+            self.assertIn("15 pages were read", err)
+            self.assertIn("15 pages onto", text)
+
+    def test_the_warning_survives_quiet(self):
+        with self.partial() as source:
+            _, text, err = run(
+                "saddle",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--damaged",
+                "recover",
+                "-q",
+            )
+            self.assertEqual(text, "")
+            self.assertIn("cross-reference table", err)
+
+    def test_fit_refuses_it_as_well(self):
+        with self.partial() as source:
+            status, text, err = run("fit", str(source), "--schema", "saddle")
+            self.assertNotEqual(status, 0)
+            self.assertIn("cross-reference table", err)
+            self.assertNotIn("up,", text)
+
+    def test_an_unknown_choice_is_argparse_s_to_refuse(self):
+        with self.partial() as source:
+            status, _, err = run("saddle", str(source), "--damaged", "maybe")
+            self.assertEqual(status, 2)
+            self.assertIn("invalid choice", err)
+
+    def test_a_whole_file_says_nothing_about_damage(self):
+        with workspace(pages=16) as source:
+            status, _, err = run(
+                "saddle", str(source), "-o", str(source.with_name("o.pdf"))
+            )
+            self.assertEqual(status, 0)
+            self.assertNotIn("cross-reference", err)
 
 
 class TestFitFromADocument(unittest.TestCase):
