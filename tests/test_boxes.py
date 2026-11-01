@@ -16,11 +16,12 @@ from impose.boxes import (
     has_output_intent,
     pdfx_version,
     read_boxes,
+    require_size,
     require_trim,
     rotate_insets,
 )
 from impose.geometry import Insets, Rect, Size, same_size
-from impose.units import MM, format_mm, to_mm
+from impose.units import MM, format_mm, paper, to_mm
 
 from .support import (
     OFFICE_SIZE,
@@ -330,6 +331,67 @@ class TestTrimFromMediaBox(unittest.TestCase):
         with self.assertRaises(ImposeError) as caught:
             require_trim(boxes, page_number=1)
         self.assertNotIn("MediaBox explicitly", str(caught.exception))
+
+
+class TestRequireSize(unittest.TestCase):
+    """The size a folder of work is supposed to be.
+
+    What makes a standing `trim_from="mediabox"` safe: the size it would
+    otherwise take on trust becomes a size it has to match.
+    """
+
+    @staticmethod
+    def boxes(pdf, **kwargs):
+        return read_boxes(pdf.pages[0], **kwargs)
+
+    def test_the_declared_size_passes(self):
+        pdf = make_pdf(1)
+        self.assertIsNone(
+            require_size(self.boxes(pdf), Size(105 * MM, 148 * MM), page_number=1)
+        )
+
+    def test_a_producer_s_rounding_is_not_a_different_size(self):
+        """A4 is 595.2755905 pt and an export writing 595.3 is A4. The
+        uniformity tolerance is a hundredth of a point and would refuse it."""
+        pdf = make_office_pdf(1, size=Size(595.3, 841.9))
+        self.assertIsNone(
+            require_size(
+                self.boxes(pdf, trim_from="mediabox"), paper("A4"), page_number=1
+            )
+        )
+
+    def test_another_size_is_refused_naming_both(self):
+        pdf = make_pdf(1)
+        with self.assertRaises(ImposeError) as caught:
+            require_size(self.boxes(pdf), paper("A4"), page_number=1)
+        message = str(caught.exception)
+        self.assertIn("105 × 148 mm", message)
+        self.assertIn("210 × 297 mm", message)
+        self.assertIn("TrimBox", message)
+
+    def test_the_same_size_turned_is_its_own_sentence(self):
+        """The grid is chosen from the page's proportions, so it matters."""
+        pdf = make_pdf(1, trim=Size(148 * MM, 105 * MM))
+        with self.assertRaises(ImposeError) as caught:
+            require_size(self.boxes(pdf), Size(105 * MM, 148 * MM), page_number=1)
+        self.assertIn("turned the other way", str(caught.exception))
+
+    def test_an_assumed_size_says_where_it_came_from(self):
+        """Which is the case worth catching: the MediaBox of a converted
+        file is the page plus whatever was drawn around it."""
+        pdf = make_office_pdf(1, size=Size(216 * MM, 303 * MM))
+        with self.assertRaises(ImposeError) as caught:
+            require_size(
+                self.boxes(pdf, trim_from="mediabox"), paper("A4"), page_number=1
+            )
+        self.assertIn("taken from its MediaBox", str(caught.exception))
+
+    def test_a_name_and_a_measurement_mean_the_same_thing(self):
+        pdf = make_office_pdf(1)
+        boxes = self.boxes(pdf, trim_from="mediabox")
+        for spelling in ("A4", "210mmx297mm", paper("A4")):
+            with self.subTest(spelling=spelling):
+                self.assertIsNone(require_size(boxes, paper(spelling), page_number=1))
 
 
 class TestOfficeExport(unittest.TestCase):

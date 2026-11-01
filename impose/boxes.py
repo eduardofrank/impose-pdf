@@ -32,7 +32,7 @@ import pikepdf
 from pikepdf import Array, Dictionary
 
 from . import ImposeError
-from .geometry import Insets, Rect, Size
+from .geometry import Insets, Rect, Size, is_declared_size
 from .units import format_mm
 
 # Boxes other than MediaBox and CropBox are not inheritable page attributes
@@ -329,6 +329,49 @@ def require_trim(
         f"which includes whatever bleed and slug the artwork carries. Add a "
         f"TrimBox to say what the finished size is, or ask for the MediaBox "
         f"explicitly if {size} is the finished page."
+    )
+
+
+def require_size(boxes: PageBoxes, expected: Size, *, page_number: int) -> None:
+    """Refuse a page that is not the size the run said to expect.
+
+    What makes a standing instruction safe. ``trim_from="mediabox"`` on its
+    own means "take the finished size from the MediaBox, whatever it turns
+    out to be", which is sound for one file an operator is looking at and
+    reckless as a folder's policy: the converted file whose MediaBox is the
+    page plus bleed gets imposed 6 mm too big and only a warning says so.
+    Said together with the size the folder takes, the assumption becomes
+    checkable -- the office export passes and the converted file is turned
+    away.
+
+    It checks a page that declares a TrimBox too. The expectation says what
+    the folder takes, not where to look for it, so the A5 file that
+    confidently declares A5 is caught as well -- which is the more common
+    error of the two, and the one no ``trim_from`` could produce.
+
+    Orientation is not forgiven. The grid is chosen from the page's own
+    proportions, so the same size turned the other way does not impose
+    alike, and a folder that genuinely takes both wants two folders.
+    """
+    if is_declared_size(boxes.trim_size, expected):
+        return
+    found = format_mm(boxes.trim_size)
+    wanted = format_mm(expected)
+    if is_declared_size(boxes.trim_size, expected.swapped()):
+        raise ImposeError(
+            f"Page {page_number} is {found} and this run expects {wanted} -- "
+            f"the same size turned the other way. The grid is chosen from "
+            f"the proportions of the page, so the two do not impose alike."
+        )
+    taken = (
+        f" taken from its {boxes.assumed_from}"
+        if boxes.assumed_from
+        else f" from its {boxes.trim_source}"
+    )
+    raise ImposeError(
+        f"Page {page_number} is {found}{taken}, and this run expects "
+        f"{wanted}. Either this is not artwork for that job, or the size "
+        f"this run was told to expect is wrong."
     )
 
 

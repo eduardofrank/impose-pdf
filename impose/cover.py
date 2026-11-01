@@ -181,7 +181,11 @@ def build_flat(
             opened.close()
 
 
-def impose_cover(  # pylint: disable=too-many-arguments
+# The locals here are the parameters: a cover is described by the block, the
+# caliper, the hinge, the glue and the section, and every one of them has to
+# reach either the spine calculation or the imposition. Splitting the list in
+# two would hide which.
+def impose_cover(  # pylint: disable=too-many-arguments,too-many-locals
     source,
     output,
     *,
@@ -192,6 +196,7 @@ def impose_cover(  # pylint: disable=too-many-arguments
     artwork=None,
     bleed: float | str = 2 * MM,
     trim_from: str = "trimbox",
+    expect_size=None,
     **options,
 ):
     """Build the flat for *source* and impose it onto the press.
@@ -205,12 +210,18 @@ def impose_cover(  # pylint: disable=too-many-arguments
     block's own note is carried into the result's warnings, because on a cover
     an assumed finished size is also an assumed spine: it decides the panel the
     book is glued into, and that is worth reading before the sheet is run.
+
+    *expect_size* is about the text block, and is taken here rather than
+    passed on. The document :func:`impose.job.impose_document` imposes for a
+    cover is the flat -- back panel, hinge, spine, hinge, front panel -- so
+    an expectation forwarded to it would be measured against a width no
+    finished page ever has, and would refuse every cover ever built.
     """
     # Imported here so that calculating a spine does not pull the renderer in,
     # and so this module and job.py do not import each other at load time.
     from .job import impose_document, measure  # pylint: disable=C0415
 
-    measured = measure(source, trim_from=trim_from)
+    measured = measure(source, trim_from=trim_from, expect_size=expect_size)
     cover = flat(
         measured.trim_size,
         measured.pages,

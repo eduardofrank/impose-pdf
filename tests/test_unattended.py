@@ -19,7 +19,10 @@ import unittest
 
 import pikepdf
 
-from .support import make_pdf, truncated_pdf
+from impose.geometry import Size
+from impose.units import MM
+
+from .support import make_office_pdf, make_pdf, truncated_pdf
 from .test_cli import run, workspace
 
 
@@ -206,3 +209,82 @@ class TestDamagedAtTheCommand(unittest.TestCase):
             )
             self.assertEqual(status, 0)
             self.assertNotIn("cross-reference", err)
+
+
+class TestFolderPolicy(unittest.TestCase):
+    """One watched folder's standing instruction, at the command.
+
+    `--trim-from mediabox --expect-size A4` is what a folder of Word
+    documents is told, and the pair is the point: the first says where the
+    size comes from and the second says what it has to be.
+    """
+
+    def test_the_export_it_is_for_is_imposed_with_the_note(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            output = source.with_name("out.pdf")
+            status, text, err = run(
+                "nup",
+                str(source),
+                "-o",
+                str(output),
+                "--trim-from",
+                "mediabox",
+                "--expect-size",
+                "A4",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())
+            self.assertIn("210 × 297 mm", err)
+            self.assertIn("2 sheet", text)
+
+    def test_a_file_carrying_bleed_in_its_mediabox_is_turned_away(self):
+        with workspace(
+            pages=8, build=make_office_pdf, size=Size(216 * MM, 303 * MM)
+        ) as source:
+            output = source.with_name("out.pdf")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "-o",
+                str(output),
+                "--trim-from",
+                "mediabox",
+                "--expect-size",
+                "A4",
+            )
+            self.assertNotEqual(status, 0)
+            self.assertFalse(output.exists())
+            self.assertIn("216 × 303 mm", err)
+            self.assertIn("210 × 297 mm", err)
+            self.assertNotIn("Traceback", err)
+
+    def test_without_the_expectation_that_file_is_imposed(self):
+        """Documenting the hole, so that deleting the option would show up
+        here as a test that suddenly passes for the wrong reason."""
+        with workspace(
+            pages=8, build=make_office_pdf, size=Size(216 * MM, 303 * MM)
+        ) as source:
+            status, text, _ = run(
+                "nup",
+                str(source),
+                "-o",
+                str(source.with_name("o.pdf")),
+                "--trim-from",
+                "mediabox",
+            )
+            self.assertEqual(status, 0)
+            self.assertIn("216 × 303 mm", text)
+
+    def test_a_typo_in_the_size_fails_before_the_file_is_opened(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            status, _, err = run("nup", str(source), "--expect-size", "A4furlong")
+            self.assertEqual(status, 2)
+            self.assertIn("paper size", err)
+
+    def test_fit_answers_under_the_same_policy(self):
+        with workspace(pages=8, build=make_office_pdf) as source:
+            status, text, _ = run(
+                "fit", str(source), "--schema", "nup", "--trim-from", "mediabox"
+            )
+            self.assertEqual(status, 0)
+            self.assertIn("up,", text)

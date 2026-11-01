@@ -301,6 +301,67 @@ class TestPerRunOptions(unittest.TestCase):
             self.assertEqual(err, "")
 
 
+class TestStoredExpectSize(unittest.TestCase):
+    """The one new check a job file may carry, and why it may.
+
+    `trim_from` is kept out because as a standing instruction it means
+    "assume a size for every file". `expect_size` means "refuse any file
+    that is not this size", which is the antidote to that rather than
+    another instance of it -- so a folder's job file can hold it.
+    """
+
+    def test_it_round_trips_as_millimetres(self):
+        """Stored the way the press sheet is: a job file is a document
+        somebody reads. A Size reaching json.dumps unconverted would be a
+        TypeError, which is what this catches."""
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup",
+                str(source),
+                "--expect-size",
+                "105mmx148mm",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            self.assertEqual(status, 0, err)
+            stored = json.loads(job.read_text(encoding="utf-8"))
+            self.assertEqual(stored["expect_size"], "105mmx148mm")
+
+    def test_the_stored_job_applies_it_again(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            run(
+                "nup",
+                str(source),
+                "--expect-size",
+                "A4",
+                "--record",
+                str(job),
+                "--dry-run",
+            )
+            status, _, err = run("run", str(job), "--dry-run")
+            self.assertNotEqual(status, 0)
+            self.assertIn("expects 210 × 297 mm", err)
+
+    def test_a_job_written_by_hand_is_read(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps(
+                    {
+                        "source": source.name,
+                        "schema": "nup",
+                        "expect_size": "105mmx148mm",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            status, _, err = run("run", str(job), "--dry-run")
+            self.assertEqual(status, 0, err)
+
+
 class TestDamagedIsPerRunToo(unittest.TestCase):
     """And for a stronger reason than --trim-from has.
 

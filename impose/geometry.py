@@ -244,6 +244,24 @@ def approx(value: float, other: float, *, tolerance: float = 1e-6) -> bool:
 SAME_PAGE_TOLERANCE = 0.01
 
 
+#: How far a page may be from a size somebody declared and still be it.
+#: :data:`SAME_PAGE_TOLERANCE` compares two boxes written by one producer,
+#: where any difference is rounding. This compares a number a producer
+#: rounded against a number from a standard: A4 is 595.2755905 pt and an
+#: export writing 595.3 is a quarter of a thousandth of an inch away, which
+#: is A4. A quarter of a millimetre is finer than any press can register and
+#: coarser than any rounding, and no two paper sizes a shop stocks are that
+#: close together.
+DECLARED_SIZE_TOLERANCE = 0.25 * 72 / 25.4
+
+
+def is_declared_size(size: Size, expected: Size) -> bool:
+    """Whether *size* is the size somebody said to expect."""
+    return approx(
+        size.width, expected.width, tolerance=DECLARED_SIZE_TOLERANCE
+    ) and approx(size.height, expected.height, tolerance=DECLARED_SIZE_TOLERANCE)
+
+
 def same_rect(a, b) -> bool:
     """Whether two boxes are the same box, to within press-irrelevant noise."""
     return all(

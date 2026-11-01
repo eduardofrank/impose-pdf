@@ -105,6 +105,18 @@ def _length(text: str) -> float:
         raise argparse.ArgumentTypeError(str(error)) from None
 
 
+def _size(text: str) -> Size:
+    """Parse a finished size, failing at the parser rather than at the file.
+
+    A folder's declared size is worth refusing instantly when it is a typo:
+    code 2 before anything is opened, not code 1 after a file has been read.
+    """
+    try:
+        return paper(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+
+
 def _default_output(source: pathlib.Path) -> pathlib.Path:
     """`book.pdf` becomes `book-imposed.pdf`, beside the original."""
     return source.with_name(f"{source.stem}-imposed{source.suffix or '.pdf'}")
@@ -175,6 +187,27 @@ def _add_trim_from(parser: argparse.ArgumentParser) -> None:
         "whose MediaBox is the finished page -- and says what size that was. "
         "This run only: it is not written into a recorded job. "
         "Default: %(default)s.",
+    )
+
+
+def _add_expect_size(parser: argparse.ArgumentParser) -> None:
+    """The size a folder of work is supposed to be.
+
+    Stored in a recorded job, unlike the other two checks here: as a standing
+    instruction it refuses files rather than assuming things about them, which
+    is what makes `--trim-from mediabox` safe to stand.
+    """
+    parser.add_argument(
+        "--expect-size",
+        type=_size,
+        metavar="SIZE",
+        help="The finished size every page is supposed to be, as a name or "
+        "WIDTHxHEIGHT with units -- A4, 105mmx148mm. A page that is another "
+        "size is refused, naming both. This is what makes --trim-from "
+        "mediabox safe as a folder's standing policy: the size it would "
+        "otherwise assume becomes a size it has to match. Checked on a "
+        "declared TrimBox as well, and the same size turned the other way "
+        "is not it.",
     )
 
 
@@ -287,6 +320,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "and none stays none. Default: 2mm.",
     )
     _add_trim_from(parser)
+    _add_expect_size(parser)
     _add_damaged(parser)
     _add_overwrite(parser)
     _add_mark_options(parser)
@@ -898,6 +932,7 @@ def _options(args: argparse.Namespace) -> dict:
         "paper_caliper": getattr(args, "paper_caliper", 0.0),
         "bleed": args.bleed,
         "trim_from": args.trim_from,
+        "expect_size": args.expect_size,
         "damaged": args.damaged,
         "overwrite": args.overwrite,
         "page": args.page,

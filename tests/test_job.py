@@ -939,3 +939,54 @@ class TestDamagedSource(unittest.TestCase):
         with self.assertRaises(SourceError) as caught:
             self.impose(truncated_pdf(make_pdf(16), 0.4), damaged="maybe")
         self.assertIn("refuse or recover", str(caught.exception))
+
+
+class TestExpectSize(unittest.TestCase):
+    """The folder policy: take the MediaBox, but only if it is this size.
+
+    `trim_from="mediabox"` alone is sound for one file somebody is looking
+    at and reckless as a standing instruction -- the converted file whose
+    MediaBox is the page plus bleed gets imposed too big, and only a warning
+    says so. Together these are the instruction a folder can carry.
+    """
+
+    def test_the_office_export_the_policy_is_for_goes_through(self):
+        result, _ = run(
+            source=make_office_pdf(8), trim_from="mediabox", expect_size="A4"
+        )
+        self.assertTrue(same_size(result.trim_size, OFFICE_SIZE))
+        self.assertIn("No TrimBox", result.warnings[0])
+
+    def test_the_converted_file_the_policy_is_against_is_refused(self):
+        """Without the expectation this imposes at 216 × 303 mm and says so
+        only in a warning. That is the hole the pairing closes."""
+        wrong = make_office_pdf(8, size=Size(216 * MM, 303 * MM))
+        with self.assertRaises(ImposeError) as caught:
+            run(source=wrong, trim_from="mediabox", expect_size="A4")
+        self.assertIn("216 × 303 mm", str(caught.exception))
+
+    def test_a_declared_size_is_checked_as_well(self):
+        """The more common error: artwork for another job, confident about
+        the size it is."""
+        with self.assertRaises(ImposeError):
+            run(pages=8, expect_size="A4")
+
+    def test_the_page_that_disagrees_is_named(self):
+        """Page 1 passing is not the document passing."""
+        source = make_pdf(8)
+        odd = make_pdf(1, trim=Size(80 * MM, 100 * MM))
+        source.pages.append(odd.pages[0])
+        with self.assertRaises(ImposeError) as caught:
+            run(source=source, expect_size="105mmx148mm")
+        self.assertIn("Page 9", str(caught.exception))
+
+    def test_a_gang_has_no_one_size_to_expect(self):
+        with self.assertRaises(ImposeError) as caught:
+            run(source=make_pdf(4), schema="gang", expect_size="A4")
+        self.assertIn("more than one finished size", str(caught.exception))
+
+    def test_measuring_checks_it_too(self):
+        measured = measure(make_office_pdf(4), trim_from="mediabox", expect_size="A4")
+        self.assertTrue(same_size(measured.trim_size, OFFICE_SIZE))
+        with self.assertRaises(ImposeError):
+            measure(make_pdf(4), expect_size="A4")

@@ -32,6 +32,7 @@ from .boxes import (
     assumed_trim_notes,
     pdfx_version,
     read_boxes,
+    require_size,
     require_trim,
 )
 from .destination import check_distinct, reserve
@@ -159,7 +160,10 @@ class Result:  # pylint: disable=too-many-instance-attributes
 
 
 def source_boxes(
-    pdf: pikepdf.Pdf, *, trim_from: str = "trimbox"
+    pdf: pikepdf.Pdf,
+    *,
+    trim_from: str = "trimbox",
+    expect_size: Size | str | tuple[float, float] | None = None,
 ) -> tuple[PageBoxes, tuple[str, ...]]:
     """The geometry every page shares, and what had to be assumed to get it.
 
@@ -170,7 +174,12 @@ def source_boxes(
     *trim_from* is passed to :func:`impose.boxes.read_boxes`. The notes that
     come back name any size it had to assume; they are empty for a file that
     declared its own, which is every file that should be going to press.
+
+    *expect_size* is the finished size this run was told to take, if it was
+    told one: every page is checked against it, by page, so a document that
+    is right on page 1 and wrong on page 9 says which.
     """
+    wanted = paper(expect_size) if expect_size is not None else None
     if not pdf.pages:
         raise SourceError("The file has no pages. There is nothing to impose.")
     version = pdfx_version(pdf)
@@ -180,6 +189,8 @@ def source_boxes(
     for number, page in enumerate(pdf.pages, start=1):
         boxes = read_boxes(page, trim_from=trim_from)
         require_trim(boxes, page_number=number, pdfx=version)
+        if wanted is not None:
+            require_size(boxes, wanted, page_number=number)
         complaint = _uniformity_complaint(number, boxes, first)
         if complaint:
             raise ImposeError(complaint)
@@ -281,6 +292,7 @@ def measure(
     *,
     trim_from: str = "trimbox",
     damaged: str = "refuse",
+    expect_size: Size | str | tuple[float, float] | None = None,
 ) -> Measurement:
     """Read the finished size and page count off a document.
 
@@ -292,7 +304,7 @@ def measure(
     """
     pdf, damage = _open(source, damaged=damaged)
     try:
-        boxes, notes = source_boxes(pdf, trim_from=trim_from)
+        boxes, notes = source_boxes(pdf, trim_from=trim_from, expect_size=expect_size)
         return Measurement(
             boxes.trim_size,
             len(pdf.pages),
@@ -475,6 +487,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     bleed: float | str = DEFAULT_BLEED,
     trim_from: str = "trimbox",
     damaged: str = "refuse",
+    expect_size: Size | str | tuple[float, float] | None = None,
     overwrite: bool = False,
     registration: bool = False,
     colour_bar: bool = False,
@@ -618,6 +631,16 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
                 f"Unknown page {page!r}; use {' or '.join(PAGE_CHOICES)}."
             )
         if schema == "gang":
+            if expect_size is not None:
+                # A gang is many finished sizes laid on one sheet and cut
+                # apart. There is no single size for an expectation to be
+                # about, and checking only the first page would be a check
+                # that passes while saying nothing.
+                raise ImposeError(
+                    "A gang is more than one finished size by construction, "
+                    "so there is no one size to expect. Impose each size as "
+                    "its own job if every page has to be checked."
+                )
             gang_pages, bleeds, trim_notes = gang.read_pages(
                 opened, bleed, trim_from=trim_from
             )
@@ -625,7 +648,9 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             bleed_insets = bleeds[0]
         else:
             gang_pages, bleeds = None, None
-            boxes, trim_notes = source_boxes(opened, trim_from=trim_from)
+            boxes, trim_notes = source_boxes(
+                opened, trim_from=trim_from, expect_size=expect_size
+            )
             bleed_insets = boxes.bleed_insets.capped(length(bleed))
 
         gaps = _gutters(default_gutter(schema) if gutters is None else gutters)

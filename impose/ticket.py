@@ -21,6 +21,7 @@ import sys
 from . import ImposeError
 from .cover import impose_cover
 from .destination import writing
+from .geometry import Size
 from .job import SCHEMAS, impose_document
 from .layout import Gutters
 from .marks import MarkStyle
@@ -56,6 +57,7 @@ _KEYS = frozenset(
         "max_nested_sheets",
         "paper_caliper",
         "bleed",
+        "expect_size",
         "registration",
         "colour_bar",
         "cut",
@@ -390,6 +392,10 @@ def _plain(value):
             "margins": {edge: _mm(getattr(value.margins, edge)) for edge in EDGES},
             "gripper": value.gripper,
         }
+    if isinstance(value, Size):
+        # In the millimetres an operator would check, like the press sheet
+        # above: a job file is a document somebody reads.
+        return f"{_mm(value.width)}x{_mm(value.height)}"
     if isinstance(value, MarkStyle):
         return {
             "colour": value.colour,
