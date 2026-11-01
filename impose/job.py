@@ -609,7 +609,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     # Before the file is opened, let alone written: a run that is going to be
     # refused for where it would land should cost nothing and leave nothing,
     # including the proof, which is written well before the press file.
-    check_distinct(source=source, output=output, proof=proof)
+    check_distinct(source=_source_path(source), output=output, proof=proof)
     reserve(output, what="press file", overwrite=overwrite)
     reserve(proof, what="proof", overwrite=overwrite)
     opened, damage = _open(source, damaged=damaged)
@@ -1024,6 +1024,22 @@ def _gutters(value: Gutters | float | str) -> Gutters:
     if isinstance(value, Gutters):
         return value
     return Gutters.uniform(length(value))
+
+
+def _source_path(source) -> str | pathlib.Path | None:
+    """Where *source* lives, for a document that was handed over open.
+
+    A caller who opens the file first is the case pikepdf's own guard against
+    writing a file it read cannot see either, and it is not an exotic one:
+    reading the boxes before deciding what to do with a job is the obvious
+    way to drive this as a library. An open document knows its own filename,
+    so there is no reason to be blind to it.
+    """
+    if not isinstance(source, pikepdf.Pdf):
+        return source
+    name = source.filename
+    # A document built in memory reports a description rather than a path.
+    return name if name and pathlib.Path(name).exists() else None
 
 
 def _open(

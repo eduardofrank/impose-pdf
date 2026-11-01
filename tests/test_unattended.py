@@ -19,7 +19,9 @@ import unittest
 
 import pikepdf
 
+from impose import DestinationError
 from impose.geometry import Size
+from impose.job import impose_document
 from impose.units import MM
 
 from .support import make_office_pdf, make_pdf, truncated_pdf
@@ -288,6 +290,36 @@ class TestFolderPolicy(unittest.TestCase):
             )
             self.assertEqual(status, 0)
             self.assertIn("up,", text)
+
+
+class TestOpenDocumentIsStillAFile(unittest.TestCase):
+    """A document handed over already open still knows where it lives.
+
+    The blind spot pikepdf's own guard has, and the obvious way to drive the
+    library: read the boxes, decide what to do, then impose. The path has to
+    come from the document, because the caller did not pass one.
+    """
+
+    def test_imposing_an_open_document_onto_its_own_file_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = pathlib.Path(folder) / "catalogue.pdf"
+            make_pdf(16).save(source)
+            opened = pikepdf.open(source)
+            try:
+                with self.assertRaises(DestinationError):
+                    impose_document(opened, source, schema="nup", overwrite=True)
+            finally:
+                opened.close()
+            with pikepdf.open(source) as after:
+                self.assertEqual(len(after.pages), 16)
+
+    def test_a_document_built_in_memory_has_no_file_to_protect(self):
+        """`Pdf.new().filename` is a description, not a path, and must not be
+        mistaken for one."""
+        with tempfile.TemporaryDirectory() as folder:
+            output = pathlib.Path(folder) / "out.pdf"
+            impose_document(make_pdf(8), output, schema="nup")
+            self.assertTrue(output.exists())
 
 
 class TestExitCodes(unittest.TestCase):

@@ -210,6 +210,11 @@ impose: warning: --trim-from mediabox applies to this run only and is not in
 scan.json. That job will refuse a page with no TrimBox, as any stored job does.
 ```
 
+A folder that takes nothing but office exports is the case where this is a
+nuisance rather than a safeguard — and the answer is `--expect-size`, which
+makes the standing instruction checkable rather than merely standing. See
+[Running from a watched folder](#running-from-a-watched-folder).
+
 **Bleed is not invented.** Where two pages meet at a spine they share one cut
 line, so bleed is shaved to nothing there and the two trims are snapped onto
 one coordinate. Where a file declares no BleedBox, the answer is no bleed — the
@@ -341,6 +346,9 @@ series.
 | `--gripper {bottom,top,left,right}` | from the profile | which edge the grippers hold, and so goes in first |
 | `--page {imageable,sheet}` | `imageable` | what the output page is |
 | `--trim-from {trimbox,mediabox}` | `trimbox` | where a finished size comes from on a page with no TrimBox. `mediabox` imposes it from the MediaBox and says what size that was. This run only; not recorded in a job |
+| `--expect-size SIZE` | off | the finished size every page is supposed to be, as `A4` or `105mmx148mm`. Another size is refused, naming both. What makes `--trim-from mediabox` safe as a folder's standing policy. Recorded in a job |
+| `--damaged {refuse,recover}` | `refuse` | what to do with a file whose cross-reference table had to be reconstructed — which is what a file still being copied needs. `recover` imposes what can be read and says how much that was. This run only |
+| `--overwrite` | off | replace the press file, proof or job file if one is already at that name. Without it an existing file is refused. This run only |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
 | `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
 | `--marks {registration,black,none}` | `registration` | colour of cut and fold marks |
@@ -513,8 +521,25 @@ least waste.
 | code | meaning |
 |---|---|
 | `0` | done |
-| `1` | the job cannot be done: file missing, unknown press, form will not fit |
+| `1` | the job cannot be imposed as described: unknown press, form will not fit, a size that does not match |
 | `2` | the arguments do not parse |
+| `3` | the source cannot be used: missing, unreadable, still being copied, no pages |
+| `4` | the destination refuses: a file already there, a directory that is not, the output naming the input |
+
+The split is about who fixes it. A `3` is a file to send back or wait for and a
+`1` is a job to describe differently, so neither is worth running again
+unchanged; a `4` is a shelf somebody has to clear, and once they have, the same
+command works. Something driving this unattended wants those three apart, which
+is what the numbers are for — they come from the kind of failure and never from
+the message, because the messages here get reworded whenever a better sentence
+turns up.
+
+Every one of them is a sentence on stderr beginning `impose: `, never a
+traceback. If you ever see a traceback it is a bug in impose, and the stack is
+the useful part of the report.
+
+Before version 0.2 a missing or unreadable source exited `1`. Anything testing
+for non-zero is unaffected.
 
 Warnings — a book too thick to staple, a colour bar left off because a control
 strip took its place — go to stderr and do **not** change the exit code. The job still runs; it is
@@ -666,6 +691,15 @@ item's, a recorded job carries the same answer as `"duplex": true` or `false`.
 A quote system or a hot folder writes the same file, and the one above is the
 whole of a job — the keys left out keep their defaults.
 
+`"expect_size"` is the one check a job carries, written as millimetres:
+`"expect_size": "210mmx297mm"`. It belongs in a job for the same reason
+`"trim_from"` does not. Stored, `trim_from` would mean *assume a finished size
+for every file this folder is ever handed*; stored, `expect_size` means *refuse
+any file that is not this size*. One of those is an assumption that stops being
+checked and the other is the check. See [Running from a watched
+folder](#running-from-a-watched-folder), which is where both of them earn their
+keep.
+
 `"press"` is a profile name, and a job that names one reads the profile of the
 day it is imposed. A press the profiles do not describe is written out in
 full, so the job carries the machine with it:
@@ -695,6 +729,170 @@ to start from, so `{"name": "indigo-5000", "margins": {"bottom": "15mm"}}` is
 that press with the gripper strip this shop measured and its own figures for
 the other three edges. `imageable` may be given instead of `margins`, and is
 centred in the sheet.
+
+## Running from a watched folder
+
+A folder, a watcher, and this command per file that lands in it. That is the
+shape most shops want, and it changes nothing about the imposition and
+everything about the failures: there is nobody at the terminal to read a
+warning, and the only thing the watcher understands is the exit status. What
+follows is what impose does so that a folder is safe to leave running, and
+`tools/watch-inotify.sh` and `tools/watch-fswatch.sh` are worked examples of
+the other half.
+
+**One folder, one schema, one policy.** Not a constraint impose imposes — a
+consequence of the options being per folder. `--expect-size A4` is a statement
+about what arrives in *this* folder, and a folder that takes two finished sizes
+cannot make it. Two sizes is two folders, and they are cheap.
+
+**A file that is still being copied is the input you will actually get, and it
+is the one that used to go through.** QPDF reads a damaged PDF by rebuilding
+what it can, and what it rebuilds in a truncated file is the cross-reference
+table — which is the table that says how many pages there are. So a sixteen-page
+book half-arrived read as fifteen pages and imposed, silently:
+
+```console
+$ impose saddle arriving.pdf -o ../out/arriving.pdf
+impose: The file arriving.pdf is damaged: its cross-reference table had to be
+reconstructed to read it at all, and that table is what says how many pages
+there are. It reads as 15 pages, which is as much of it as survived. A file
+still being copied reads short, and the imposition would be built around the
+wrong count. Wait for the copy to finish, or ask to impose what can be read.
+```
+
+Exit `3`. Measured on one file truncated at each decile, before this was
+refused: 5% of the bytes read as 1 page, 20% as 7, 40% as 15 — and the grid
+chosen for the sheet moved with it, 2 × 2 at one length and 2 × 4 at another.
+`saddle` worked out its signature ordering around the wrong count. Nothing on
+stderr, exit 0, and a confident summary naming a page count that was never in
+the artwork.
+
+A watcher should still wait for the file: `inotifywait -e close_write` on Linux
+is exact, since the kernel knows when the writer closed it. On macOS there is
+no close event, so `watch-fswatch.sh` waits for the size to stop changing,
+which is a guess — a share that stalls mid-copy looks like a finished file. The
+refusal is the net under that guess, and the two are meant to be layered.
+
+Some files are damaged and complete, and a shop may have no better copy:
+
+```console
+$ impose saddle arriving.pdf -o ../out/arriving.pdf --damaged recover
+impose: warning: 15 pages were read out of a file whose cross-reference table
+had to be reconstructed, as this run asked. That table is what states the page
+count, so check it against what was sent before this goes to press.
+saddle-stitch: 15 pages onto 4 sheet(s) at 2 up (2 × 1 upright), page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
+wrote ../out/arriving.pdf
+```
+
+**The folder's policy is two options, and the second is what makes the first
+safe.** A folder of office exports wants `--trim-from mediabox`, because those
+files have no TrimBox and their MediaBox genuinely is the finished page. On its
+own, as a standing instruction, that means *take whatever the MediaBox says* —
+and the file that has been through a flattener has a MediaBox covering the page
+plus its bleed. Said with the size the folder is for, the assumption becomes
+something that can be wrong out loud:
+
+```console
+$ impose nup minutes.pdf -o ../out/minutes.pdf --trim-from mediabox --expect-size A4
+impose: warning: No TrimBox on all 8 pages: the finished size 210 × 297 mm was
+taken from the MediaBox, as this run asked. Check it is the finished page and
+not the sheet the artwork was drawn on, which carries whatever bleed and marks
+came with it.
+n-up: 8 pages onto 2 sheet(s) at 2 up (1 × 2 turned), page 310 × 450 mm on indigo-5000; finished page 210 × 297 mm
+wrote ../out/minutes.pdf
+
+$ impose nup flattened.pdf -o ../out/flattened.pdf --trim-from mediabox --expect-size A4
+impose: Page 1 is 216 × 303 mm taken from its MediaBox, and this run expects
+210 × 297 mm. Either this is not artwork for that job, or the size this run was
+told to expect is wrong.
+```
+
+Without the expectation, that second file imposes at 216 × 303 mm and the only
+sign is a warning nobody is there to read. `--expect-size` checks a declared
+TrimBox too, which catches the other mistake entirely: artwork for a different
+job, perfectly confident about the size it is. The same size turned the other
+way is not it, because the grid is chosen from the page's own proportions.
+
+**Nothing already written is replaced without being asked.** A shop resends a
+job under the name it sent it under the first time. Usually that is a
+correction; sometimes the first one is on the press:
+
+```console
+$ impose nup minutes.pdf -o ../out/minutes.pdf --trim-from mediabox --expect-size A4 -q
+impose: ../out/minutes.pdf is already there, and that press file is not
+replaced without being asked: the file now at that name may be the one already
+on the press. Write to another name, or ask for it to be overwritten.
+```
+
+Exit `4` — a destination problem, which is the class a watcher may usefully
+retry once somebody has moved the file. `--overwrite` permits it. It does not
+permit the other one:
+
+```console
+$ impose nup catalogue.pdf -o catalogue.pdf
+impose: catalogue.pdf is both the file being imposed and the press file.
+Imposing it would write the sheets over the artwork they are made from, and
+there is no undo.
+```
+
+That used to impose the sheets over the artwork and report success. The
+renderer builds a fresh document, so pikepdf's own guard against writing a file
+it read never fired — the source went from sixteen pages to two, at exit 0. It
+is caught for a document handed over already open as well, by its own filename,
+since reading the boxes before deciding what to do with a job is the obvious way
+to drive this as a library and pikepdf is blind to that case too.
+
+**Write the output outside the folder being watched.** With no `-o`, impose
+writes `INPUT-imposed.pdf` beside the input, which lands in the watched folder
+and itself matches `*.pdf`: the watcher fires on its own output and imposes
+that, producing `book-imposed-imposed.pdf`. Give `-o` a directory the watcher
+is not watching. The reference scripts use `in/`, `work/` and `out/`
+side by side and move each file out of `in/` before touching it — one rename,
+which settles the re-trigger, the duplicate event and the half-copied read all
+at once.
+
+**The press file appears whole or not at all.** It is written under a temporary
+name in the output directory and renamed into place, so a RIP hot folder
+watching `out/` cannot pick up a PDF that is still being written. Before this,
+a watcher polling a 3000-page job caught `sheet.pdf` at 237 KB, and again at
+786 KB, of an eventual 1.77 MB. The temporary is a dotfile ending `.tmp` in that same
+directory — it has to share the filesystem for the rename to be atomic — so
+match the extension you want rather than everything that appears. A run that
+dies partway through now leaves the previous press file untouched.
+
+**A missing output directory is a sentence, not a stack trace:**
+
+```console
+$ impose nup catalogue.pdf -o ../nowhere/catalogue.pdf
+impose: Cannot write beside ../nowhere/catalogue.pdf: [Errno 2] No such file or
+directory: '../nowhere/.catalogue.pdf.impose-30621.tmp'. The press file is
+written to a temporary name in its own directory and moved into place, so that
+directory has to be writable.
+```
+
+**Record the job beside the output if you want to know what you ran.**
+`--record` writes the JSON of [the job](#a-job-the-shop-can-store), and says
+what it is leaving out:
+
+```console
+$ impose nup minutes.pdf -o ../out/recorded.pdf --trim-from mediabox --expect-size A4 --record ../a4-nup.json -q
+impose: warning: --trim-from mediabox applies to this run only and is not in
+../a4-nup.json. That job will refuse a page with no TrimBox, as any stored job
+does.
+impose: warning: No TrimBox on all 8 pages: the finished size 210 × 297 mm was
+taken from the MediaBox, as this run asked. Check it is the finished page and
+not the sheet the artwork was drawn on, which carries whatever bleed and marks
+came with it.
+```
+
+The stored job carries `"expect_size": "210mmx297mm"` and does not carry
+`trim_from`, `damaged` or `overwrite`. Those three are judgements about one file
+in front of somebody, and a job file is run again tomorrow on whatever arrives:
+stored, they would mean *assume a size for every file*, *impose whatever
+survived the copy*, and *replace yesterday's press file without mentioning it*.
+Each is the thing its refusal exists to prevent, written down as a standing
+instruction. The size check is the one that refuses rather than assumes, so it
+stays.
 
 ## Using it as a library
 
@@ -1447,6 +1645,10 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `cut` — a closed path per piece, in a spot colour on an ISO 19593 Cutting layer |
 | ✅ | `strip` — a licensed control wedge embedded whole, at its own size |
 | ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
+| ✅ | `source` — a page count QPDF had to rebuild is refused, not imposed short |
+| ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
+| ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
+| ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
 
 ## Several copies to a sheet
 
