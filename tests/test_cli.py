@@ -201,9 +201,12 @@ class TestDryRun(unittest.TestCase):
 
 
 class TestFailures(unittest.TestCase):
+    # Code 3, not 1: a file that is not there is the source's problem, and
+    # something driving this unattended sends it back rather than rewriting
+    # the job. These two are the only statuses the taxonomy reclassified.
     def test_missing_file(self):
         status, _, err = run("saddle", "/nowhere/absent.pdf")
-        self.assertEqual(status, 1)
+        self.assertEqual(status, 3)
         self.assertIn("No such file", err)
 
     def test_unknown_press_lists_the_alternatives(self):
@@ -830,7 +833,8 @@ class TestFitFromADocument(unittest.TestCase):
             path = pathlib.Path(folder) / "not.pdf"
             path.write_bytes(b"not a pdf at all")
             status, _, err = run("fit", str(path))
-            self.assertEqual(status, 1)
+            # 3: the file is the problem, not the question asked about it.
+            self.assertEqual(status, 3)
             self.assertIn("Cannot open", err)
 
 

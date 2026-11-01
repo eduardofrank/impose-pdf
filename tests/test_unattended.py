@@ -288,3 +288,88 @@ class TestFolderPolicy(unittest.TestCase):
             )
             self.assertEqual(status, 0)
             self.assertIn("up,", text)
+
+
+class TestExitCodes(unittest.TestCase):
+    """The number a watcher routes on.
+
+    0 done, 1 the job cannot be imposed as described, 2 the arguments do not
+    parse, 3 the source cannot be used, 4 the destination refuses. The split
+    that matters operationally is 3 and 1 against 4: the first two are a file
+    or a job somebody has to fix and must not be retried, the last is a shelf
+    that will be there again in a minute.
+    """
+
+    def test_a_good_run_is_nought(self):
+        with workspace(pages=8) as source:
+            status, _, _ = run("nup", str(source), "-o", str(source.with_name("o.pdf")))
+            self.assertEqual(status, 0)
+
+    def test_a_job_that_cannot_be_imposed_is_one(self):
+        """The artwork is fine and the description is not: a form that will
+        not go on the press."""
+        with workspace(pages=8, trim=Size(900 * MM, 900 * MM)) as source:
+            status, _, err = run(
+                "nup", str(source), "-o", str(source.with_name("o.pdf"))
+            )
+            self.assertEqual(status, 1)
+            self.assertNotIn("Traceback", err)
+
+    def test_arguments_that_do_not_parse_are_two(self):
+        with workspace(pages=8) as source:
+            status, _, _ = run("nup", str(source), "--up", "4by2")
+            self.assertEqual(status, 2)
+
+    def test_a_source_that_cannot_be_used_is_three(self):
+        for name, make in (
+            ("missing", lambda d: d / "absent.pdf"),
+            ("not a pdf", _write(b"certainly not a pdf")),
+            ("empty", _write(b"")),
+            ("truncated", _write(truncated_pdf(make_pdf(16), 0.4))),
+        ):
+            with self.subTest(source=name), tempfile.TemporaryDirectory() as folder:
+                path = make(pathlib.Path(folder))
+                status, _, err = run(
+                    "nup", str(path), "-o", str(pathlib.Path(folder) / "o.pdf")
+                )
+                self.assertEqual(status, 3)
+                self.assertNotIn("Traceback", err)
+                self.assertTrue(err.startswith("impose: "))
+
+    def test_a_destination_that_refuses_is_four(self):
+        with workspace(pages=8) as source:
+            existing = source.with_name("there.pdf")
+            existing.write_bytes(b"already here")
+            cases = {
+                "already there": str(existing),
+                "directory missing": str(source.with_name("nope") / "o.pdf"),
+                "is the input": str(source),
+            }
+            for name, output in cases.items():
+                with self.subTest(destination=name):
+                    status, _, err = run("nup", str(source), "-o", output)
+                    self.assertEqual(status, 4)
+                    self.assertNotIn("Traceback", err)
+                    self.assertTrue(err.startswith("impose: "))
+
+    def test_a_zero_page_document_is_three_and_not_an_indexerror(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "empty.pdf"
+            pikepdf.Pdf.new().save(path)
+            status, _, err = run(
+                "nup", str(path), "-o", str(pathlib.Path(folder) / "o.pdf")
+            )
+            self.assertEqual(status, 3)
+            self.assertIn("no pages", err)
+            self.assertNotIn("Traceback", err)
+
+
+def _write(data):
+    """A factory that drops *data* into a temporary directory as a PDF."""
+
+    def make(folder):
+        path = folder / "book.pdf"
+        path.write_bytes(data)
+        return path
+
+    return make

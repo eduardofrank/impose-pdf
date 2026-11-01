@@ -21,7 +21,7 @@ import pathlib
 import sys
 from collections.abc import Sequence
 
-from . import ImposeError, __version__
+from . import DestinationError, ImposeError, SourceError, __version__
 from .boxes import TRIM_FROM_CHOICES
 from .cover import impose_cover
 from .destination import check_distinct, reserve
@@ -1082,67 +1082,95 @@ def _dry_run(args: argparse.Namespace, out) -> int:
     return 0
 
 
-def main(  # pylint: disable=too-many-return-statements
-    argv: Sequence[str] | None = None,
-) -> int:
-    """Run the command line. Returns the process exit status."""
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command line. Returns the process exit status.
+
+    Every failure becomes a status and a sentence. The statuses are three
+    different people's problems: 3 is a file to send back, 1 is a job to
+    describe differently, 4 is a shelf somebody has to clear -- which is the
+    one worth retrying once it is cleared. They are taken from the exception
+    class and never from the message, because the messages here get reworded
+    and something driving this unattended has to keep routing the same way.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return 2
-    out = sys.stdout
-
     try:
-        if args.command == "presses":
-            return _list_presses(out)
-        if args.command == "fit":
-            return _fit(args, out)
-        if args.command == "run":
-            run_job(args.job, out, plan_only=args.dry_run, overwrite=args.overwrite)
-            return 0
-        if not args.input.exists():
-            raise ImposeError(f"No such file: {args.input}")
-        proof = _proof_path(args)
-        output = args.output or _default_output(args.input)
-        record = getattr(args, "record", None)
-        # impose_document checks these again. It has to: the library is also
-        # called directly and by `run`. Here is where --record's own
-        # destination gets checked, because it is written first -- a job file
-        # left behind by a run that was then refused is a job nobody made.
-        check_distinct(source=args.input, output=output, proof=proof, record=record)
-        reserve(record, what="job file", overwrite=args.overwrite)
-        reserve(output, what="press file", overwrite=args.overwrite)
-        reserve(proof, what="proof", overwrite=args.overwrite)
-        if record is not None:
-            _record(args, output, proof)
-        if args.command == "cover":
-            return _cover(args, out)
-        if args.dry_run:
-            return _dry_run(args, out)
-
-        result = impose_document(
-            args.input,
-            output,
-            proof=proof,
-            **_options(args),
-        )
-        if not args.quiet:
-            print(result.describe(), file=out)
-            print(f"wrote {output}", file=out)
-            if proof is not None:
-                print(f"proof {proof}", file=out)
-        # Warnings go to stderr even when quiet: a job that will not staple is
-        # not something to keep to ourselves because output was suppressed.
-        for warning in result.warnings:
-            print(f"impose: warning: {warning}", file=sys.stderr)
-        return 0
+        return _dispatch(args, sys.stdout)
+    # The order is the class hierarchy: the first two are an ImposeError, so
+    # the general case has to come last or it would answer for all three.
+    except SourceError as error:
+        return _failed(error, 3)
+    except DestinationError as error:
+        return _failed(error, 4)
     # ValueError as well as ImposeError: a schema rejects an impossible
     # request with one, and whichever it is, the person at the terminal asked
     # for something that cannot be done and should be told so in a sentence.
     except (ImposeError, ValueError) as error:
-        print(f"impose: {error}", file=sys.stderr)
-        return 1
+        return _failed(error, 1)
+    # Everything that opens a source goes through impose.source, which turns
+    # its own OSError into a SourceError, so what reaches here is the other
+    # end: a directory that is not there, a volume that is full, a permission
+    # on a folder somebody has to fix.
+    except OSError as error:
+        return _failed(error, 4)
+
+
+def _failed(error: Exception, status: int) -> int:
+    """Report *error* as one line, and be the status it exits with."""
+    print(f"impose: {error}", file=sys.stderr)
+    return status
+
+
+def _dispatch(  # pylint: disable=too-many-return-statements
+    args: argparse.Namespace, out
+) -> int:
+    """Do what the command line asked for, raising rather than reporting."""
+    if args.command == "presses":
+        return _list_presses(out)
+    if args.command == "fit":
+        return _fit(args, out)
+    if args.command == "run":
+        run_job(args.job, out, plan_only=args.dry_run, overwrite=args.overwrite)
+        return 0
+    if not args.input.exists():
+        raise SourceError(f"No such file: {args.input}")
+    proof = _proof_path(args)
+    output = args.output or _default_output(args.input)
+    record = getattr(args, "record", None)
+    # impose_document checks these again. It has to: the library is also
+    # called directly and by `run`. Here is where --record's own
+    # destination gets checked, because it is written first -- a job file
+    # left behind by a run that was then refused is a job nobody made.
+    check_distinct(source=args.input, output=output, proof=proof, record=record)
+    reserve(record, what="job file", overwrite=args.overwrite)
+    reserve(output, what="press file", overwrite=args.overwrite)
+    reserve(proof, what="proof", overwrite=args.overwrite)
+    if record is not None:
+        _record(args, output, proof)
+    if args.command == "cover":
+        return _cover(args, out)
+    if args.dry_run:
+        return _dry_run(args, out)
+
+    result = impose_document(
+        args.input,
+        output,
+        proof=proof,
+        **_options(args),
+    )
+    if not args.quiet:
+        print(result.describe(), file=out)
+        print(f"wrote {output}", file=out)
+        if proof is not None:
+            print(f"proof {proof}", file=out)
+    # Warnings go to stderr even when quiet: a job that will not staple is
+    # not something to keep to ourselves because output was suppressed.
+    for warning in result.warnings:
+        print(f"impose: warning: {warning}", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
