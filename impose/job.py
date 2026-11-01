@@ -34,6 +34,7 @@ from .boxes import (
     read_boxes,
     require_trim,
 )
+from .destination import check_distinct, reserve
 from .finishing import layer_note, open_strip, outlines, prepare_cut, strip_slots
 from .fit import DEFAULT_GUTTER, best, largest_signature
 from .fold import check_section_pages
@@ -474,6 +475,7 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
     bleed: float | str = DEFAULT_BLEED,
     trim_from: str = "trimbox",
     damaged: str = "refuse",
+    overwrite: bool = False,
     registration: bool = False,
     colour_bar: bool = False,
     cut: bool = False,
@@ -591,6 +593,12 @@ def impose_document(  # pylint: disable=too-many-arguments,too-many-locals,too-m
             impose=impose_document,
         )
 
+    # Before the file is opened, let alone written: a run that is going to be
+    # refused for where it would land should cost nothing and leave nothing,
+    # including the proof, which is written well before the press file.
+    check_distinct(source=source, output=output, proof=proof)
+    reserve(output, what="press file", overwrite=overwrite)
+    reserve(proof, what="proof", overwrite=overwrite)
     opened, damage = _open(source, damaged=damaged)
     wedge = None
     try:

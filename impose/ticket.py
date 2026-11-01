@@ -38,7 +38,7 @@ VERSION = 1
 #: year with its boxes dropped by a converter. Reading past a rebuilt page
 #: count is the same judgement and worse as a standing one -- stored, it means
 #: "impose whatever survived the copy", for every file, for ever.
-_PER_RUN = frozenset({"trim_from", "damaged"})
+_PER_RUN = frozenset({"trim_from", "damaged", "overwrite"})
 
 #: Keys a job may carry. Anything else is a mistake to name, not to ignore.
 _KEYS = frozenset(
@@ -130,6 +130,15 @@ def add_command(subcommands) -> None:
         action="store_true",
         help="Show the ordering and write no press file. Overrides the file.",
     )
+    # A stored job names one output, so running it a second time lands on the
+    # press file the first run wrote. That is a thing to say out loud rather
+    # than a reason the job can only be run once.
+    command.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace the press file and proof this job names, if they are "
+        "already there. A job cannot carry this; the run makes it.",
+    )
     command.set_defaults(command="run")
 
 
@@ -210,7 +219,9 @@ def dump(path: str | pathlib.Path, job: dict) -> None:
         )
 
 
-def run(path: str | pathlib.Path, out, *, plan_only: bool = False):
+def run(
+    path: str | pathlib.Path, out, *, plan_only: bool = False, overwrite: bool = False
+):
     """Impose the job in *path*. Returns the same result imposing it would."""
     job = load(path)
     job.pop("version", None)
@@ -237,7 +248,15 @@ def run(path: str | pathlib.Path, out, *, plan_only: bool = False):
     gutters = _gutters(job.pop("gutters", None))
     if schema == "cover":
         return _run_cover(
-            job, source, output, proof, marks=marks, gutters=gutters, dry=dry, out=out
+            job,
+            source,
+            output,
+            proof,
+            marks=marks,
+            gutters=gutters,
+            dry=dry,
+            out=out,
+            overwrite=overwrite,
         )
     result = impose_document(
         source,
@@ -247,6 +266,7 @@ def run(path: str | pathlib.Path, out, *, plan_only: bool = False):
         gutters=gutters,
         proof=proof,
         plan_only=dry,
+        overwrite=overwrite,
         **job,
     )
     _report(out, result, output, proof, dry=dry)
@@ -254,7 +274,7 @@ def run(path: str | pathlib.Path, out, *, plan_only: bool = False):
 
 
 def _run_cover(  # pylint: disable=too-many-arguments
-    job, source, output, proof, *, marks, gutters, dry, out
+    job, source, output, proof, *, marks, gutters, dry, out, overwrite=False
 ):
     """A cover job is the text block plus the gauge, not the flat itself."""
     if "paper_caliper" not in job:
@@ -281,6 +301,7 @@ def _run_cover(  # pylint: disable=too-many-arguments
         gutters=gutters,
         proof=proof,
         plan_only=dry,
+        overwrite=overwrite,
         **job,
     )
     print(cover.describe(), file=out)

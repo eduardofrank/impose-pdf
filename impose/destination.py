@@ -89,3 +89,83 @@ def writing(destination):
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+#: How each path of a run is named in a refusal, by the keyword it arrives as.
+_ROLES = {
+    "source": "file being imposed",
+    "output": "press file",
+    "proof": "proof",
+    "record": "job file",
+}
+
+
+def reserve(destination, *, what: str = "press file", overwrite: bool = False) -> None:
+    """Refuse *destination* if something is already there.
+
+    A shop resends a job under the name it sent it under the first time, and
+    the second arrival is usually a correction -- but sometimes the first one
+    is already on the press, and replacing it silently loses the only record
+    of what was printed. So an existing file is a refusal, not a decision to
+    make quietly.
+
+    A stream and a device are never a clobber, and pass.
+    """
+    if overwrite or destination is None or is_pass_through(destination):
+        return
+    path = pathlib.Path(destination)
+    if not path.exists():
+        return
+    raise DestinationError(
+        f"{path} is already there, and that {what} is not replaced without "
+        f"being asked: the file now at that name may be the one already on "
+        f"the press. Write to another name, or ask for it to be overwritten."
+    )
+
+
+def check_distinct(**paths) -> None:
+    """Refuse a run that names one file for two jobs.
+
+    Chiefly ``-o`` pointing at the input, which imposed the artwork over the
+    top of itself and reported success -- the renderer builds a fresh
+    document, so nothing underneath noticed that the file it had read was the
+    file it was writing.
+    """
+    # Only things that name a place on disk. A source may be an open
+    # document and an output may be a buffer; neither can collide with a
+    # path, and neither is a path to compare.
+    named = [
+        (role, pathlib.Path(value))
+        for role, value in paths.items()
+        if isinstance(value, (str, os.PathLike))
+    ]
+    for index, (role, path) in enumerate(named):
+        for other_role, other in named[index + 1 :]:
+            if not _same_file(path, other):
+                continue
+            if "source" in (role, other_role):
+                raise DestinationError(
+                    f"{path} is both the {_ROLES[role]} and the "
+                    f"{_ROLES[other_role]}. Imposing it would write the "
+                    f"sheets over the artwork they are made from, and there "
+                    f"is no undo."
+                )
+            raise DestinationError(
+                f"{path} is named as both the {_ROLES[role]} and the "
+                f"{_ROLES[other_role]}. One of them would survive the run."
+            )
+
+
+def _same_file(path: pathlib.Path, other: pathlib.Path) -> bool:
+    """Whether two paths are one file.
+
+    ``samefile`` when both exist, because that follows links and mount
+    points; the resolved names otherwise, since a file not yet written
+    cannot be compared by inode.
+    """
+    try:
+        if path.exists() and other.exists():
+            return path.samefile(other)
+    except OSError:
+        return False
+    return path.resolve() == other.resolve()

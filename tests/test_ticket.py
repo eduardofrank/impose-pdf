@@ -163,7 +163,9 @@ class TestStoredPress(unittest.TestCase):
                     "gripper": "bottom",
                 },
             )
-            status, text, err = run("run", str(job))
+            # Running a stored job a second time lands on the press file the
+            # recording run wrote, so the re-run says it means to replace it.
+            status, text, err = run("run", str(job), "--overwrite")
             self.assertEqual(status, 0, err)
             self.assertIn("320 × 433 mm", text)
 

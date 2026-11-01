@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from . import ImposeError, __version__
 from .boxes import TRIM_FROM_CHOICES
 from .cover import impose_cover
+from .destination import check_distinct, reserve
 from .finishing import add_arguments as add_finishing_arguments
 from .fit import DEFAULT_GUTTER, arrangements, compare
 from .fold import HEAD_TO_HEAD
@@ -177,6 +178,22 @@ def _add_trim_from(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_overwrite(parser: argparse.ArgumentParser) -> None:
+    """Permission to replace a file that is already there.
+
+    Not `--force`, which permits unspecified things. This permits one thing.
+    """
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace the press file, proof or job file if one is already "
+        "at that name. Without it, an existing file is refused: a resend "
+        "under the same name would otherwise replace sheets that may "
+        "already be on the press. This run only: it is not written into a "
+        "recorded job.",
+    )
+
+
 def _add_damaged(parser: argparse.ArgumentParser) -> None:
     """The opt-in for a file whose page count had to be rebuilt.
 
@@ -271,6 +288,7 @@ def _common(parser: argparse.ArgumentParser) -> None:
     )
     _add_trim_from(parser)
     _add_damaged(parser)
+    _add_overwrite(parser)
     _add_mark_options(parser)
     add_finishing_arguments(parser)
     parser.add_argument(
@@ -881,6 +899,7 @@ def _options(args: argparse.Namespace) -> dict:
         "bleed": args.bleed,
         "trim_from": args.trim_from,
         "damaged": args.damaged,
+        "overwrite": args.overwrite,
         "page": args.page,
         "fold": args.fold,
         "registration": args.registration,
@@ -918,6 +937,12 @@ def _record(args: argparse.Namespace, output, proof) -> None:
             f"--damaged {args.damaged}",
             args.record,
             "refuse a file whose page count had to be rebuilt",
+        )
+    if args.overwrite:
+        _left_out(
+            "--overwrite",
+            args.record,
+            "refuse a press file that is already there",
         )
 
 
@@ -1039,13 +1064,22 @@ def main(  # pylint: disable=too-many-return-statements
         if args.command == "fit":
             return _fit(args, out)
         if args.command == "run":
-            run_job(args.job, out, plan_only=args.dry_run)
+            run_job(args.job, out, plan_only=args.dry_run, overwrite=args.overwrite)
             return 0
         if not args.input.exists():
             raise ImposeError(f"No such file: {args.input}")
         proof = _proof_path(args)
         output = args.output or _default_output(args.input)
-        if getattr(args, "record", None) is not None:
+        record = getattr(args, "record", None)
+        # impose_document checks these again. It has to: the library is also
+        # called directly and by `run`. Here is where --record's own
+        # destination gets checked, because it is written first -- a job file
+        # left behind by a run that was then refused is a job nobody made.
+        check_distinct(source=args.input, output=output, proof=proof, record=record)
+        reserve(record, what="job file", overwrite=args.overwrite)
+        reserve(output, what="press file", overwrite=args.overwrite)
+        reserve(proof, what="proof", overwrite=args.overwrite)
+        if record is not None:
             _record(args, output, proof)
         if args.command == "cover":
             return _cover(args, out)

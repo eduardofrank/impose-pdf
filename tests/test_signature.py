@@ -171,9 +171,22 @@ class TestSignatureCommand(unittest.TestCase):
 
     def test_folding_again_halves_the_sheets(self):
         with workspace(pages=16) as source:
-            out = str(source.with_name("o.pdf"))
-            _, once, _ = run("signature", str(source), "--up", "2x1", "-o", out)
-            _, twice, _ = run("signature", str(source), "--up", "2x2", "-o", out)
+            _, once, _ = run(
+                "signature",
+                str(source),
+                "--up",
+                "2x1",
+                "-o",
+                str(source.with_name("once.pdf")),
+            )
+            _, twice, _ = run(
+                "signature",
+                str(source),
+                "--up",
+                "2x2",
+                "-o",
+                str(source.with_name("twice.pdf")),
+            )
             self.assertIn("onto 4 sheet(s)", once)
             self.assertIn("onto 2 sheet(s)", twice)
 
