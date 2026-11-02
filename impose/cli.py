@@ -47,6 +47,7 @@ from .press import press_names
 from .press import resolve as resolve_press
 from .schemas import FLIP_CHOICES
 from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
+from .signals import stopping_cleanly
 from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .source import DAMAGED_CHOICES
 from .ticket import add_command, dump, recorded
@@ -1097,25 +1098,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command is None:
         parser.print_help()
         return 2
-    try:
-        return _dispatch(args, sys.stdout)
-    # The order is the class hierarchy: the first two are an ImposeError, so
-    # the general case has to come last or it would answer for all three.
-    except SourceError as error:
-        return _failed(error, 3)
-    except DestinationError as error:
-        return _failed(error, 4)
-    # ValueError as well as ImposeError: a schema rejects an impossible
-    # request with one, and whichever it is, the person at the terminal asked
-    # for something that cannot be done and should be told so in a sentence.
-    except (ImposeError, ValueError) as error:
-        return _failed(error, 1)
-    # Everything that opens a source goes through impose.source, which turns
-    # its own OSError into a SourceError, so what reaches here is the other
-    # end: a directory that is not there, a volume that is full, a permission
-    # on a folder somebody has to fix.
-    except OSError as error:
-        return _failed(error, 4)
+    with stopping_cleanly():
+        try:
+            return _dispatch(args, sys.stdout)
+        # The order is the class hierarchy: the first two are an ImposeError,
+        # so the general case has to come last or it would answer for all
+        # three.
+        except SourceError as error:
+            return _failed(error, 3)
+        except DestinationError as error:
+            return _failed(error, 4)
+        # ValueError as well as ImposeError: a schema rejects an impossible
+        # request with one, and whichever it is, the person at the terminal
+        # asked for something that cannot be done and should be told so in a
+        # sentence.
+        except (ImposeError, ValueError) as error:
+            return _failed(error, 1)
+        # Everything that opens a source goes through impose.source, which
+        # turns its own OSError into a SourceError, so what reaches here is
+        # the other end: a directory that is not there, a volume that is
+        # full, a permission on a folder somebody has to fix.
+        except OSError as error:
+            return _failed(error, 4)
 
 
 def _failed(error: Exception, status: int) -> int:

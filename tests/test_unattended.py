@@ -13,7 +13,11 @@ of odd cases.
 """
 
 import contextlib
+import io
 import pathlib
+import signal
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -22,6 +26,7 @@ import pikepdf
 from impose import DestinationError
 from impose.geometry import Size
 from impose.job import impose_document
+from impose.signals import STOP_SIGNALS, stop, stopping_cleanly
 from impose.units import MM
 
 from .support import make_office_pdf, make_pdf, truncated_pdf
@@ -394,6 +399,89 @@ class TestExitCodes(unittest.TestCase):
             self.assertEqual(status, 3)
             self.assertIn("no pages", err)
             self.assertNotIn("Traceback", err)
+
+
+#: A run that is provably inside the write when the signal arrives: it prints
+#: once the temporary exists and then waits, so the parent never has to guess
+#: at a moment. `impose.signals` is asked for the handler rather than the test
+#: inventing one, because the handler is what is under test.
+_HELD_WRITE = """
+import pathlib
+import signal
+import sys
+import time
+
+from impose.signals import STOP_SIGNALS, stop
+from impose.destination import writing
+
+for number in STOP_SIGNALS:
+    signal.signal(number, stop)
+with writing(pathlib.Path(sys.argv[1])) as temporary:
+    pathlib.Path(temporary).write_bytes(b"half a press file")
+    print("writing", flush=True)
+    time.sleep(30)
+"""
+
+
+class TestStoppedFromOutside(unittest.TestCase):
+    """A run ended by a signal leaves nothing half written behind it.
+
+    `systemctl stop` and `launchctl` end a service with SIGTERM, and Python
+    does nothing with it unasked: the interpreter stops where it stands and no
+    ``finally`` anywhere runs. So the temporary the press file is written to
+    stayed in the output directory -- a dotfile that a watcher matching
+    `*.pdf` cannot see and nothing ever comes back for. Measured before this,
+    on a 20000-page run killed mid-write: 12.8 MB of pikepdf's own temporary
+    and a zero-byte one of ours, and not a word on stderr.
+    """
+
+    def test_the_handler_leaves_with_the_status_a_shell_would_report(self):
+        with contextlib.redirect_stderr(io.StringIO()) as said:
+            with self.assertRaises(SystemExit) as stopped:
+                stop(int(signal.SIGTERM), None)
+        self.assertEqual(stopped.exception.code, 128 + int(signal.SIGTERM))
+        self.assertIn("SIGTERM", said.getvalue())
+        self.assertNotIn("Traceback", said.getvalue())
+
+    def test_a_library_caller_s_signal_policy_is_borrowed_not_taken(self):
+        before = {number: signal.getsignal(number) for number in STOP_SIGNALS}
+        with stopping_cleanly():
+            self.assertEqual(
+                [signal.getsignal(number) for number in STOP_SIGNALS],
+                [stop] * len(STOP_SIGNALS),
+            )
+        after = {number: signal.getsignal(number) for number in STOP_SIGNALS}
+        self.assertEqual(after, before)
+
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Windows terminates a process rather than delivering a signal to it",
+    )
+    def test_sigterm_during_a_write_takes_the_temporary_with_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            out = pathlib.Path(folder)
+            with subprocess.Popen(
+                [sys.executable, "-c", _HELD_WRITE, str(out / "sheet.pdf")],
+                cwd=pathlib.Path(__file__).resolve().parents[1],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            ) as running:
+                try:
+                    self.assertEqual(running.stdout.readline().strip(), "writing")
+                    temporaries = list(out.glob(".sheet.pdf.impose-*.tmp"))
+                    self.assertEqual(len(temporaries), 1, "nothing was being written")
+                    running.send_signal(signal.SIGTERM)
+                    status = running.wait(timeout=30)
+                finally:
+                    # So a failed assertion above cannot leave the parent
+                    # waiting out the child's sleep.
+                    running.kill()
+                self.assertEqual(status, 128 + int(signal.SIGTERM))
+                self.assertIn("stopped on SIGTERM", running.stderr.read())
+            # Neither the temporary nor the destination: the press file never
+            # appeared, which is the point of writing beside it.
+            self.assertEqual(sorted(path.name for path in out.iterdir()), [])
 
 
 def _write(data):

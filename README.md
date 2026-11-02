@@ -878,6 +878,28 @@ directory — it has to share the filesystem for the rename to be atomic — so
 match the extension you want rather than everything that appears. A run that
 dies partway through now leaves the previous press file untouched.
 
+**Including a run that is stopped from outside.** `systemctl stop` and
+`launchctl` end a service with SIGTERM, and Python does nothing with it
+unasked: the interpreter stops where it stands and no cleanup runs anywhere.
+A 20000-page run killed mid-write used to leave 12.8 MB of temporary files in
+the output directory and say nothing about it — invisible to a watcher
+matching `*.pdf`, and collected by nobody. The command now answers for
+SIGTERM, SIGINT and SIGHUP by unwinding, so the temporary goes with it:
+
+```console
+$ impose nup catalogue.pdf -o ../out/catalogue.pdf     # SIGTERM arrives
+impose: stopped on SIGTERM.
+$ ls -a ../out
+.  ..
+```
+
+It exits `143`, which is `128 + 15` — what a shell reports for a process
+killed by signal 15, so a watcher reads the same number whether it polls the
+status or watches the process. Ctrl-C is `130` on the same footing, and prints
+a sentence where it used to print a `KeyboardInterrupt` traceback. The
+interrupt is only taken over for the length of a run and only by the command:
+a library caller keeps its own signal policy.
+
 **A missing output directory is a sentence, not a stack trace:**
 
 ```console
