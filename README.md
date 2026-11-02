@@ -847,9 +847,27 @@ writes `INPUT-imposed.pdf` beside the input, which lands in the watched folder
 and itself matches `*.pdf`: the watcher fires on its own output and imposes
 that, producing `book-imposed-imposed.pdf`. Give `-o` a directory the watcher
 is not watching. The reference scripts use `in/`, `work/` and `out/`
-side by side and move each file out of `in/` before touching it — one rename,
-which settles the re-trigger, the duplicate event and the half-copied read all
-at once.
+side by side and claim each file out of `in/` before touching it — one hard
+link, which either takes the name or tells you it is already taken. That
+settles the re-trigger and the duplicate event, and it turns away a resend of
+a name still being worked on. It does not settle a writer that still has the
+file open, which is what the refusal above is for; `mv -n` would not even
+settle the first two, since it skips a taken name and exits 0 anyway.
+
+**An event does not survive a restart, so the scripts sweep.** inotify and
+FSEvents both report what happens from the moment they start watching, and say
+nothing about what is already there. Every file sitting in the inbox at boot,
+after a `systemctl restart`, or after the watcher was killed would otherwise be
+invisible for good — its arrival is long past and no second event is coming. So
+each script lists `in/` and finishes anything stranded in `work/` before it
+reads its first event, and it does that *inside* the pipeline, so arrivals
+during the sweep queue up instead of falling into the gap between listing a
+folder and starting to watch it. Sweeping `work/` is only safe for a script
+that knows it is the only one working the folder, which is what the
+`.watcher.lock` directory is for: a second start on the same folder is refused
+by pid, and a lock whose holder is gone is cleared with a sentence. One folder,
+one watcher — the same rule as one folder, one schema, and enforced rather than
+assumed.
 
 **The press file appears whole or not at all.** It is written under a temporary
 name in the output directory and renamed into place, so a RIP hot folder
