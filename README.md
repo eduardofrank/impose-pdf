@@ -538,6 +538,11 @@ Every one of them is a sentence on stderr beginning `impose: `, never a
 traceback. If you ever see a traceback it is a bug in impose, and the stack is
 the useful part of the report.
 
+A run stopped from outside is not one of these, because impose did not decide
+it: being killed is `128 +` the signal, exactly as a shell reports it, so
+SIGTERM is `143` and Ctrl-C is `130`. Both still print their one sentence, and
+both take the half-written press file with them.
+
 Before version 0.2 a missing or unreadable source exited `1`. Anything testing
 for non-zero is unaffected.
 
@@ -933,6 +938,63 @@ survived the copy*, and *replace yesterday's press file without mentioning it*.
 Each is the thing its refusal exists to prevent, written down as a standing
 instruction. The size check is the one that refuses rather than assumes, so it
 stays.
+
+**What the reference scripts lay out.** `tools/watch-inotify.sh` and
+`tools/watch-fswatch.sh` take one argument, the folder, and make the rest of it
+themselves:
+
+```
+a4-nup/
+├── in/              what the watcher watches; nothing else writes here
+├── work/            claimed, and being imposed, one file at a time
+├── out/             press files — outside the watch path, which is the point
+├── done/            imposed
+├── rejected/        the file or the job
+├── failed/          the environment
+└── .watcher.lock/   held by the one watcher working this folder
+```
+
+Where a file lands is the exit status and nothing else, which is why the
+statuses are worth having:
+
+| exit | bucket | whose problem |
+| --- | --- | --- |
+| 0 | `done/` | nobody's |
+| 1, 3 | `rejected/` | the artwork, or the way the job is described |
+| everything else | `failed/` | the environment — worth running again once it is fixed |
+
+`failed/` is where 2 (a typo in the script's own options) and 4 (a press file
+already there, a folder that is not) go, and `143` and `130` with them. Each
+file arrives beside a `book.pdf.txt` holding what impose said about it, because
+whoever opens `rejected/` wants to know why without going to a log.
+
+**They refuse to start, rather than half work, for two reasons.** Both are
+checked before a single file is touched. The first is another watcher already
+holding the folder: `.watcher.lock` carries its pid, a second start is turned
+away by name, and a lock whose holder is gone is cleared with a sentence.
+
+The second is not being able to claim a file at all. The scripts claim one by
+hard-linking its name from `in/` into `work/` — `ln` fails when the name is
+taken, which is what makes it a claim, where `mv -n` skips a taken name and
+exits 0 anyway. So linking has to work, and it does not on some SMB mounts or
+on exFAT, where every file would be skipped in silence. The scripts link a
+probe at startup instead, and say what went wrong before saying what it was
+for, because a `work/` nobody can write to looks the same from here and wants
+a different fix:
+
+```console
+$ tools/watch-inotify.sh ./a4-nup
+tools/watch-inotify.sh: cannot claim a file in ./a4-nup:
+ln: ./a4-nup/work/.impose-link-probe.49159: Permission denied
+A file is claimed by hard-linking its name from in/ into work/,
+so linking has to work. Some SMB mounts and exFAT cannot link at
+all. Put the folder on a filesystem that can, or replace the
+claim with your own.
+```
+
+A file that is imposed but cannot then be filed — a full disk, a bucket
+somebody chmodded — stays in `work/` with a line on stderr, and the next start
+sweeps it up. One file nobody can file does not stop the watcher.
 
 ## Using it as a library
 
@@ -1689,6 +1751,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
+| ✅ | `signals` — a run stopped from outside takes its half-written file with it |
 
 ## Several copies to a sheet
 

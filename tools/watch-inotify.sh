@@ -51,13 +51,18 @@ trap 'rm -rf "$lock"' EXIT HUP INT TERM
 # watching the terminal.
 probe="$in/.impose-link-probe.$$"
 : >"$probe"
-if ln "$probe" "$work/.impose-link-probe.$$" 2>/dev/null; then
+if trouble=$(ln "$probe" "$work/.impose-link-probe.$$" 2>&1); then
     rm -f "$probe" "$work/.impose-link-probe.$$"
 else
     rm -f "$probe"
-    printf '%s: %s cannot hard-link between in/ and work/, which is how a\n' "$0" "$root" >&2
-    printf 'file is claimed before it is imposed. Put the folder on a\n' >&2
-    printf 'filesystem that can, or replace the claim with your own.\n' >&2
+    # Say what actually went wrong before explaining what it was for. The
+    # likely causes are a filesystem with no hard links and a work/ somebody
+    # cannot write to, and they want different fixes.
+    printf '%s: cannot claim a file in %s:\n%s\n' "$0" "$root" "$trouble" >&2
+    printf 'A file is claimed by hard-linking its name from in/ into work/,\n' >&2
+    printf 'so linking has to work. Some SMB mounts and exFAT cannot link at\n' >&2
+    printf 'all. Put the folder on a filesystem that can, or replace the\n' >&2
+    printf 'claim with your own.\n' >&2
     exit 1
 fi
 
