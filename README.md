@@ -958,7 +958,7 @@ Where a file lands is the exit status and nothing else, which is why the
 statuses are worth having:
 
 | exit | bucket | whose problem |
-| --- | --- | --- |
+|---|---|---|
 | 0 | `done/` | nobody's |
 | 1, 3 | `rejected/` | the artwork, or the way the job is described |
 | everything else | `failed/` | the environment — worth running again once it is fixed |
@@ -1608,21 +1608,70 @@ PDF/X without an OutputIntent to back it, which the imposed file inherits.
 
 ## Installation
 
+Python 3.10 or newer. Nothing to install first and nothing to build:
+
 ```bash
 pip install impose-pdf
 ```
+
+**0.1.0 is not on PyPI yet.** Until it is, install [from
+source](#from-source) — same result, and it works today.
 
 The distribution is `impose-pdf` because `impose` on PyPI belongs to an
 unrelated imaging project. The import package and the command are both
 `impose`.
 
-From source:
+### What that pulls in
+
+One runtime dependency, `pikepdf>=9`, and that it is only one is deliberate:
+[Licence](#licence) says why it is this library and not another. A fresh
+virtual environment ends up holding five packages besides pip itself, and no
+more:
+
+| package | why it is there |
+|---|---|
+| `impose-pdf` | this project — a pure-Python wheel with no compiled parts of its own |
+| `pikepdf` | reads and writes the PDF, and carries QPDF along with it |
+| `lxml`, `Pillow`, `packaging` | pikepdf's own, not used here directly |
+
+No Ghostscript, no pdftk, no ImageMagick, no `apt install libqpdf-dev`, no
+compiler. The pikepdf wheel ships QPDF inside it as a shared library, so `pip
+install` is the whole of it — measured on an empty virtual environment:
+pikepdf 10.17.0 with QPDF 12.4.2 bundled, then `impose nup` imposing a file.
+
+That holds wherever pikepdf publishes a wheel, which is Linux, macOS and
+Windows on the usual architectures. Somewhere it does not, pip builds pikepdf
+from source and QPDF's development headers become your problem — which is an
+argument for checking `pip install pikepdf` on its own first, before
+suspecting anything here.
+
+The face the slug line is set in is bundled in the package, so there is no
+font to install and no fontconfig lookup at run time. It is 134 kB, and only
+the glyphs a given slug uses are embedded in the output.
+
+### Optional, and none of them dependencies
+
+Nothing in the package imports any of these. The first two are what drives a
+watched folder rather than anything impose talks to.
+
+| | for | install |
+|---|---|---|
+| `inotify-tools` | `tools/watch-inotify.sh` | `apt install inotify-tools` |
+| `fswatch` | `tools/watch-fswatch.sh` | `brew install fswatch` |
+| `pypdfium2` | `tools/check-artwork.py`, which renders to measure ink | `pip install pypdfium2` |
+| `black`, `isort`, `pylint` | development | `pip install -e ".[dev]"` |
+
+### From source
 
 ```bash
 git clone https://github.com/eduardofrank/impose-pdf.git
 cd impose-pdf
 python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+./.venv/bin/python -m unittest discover -s tests -t .
 ```
+
+Python 3.10, 3.11, 3.12, 3.13 and 3.14 are all supported, and every push runs
+the suite on all five.
 
 ## Presses
 
@@ -1902,7 +1951,7 @@ have reason to doubt.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 790 tests, no system libraries, under three seconds. The suite asserts
+Over 900 tests, no system libraries, under four seconds. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.
