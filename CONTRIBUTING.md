@@ -1,0 +1,210 @@
+# Contributing
+
+Thanks for looking. This file is the house style — the things that are
+particular to this project and that a reviewer would otherwise have to tell you
+one at a time.
+
+Read [README.md](README.md) first, at least `## Design` and `## Development`.
+This file does not repeat it.
+
+## Setting up
+
+```bash
+git clone https://github.com/eduardofrank/impose-pdf.git
+cd impose-pdf
+python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+```
+
+Use `./.venv/bin/python` for everything. A system `python` will not have
+pikepdf, and the error it gives is not the one you will expect.
+
+Three commands, and they are the whole gate:
+
+```bash
+./.venv/bin/python -m unittest discover -s tests -t .
+./.venv/bin/python -m pylint impose tests
+./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
+```
+
+CI runs exactly those, on Python 3.10 through 3.14. **pylint has to be silent,
+not merely 10.00/10.** The score rounds, so 10.00/10 is quite possible with a
+message still showing — pylint exits nonzero for any message at all, which is
+what CI reads, and a message nobody acts on is a message nobody reads. `tools/`
+is deliberately outside it: shell is not linted, and `check-artwork.py` imports
+a renderer the package will not depend on.
+
+## One dependency, and it stays that way
+
+The package imports `pikepdf` and the standard library. Nothing else, and a
+change that adds a third-party import will be turned down however convenient
+it is — see `## Licence` in the README for why it is pikepdf in particular.
+
+Three consequences worth knowing before you plan a change:
+
+- **No renderer.** The library never rasterises. `tools/check-artwork.py` does,
+  which is exactly why it is a tool and not a module.
+- **No system libraries.** `pip install` is the whole install, and the test
+  suite needs nothing on the machine. Keep it that way.
+- **No network, ever**, at import or at run time.
+
+## Everything is PDF points
+
+1 inch is 72 points, as in PDF user space. The origin is the bottom-left of the
+sheet and y grows upward. Millimetres exist at the edges only — what an operator
+types, and what a sentence prints — and `impose.units` is where they turn into
+points. A bare number anywhere inside is points; if you find yourself wondering
+which a variable holds, that is a naming bug, not a comment opportunity.
+
+Geometry goes in `Size`, `Rect` and `Insets` from `impose.geometry` rather than
+in tuples that happen to have two numbers in them.
+
+## How tests are written here
+
+`unittest`, and **not pytest** — there is no pytest in the project and adding it
+is not a small change. Doctests are collected from every module automatically by
+`tests/test_doctests.py`, so an example in a docstring is a test and has to run.
+
+Four rules that are not obvious:
+
+**Assert geometry and structure, never pixels.** An imposition is right or wrong
+by where the trims land on the sheet. Nothing in the suite renders.
+
+**Expected numbers come from the standard, not from the code.** A4 is written
+`210 * MM` or checked against `595.2755905`, not against whatever
+`units.paper("A4")` returns — otherwise the test says the code agrees with
+itself. Literals from ISO 216 and ISO 217 are the point.
+
+**Where two paths answer one question, assert they agree.** A signature folded
+once must come out identical to the ordinary folded sheet; `impose fit` predicts
+a grid that imposing then has to reach. Those checks catch what a single-path
+test cannot, because the two were written from different starting points.
+
+**For page order, assemble the book and read it.** `tests/booklet.py` turns the
+pages of a nested set of sheets and asserts the result reads 1, 2, 3. A
+page-order bug is invisible in a rendered sheet and obvious the moment the pages
+are turned.
+
+Fixtures live in `tests/support.py` — `make_pdf`, `make_office_pdf`,
+`truncated_pdf`, `stale_startxref_pdf`. Build on those rather than writing bytes
+in a test, and if you need a new *shape* of document, add a builder there and say
+in its docstring which real-world producer emits that shape.
+
+Name a test after the claim it makes, as a sentence:
+`test_a_producer_s_rounding_is_not_a_different_size`, not `test_tolerance_2`.
+
+## Measure what you claim
+
+The strongest convention in this project. Every figure in the README, in a
+docstring, or in a commit message is something that was run and read off —
+"measured at every decile", "237 KB and 786 KB of 1.77 MB", "12.8 MB of
+temporary files". None of them are estimates.
+
+So: generate every console transcript from the built code and paste it. Do not
+retype it from memory and do not tidy it. If you quote a number you did not
+measure, that is the kind of thing review will catch and ask you to go and
+measure, and it is faster to do it first.
+
+## Failures are a class, a status and a sentence
+
+- `ImposeError` — the job cannot be imposed as described. Exit `1`.
+- `SourceError` — the file handed in cannot be trusted. Exit `3`.
+- `DestinationError` — where it would be written refuses. Exit `4`.
+
+Both of the latter subclass `ImposeError`, so an existing `except ImposeError`
+keeps working. **Status is routed on exception class and never on message
+text**, because the messages get reworded whenever a better sentence turns up
+and something driving this unattended has to keep routing the same way.
+
+Every failure is one sentence on stderr beginning `impose: `, never a traceback.
+Write the sentence for the person who has to fix it: name the measurement, and
+say what to do. Do not add a broad `except Exception` to make an unforeseen bug
+into a confident sentence — a traceback for a real bug is correct, and the
+watcher's `failed/` bucket exists for it.
+
+## Judgements are per-run; policies can be stored
+
+A job file (`--record`, `impose run`) may carry an option that *refuses*, and
+may not carry one that *assumes*. `trim_from`, `damaged` and `overwrite` are in
+`_PER_RUN` in `impose/ticket.py`: stored, they would mean "assume a size for
+every file", "impose whatever survived the copy" and "replace yesterday's press
+file without mentioning it" — each the thing its own refusal exists to prevent.
+`expect_size` is storable because it refuses rather than assumes.
+
+If you add an option, decide which it is and say why in the commit message. If
+it is storable it needs a `_KEYS` entry, an `_options` entry, a `_plain` branch
+for any non-JSON type, and a round-trip test.
+
+## Style
+
+Black at 88 columns, isort on the black profile. Both run over the whole tree
+and neither is negotiable; let them format and do not fight them by hand.
+
+Every file opens with:
+
+```python
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+```
+
+Docstrings say **why**, not what the signature already says. A module docstring
+explains what problem the module exists for; a refusal's docstring explains the
+failure it prevents and, where one was measured, what it cost. Comments earn
+their place the same way — a comment restating the next line will be removed, a
+comment recording why a tolerance is 0.25 mm and not 0.01 pt will not.
+
+When pylint's line or complexity caps bite, **split rather than raise the cap**.
+`tests/test_cli.py` became `tests/test_cli.py` plus `tests/test_unattended.py`
+for this reason, and `impose/signals.py` came out of `impose/cli.py` for the
+same one. The two raised caps in `pyproject.toml` each carry a paragraph saying
+why; if you need a third, that paragraph is the hard part.
+
+A `# pylint: disable` needs a reason beside it, and it should be the narrowest
+one that works.
+
+## Commits
+
+A subject line that is a declarative sentence, ending in a period, saying what
+the change does for whoever uses it:
+
+> Refuse a page count the file did not state.
+>
+> Move the press file into place instead of growing it there.
+>
+> Let a folder say what size its work is supposed to be.
+
+Not `fix: xref bug`, not `Add --expect-size`. If you cannot write that sentence,
+the change probably does two things.
+
+Then a body, in prose paragraphs, for **why** — the defect it closes, what was
+measured, what alternative was rejected and on what grounds, and anything
+surprising a future reader would otherwise rediscover. The bodies in
+`git log` are long on purpose: they are where this project's reasoning lives.
+
+One change per commit. A revert is its own commit.
+
+## Pull requests
+
+Branch off `main`, make CI green, and say in the description what you measured.
+If the change touches the README, regenerate any transcript it affects.
+
+A PR that is a question rather than a change is welcome — open it as an issue
+and describe the job you are trying to impose. Several of the refusals in here
+exist because a real file behaved badly, and that file is the useful part.
+
+## What is likely to be turned down
+
+Not to discourage you — just so you do not spend a weekend on it:
+
+- A new third-party dependency, as above.
+- Anything that rasterises inside the library.
+- Imposition the code cannot check: a schema whose output no test can assert
+  without rendering it.
+- An option whose stored form would quietly assume something about a file
+  nobody has looked at.
+- Catching broad exception types to turn a bug into a tidy sentence.
+- Locking, retries or queueing inside `impose`. A watched folder's exclusion
+  belongs in the watcher; see `## Running from a watched folder` in the README.
+
+## Licence
+
+By contributing you agree your work ships under the MIT licence in
+[LICENSE](LICENSE).

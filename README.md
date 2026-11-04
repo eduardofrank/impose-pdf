@@ -1945,6 +1945,10 @@ have reason to doubt.
 
 ## Development
 
+[CONTRIBUTING.md](CONTRIBUTING.md) has the house style — how tests are written
+here, what a commit message is expected to say, and what a change is likely to
+be turned down for.
+
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
