@@ -1982,6 +1982,10 @@ for `--dry-run`, which is the real call with one flag changed.
 
 MIT — see [LICENSE](LICENSE).
 
+[SECURITY.md](SECURITY.md) says what to do about a vulnerability, what this
+code does and does not do with a file it did not write, and what a watched
+folder should be careful about.
+
 The single dependency is [pikepdf](https://github.com/pikepdf/pikepdf)
 (MPL-2.0, over QPDF's Apache-2.0). PyMuPDF is deliberately not used: it is
 AGPL-or-commercial, which would make the MIT licence here misleading to anyone

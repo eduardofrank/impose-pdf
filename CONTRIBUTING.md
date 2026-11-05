@@ -190,6 +190,9 @@ A PR that is a question rather than a change is welcome — open it as an issue
 and describe the job you are trying to impose. Several of the refusals in here
 exist because a real file behaved badly, and that file is the useful part.
 
+Anything that looks exploitable goes privately through
+[SECURITY.md](SECURITY.md) instead, not into a public issue or PR.
+
 ## What is likely to be turned down
 
 Not to discourage you — just so you do not spend a weekend on it:
