@@ -788,6 +788,11 @@ impose: a4-nup.json names no source, so it is a folder's policy rather than a
 job. Name the file to impose on the command line.
 ```
 
+This is one of the two ways a folder's policy gets written down. The other is
+a line of options in the folder's own `policy.conf`, which is where [a watched
+folder](#running-from-a-watched-folder) starts; a job file is the one to reach
+for when the policy has a press in it, or gutters, or marks.
+
 ## Running from a watched folder
 
 A folder, a watcher, and this command per file that lands in it. That is the
@@ -802,6 +807,42 @@ the other half.
 consequence of the options being per folder. `--expect-size A4` is a statement
 about what arrives in *this* folder, and a folder that takes two finished sizes
 cannot make it. Two sizes is two folders, and they are cheap.
+
+**The policy is a file in the folder, not a line in the script.** One copy of
+a watcher serves every folder, so what a folder is for is written in the
+folder — `policy.conf`, read by the script itself and never sourced by a
+shell. Two forms. A schema and the options that go with it:
+
+```
+SCHEMA=nup
+OPTIONS=--up 1x2 --trim-from mediabox --expect-size A4
+```
+
+or a [job file](#a-job-the-shop-can-store), for a policy with a press in it,
+or gutters, or marks — more than fits on a line:
+
+```
+JOB=a4-nup.json
+OPTIONS=--trim-from mediabox
+```
+
+`OPTIONS` reaches impose as it stands, split on whitespace, which is why an
+option whose value has a space in it wants the job file instead. The three
+options a job file may not carry — `--trim-from`, `--damaged`, `--overwrite`
+— belong here either way, because here is where somebody chose them for this
+folder rather than for one file.
+
+Starting a folder that has no `policy.conf` writes a commented one and stops:
+
+```console
+$ tools/watch-inotify.sh ./a4-nup
+tools/watch-inotify.sh: wrote ./a4-nup/policy.conf. Say what this folder is
+for, then start it again.
+```
+
+It stops because the alternative is guessing, and a guess here is somebody's
+work imposed to a policy nobody chose. Everything else about the folder it
+makes for itself.
 
 **A file that is still being copied is the input you will actually get, and it
 is the one that used to go through.** QPDF reads a damaged PDF by rebuilding
@@ -842,9 +883,9 @@ saddle-stitch: 15 pages onto 4 sheet(s) at 2 up (2 × 1 upright), page 310 × 45
 wrote ../out/arriving.pdf
 ```
 
-**The folder's policy is two options, and the second is what makes the first
-safe.** A folder of office exports wants `--trim-from mediabox`, because those
-files have no TrimBox and their MediaBox genuinely is the finished page. On its
+**The two options a folder of office exports is, and why the second is what
+makes the first safe.** Such a folder wants `--trim-from mediabox`, because
+those files have no TrimBox and their MediaBox genuinely is the finished page. On its
 own, as a standing instruction, that means *take whatever the MediaBox says* —
 and the file that has been through a flattener has a MediaBox covering the page
 plus its bleed. Said with the size the folder is for, the assumption becomes
@@ -998,6 +1039,7 @@ themselves:
 
 ```
 a4-nup/
+├── policy.conf      what this folder is for; the only file you write
 ├── in/              what the watcher watches; nothing else writes here
 ├── work/            claimed, and being imposed, one file at a time
 ├── out/             press files — outside the watch path, which is the point
@@ -1016,17 +1058,48 @@ statuses are worth having:
 | 1, 3 | `rejected/` | the artwork, or the way the job is described |
 | everything else | `failed/` | the environment — worth running again once it is fixed |
 
-`failed/` is where 2 (a typo in the script's own options) and 4 (a press file
-already there, a folder that is not) go, and `143` and `130` with them. Each
-file arrives beside a `book.pdf.txt` holding what impose said about it, because
-whoever opens `rejected/` wants to know why without going to a log.
+`failed/` is where 4 goes — a press file already there, a folder that is not
+— and `143` and `130` with it. A `2`, which is a policy impose cannot read as
+a command, no longer reaches a file: it is what the startup check below turns
+away. Each file arrives beside a `book.pdf.txt` holding what impose said about
+it, because whoever opens `rejected/` wants to know why without going to a
+log.
 
-**They refuse to start, rather than half work, for two reasons.** Both are
-checked before a single file is touched. The first is another watcher already
-holding the folder: `.watcher.lock` carries its pid, a second start is turned
-away by name, and a lock whose holder is gone is cleared with a sentence.
+**They refuse to start, rather than half work, and exit `2` when they do.**
+Everything below is checked before a single file is touched, and `2` is the
+only status a refusal to start uses — so a service manager can be told that a
+`2` will still be a `2` in five seconds' time, where anything else is the
+event source ending and worth starting again.
 
-The second is not being able to claim a file at all. The scripts claim one by
+The first two are the policy. A `policy.conf` that is missing is written and
+stopped on, as above; one that is there is read, and a key it does not know,
+a line that is not `KEY=value`, both halves at once, or neither of them is a
+sentence naming the line. Then the policy is *tried*, once, against a
+filename that is not there — a source that does not exist is exit `3`, so a
+`3` back means the rest of the invocation is one this impose can make, and
+anything else is the options, the job file, or impose not being on the PATH
+the service runs with:
+
+```console
+$ tools/watch-inotify.sh ./a4-nup
+tools/watch-inotify.sh: ./a4-nup/policy.conf does not describe a run this impose can make (exit 1):
+impose: Cannot open a4-nup/a4-nup.json: [Errno 2] No such file or directory: 'a4-nup/a4-nup.json'
+```
+
+A job file that is not there, an option impose does not have, a size that is
+not a size, a schema nobody implements: all of them come back as the status
+and the sentence impose itself would have given, once, at startup. One
+process, and it saves a `failed/` bucket holding a copy of everything the
+folder is ever sent. The commonest of them is `impose` not being on the PATH
+at all — `systemd` and `launchd` each hand a service a PATH of their own, and
+a watcher that works perfectly in a terminal can file every file it is sent
+at exit `127`.
+
+The third is another watcher already holding the folder: `.watcher.lock`
+carries its pid, a second start is turned away by name, and a lock whose
+holder is gone is cleared with a sentence.
+
+The fourth is not being able to claim a file at all. The scripts claim one by
 hard-linking its name from `in/` into `work/` — `ln` fails when the name is
 taken, which is what makes it a claim, where `mv -n` skips a taken name and
 exits 0 anyway. So linking has to work, and it does not on some SMB mounts or

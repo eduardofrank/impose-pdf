@@ -9,13 +9,24 @@
 # that takes two finished sizes is two folders, because `--expect-size` is
 # per-folder and so is everyone's idea of what the folder is for.
 #
+# What the folder is for is written in the folder, in `policy.conf`, and not
+# in this script. One copy of the script then serves every folder, and what a
+# folder does can be read -- and changed -- without touching the thing that
+# runs it. The first start of a folder writes a commented policy.conf and
+# stops, because a watcher that guessed would be imposing somebody's work to
+# a policy nobody chose.
+#
 # It needs inotify-tools, which `impose` does not depend on:
 #
 #     apt install inotify-tools
 #
 # Deliberately not part of the package. It is a worked example to adapt, not
-# a supported product -- read it, change the invocation to your schema, and
-# put it under systemd.
+# a supported product -- read it, put it under systemd, and change what you
+# need.
+#
+# Exit 2 is this script refusing to start, and nothing else is: the folder is
+# not set up, and starting it again changes nothing until that is fixed. Any
+# other exit is the event source ending, which is worth starting again.
 
 set -eu
 
@@ -23,6 +34,131 @@ root=${1:?usage: watch-inotify.sh FOLDER}
 in="$root/in"
 work="$root/work"
 mkdir -p "$in" "$work" "$root/out" "$root/done" "$root/rejected" "$root/failed"
+
+policy="$root/policy.conf"
+
+# A folder with no policy has not been set up yet, so write the form and
+# stop. The alternative is guessing, which means imposing somebody's work to
+# a policy nobody chose.
+if [ ! -f "$policy" ]; then
+    cat >"$policy" <<'FORM'
+# What this folder is for. One folder, one schema, one policy.
+#
+# Lines are KEY=value. The watcher reads them itself rather than sourcing
+# this file, so there is no quoting and no substitution: a value is the rest
+# of its line as it stands, and a line starting with # is a comment.
+#
+# Say either SCHEMA, with the options that go with it, or JOB, naming a job
+# file beside this one -- a job file can carry a press, gutters and marks,
+# which is more than fits on a line. Both is a mistake rather than a merge.
+
+# SCHEMA=nup
+# OPTIONS=--up 2x2 --expect-size A4
+
+# JOB=a4-nup.json
+# OPTIONS=--trim-from mediabox
+
+# OPTIONS reaches impose as it stands, split on whitespace, so an option
+# whose value has a space in it needs a job file instead. --trim-from,
+# --damaged and --overwrite are the three options a job file may not carry:
+# they belong here, where somebody chose them for this folder.
+FORM
+    printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \
+        "$0" "$policy" >&2
+    exit 2
+fi
+
+# A policy anybody can rewrite is a command anybody can choose. The inbox is
+# the only part of a hot folder that wants to be open to all comers.
+if [ -n "$(find "$policy" -perm -0002 2>/dev/null)" ]; then
+    printf '%s: %s is writable by anybody, and it is the command this folder\n' \
+        "$0" "$policy" >&2
+    printf 'runs on everything it is sent. Only in/ should be that open.\n' >&2
+    exit 2
+fi
+
+SCHEMA=
+JOB=
+OPTIONS=
+cr=$(printf '\r')
+while IFS= read -r line || [ -n "$line" ]; do
+    # A policy edited on Windows over a share arrives with carriage returns,
+    # which would otherwise end up inside a size or a schema name.
+    line=${line%"$cr"}
+    case "$line" in
+    '' | '#'*) continue ;;
+    *=*) ;;
+    *)
+        printf '%s: %s: this is not KEY=value: %s\n' "$0" "$policy" "$line" >&2
+        exit 2
+        ;;
+    esac
+    value=${line#*=}
+    case "${line%%=*}" in
+    SCHEMA) SCHEMA=$value ;;
+    JOB) JOB=$value ;;
+    OPTIONS) OPTIONS=$value ;;
+    *)
+        # Named rather than ignored, for the same reason a job file refuses a
+        # field it does not know: a misspelled key that is skipped is a
+        # policy somebody believes is in force.
+        printf '%s: %s: %s is not a key of a policy. Known: SCHEMA, JOB, OPTIONS.\n' \
+            "$0" "$policy" "${line%%=*}" >&2
+        exit 2
+        ;;
+    esac
+done <"$policy"
+
+if [ -n "$SCHEMA" ] && [ -n "$JOB" ]; then
+    printf '%s: %s says both SCHEMA (%s) and JOB (%s). One of them is the\n' \
+        "$0" "$policy" "$SCHEMA" "$JOB" >&2
+    printf 'policy; pick which.\n' >&2
+    exit 2
+fi
+if [ -z "$SCHEMA" ] && [ -z "$JOB" ]; then
+    printf '%s: %s says neither SCHEMA nor JOB, so nobody has said what this\n' \
+        "$0" "$policy" >&2
+    printf 'folder is for yet.\n' >&2
+    exit 2
+fi
+
+# A job file is named beside the policy that names it, so a folder moves in
+# one piece. An absolute path is taken as given.
+case $JOB in
+'' | /*) job=$JOB ;;
+*) job=$root/$JOB ;;
+esac
+
+# The invocation, assembled from the policy. OPTIONS is split on whitespace
+# by `set --`, which inside a function sets that function's own positional
+# parameters; globbing is off across the split so that an option value cannot
+# be expanded against whatever happens to be in the directory.
+impose_it() {
+    claimed=$1
+    press_file=$2
+    set -f
+    set -- $OPTIONS
+    set +f
+    if [ -n "$job" ]; then
+        impose run "$job" "$claimed" -o "$press_file" "$@"
+    else
+        impose "$SCHEMA" "$claimed" -o "$press_file" "$@"
+    fi
+}
+
+# Try the policy before trusting it to everything this folder is ever sent. A
+# source that is not there is exit 3 -- the file is the problem, and it is --
+# so a 3 means the rest of the invocation is one this impose can make. Any
+# other status is the options, the job file, or impose not being on the PATH
+# this service runs with, and each of those is worth a sentence now rather
+# than a `failed/` bucket with a copy of every file in it.
+status=0
+trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null 2>&1) || status=$?
+if [ "$status" != 3 ]; then
+    printf '%s: %s does not describe a run this impose can make (exit %s):\n%s\n' \
+        "$0" "$policy" "$status" "$trouble" >&2
+    exit 2
+fi
 
 # One watcher per folder, enforced rather than hoped for. The sweep below
 # treats everything in `work/` as left over from a run that died, which is
@@ -35,7 +171,7 @@ if ! mkdir "$lock" 2>/dev/null; then
     held=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
         printf '%s: %s is already being watched by pid %s.\n' "$0" "$root" "$held" >&2
-        exit 1
+        exit 2
     fi
     # The holder is gone, so the lock is debris from a kill or a reboot.
     printf '%s: clearing a lock left by pid %s, which is no longer running.\n' \
@@ -94,19 +230,8 @@ else
     printf 'so linking has to work. Some SMB mounts and exFAT cannot link at\n' >&2
     printf 'all. Put the folder on a filesystem that can, or replace the\n' >&2
     printf 'claim with your own.\n' >&2
-    exit 1
+    exit 2
 fi
-
-# The invocation. Everything policy-ish lives here, in one place, so that
-# what this folder accepts can be read off four lines:
-#
-#   --trim-from mediabox   these are office exports; take the page as drawn
-#   --expect-size A4       and refuse anything that is not actually A4
-#   -o <outside the inbox> or the watcher would fire on its own output
-#   no --overwrite         a resend never silently replaces a press file
-impose_it() {
-    impose nup "$1" -o "$2" --trim-from mediabox --expect-size A4
-}
 
 # Impose a file already claimed into `work/`, and file it by what happened.
 impose_claimed() {

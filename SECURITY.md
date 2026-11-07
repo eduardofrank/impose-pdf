@@ -140,6 +140,11 @@ them; and:
 
 - Give the inbox the narrowest write access that lets work arrive, and do not
   make it world-writable.
+- `policy.conf` is the command the folder runs on everything it is sent, so
+  only the operator writes it. The reference watchers refuse to start on one
+  that is world-writable, and they parse it themselves rather than letting a
+  shell source it, so a value in it cannot become a command. Keep the folder
+  root as closed as the policy: `in/` is the only part that wants to be open.
 - Run the watcher as a user with nothing else to lose — it needs to read the
   inbox and write the output directory, and that is all. Not root.
 - Put the output directory somewhere only that user writes. The temporary is
