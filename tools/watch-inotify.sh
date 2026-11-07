@@ -22,7 +22,7 @@
 #
 # Deliberately not part of the package. It is a worked example to adapt, not
 # a supported product -- read it, put it under systemd, and change what you
-# need.
+# need. tools/systemd/impose-folder@.service is a unit for one folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
 # not set up, and starting it again changes nothing until that is fixed. Any

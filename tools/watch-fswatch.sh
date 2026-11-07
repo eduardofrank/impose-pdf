@@ -19,7 +19,8 @@
 # stops. See watch-inotify.sh.
 #
 # Deliberately not part of the package: a worked example to adapt, not a
-# supported product. Put it under launchd.
+# supported product. Put it under launchd --
+# tools/launchd/impose-folder.plist is an agent for one folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
 # not set up, and starting it again changes nothing until that is fixed.

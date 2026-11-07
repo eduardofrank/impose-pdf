@@ -1,0 +1,100 @@
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+#
+# One watched folder, as a service. The instance name is the folder's name,
+# so each folder is enabled, stopped and watched on its own:
+#
+#     install -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
+#     install -m 644 tools/systemd/impose-folder@.service /etc/systemd/system/
+#     systemctl daemon-reload
+#     systemctl enable --now impose-folder@a4-nup
+#     journalctl -fu impose-folder@a4-nup
+#
+# Three lines below are yours to set: the script, the directory the folders
+# live in, and the PATH that has impose on it. Everything else is written to
+# be left alone.
+#
+# This file is a worked example, like the scripts it runs. It is also the one
+# part of this repository that cannot be tested in it -- it was written
+# against the systemd documentation on a machine with no systemd, so read it
+# before you trust it, and `systemd-analyze verify` it once it is in place.
+
+[Unit]
+Description=Impose every PDF dropped into the %i folder
+Documentation=https://github.com/eduardofrank/impose-pdf#running-from-a-watched-folder
+
+# The folder is often on a mount. Wait for it, rather than starting a watcher
+# on an empty mountpoint, taking a lock in it and sweeping nothing.
+RequiresMountsFor=/srv/impose/%i
+
+[Service]
+Type=exec
+User=impose
+Group=impose
+
+# The script, then the folder. Change /srv/impose if the folders live
+# somewhere else; `%i` is the instance name, so impose-folder@a4-nup watches
+# /srv/impose/a4-nup.
+ExecStart=/usr/local/libexec/impose-watch /srv/impose/%i
+
+# A service does not inherit the PATH you have in a terminal, which is how a
+# watcher that works by hand files every file it is sent at exit 127. Point
+# this at wherever impose is installed. The watcher checks for it at startup
+# and refuses rather than finding out one file at a time.
+Environment=PATH=/opt/impose/.venv/bin:/usr/local/bin:/usr/bin:/bin
+
+# Stdout and stderr go to the journal, which is where the line per file ends
+# up: `a4-nup.pdf: done (0)`. The identifier is what makes one folder's log
+# readable on its own -- `journalctl -t impose-a4-nup`.
+SyslogIdentifier=impose-%i
+
+# Restart, except when starting again cannot help. Exit 2 is the watcher
+# refusing to start: a policy.conf that is missing, unreadable or describes a
+# run impose cannot make; another watcher already holding the folder; a
+# filesystem that cannot hard-link. None of those change in five seconds.
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=2
+
+# Stopping. The default KillMode=control-group is what this needs and is
+# deliberately not overridden: a watcher is a pipeline, so the signal has to
+# reach every process in it -- the event source, the loop reading it, and the
+# impose that may be part way through a sheet. impose answers for SIGTERM by
+# unwinding, so it takes its own temporary file with it; this is the time
+# that allows for.
+TimeoutStopSec=30
+
+# The press file is written 0644 so that whatever picks it up can read it.
+UMask=0022
+
+# impose opens no network, starts no process and reads nothing it was not
+# given, so it can be shut in. ReadWritePaths needs the folder, and whatever
+# else the policy's OUT and PROOF point at.
+ReadWritePaths=/srv/impose/%i
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Two more that belong here and are left for you to turn on, because they are
+# the ones that break a service quietly and neither has been run anywhere:
+# MemoryDenyWriteExecute=yes
+# SystemCallFilter=@system-service
+
+# A folder exposed to anybody you do not know wants a ceiling as well. A
+# 20000-page source genuinely needs 20000 pages' worth of memory, so pick
+# these from the largest job the folder is meant to take, not from the
+# smallest.
+# MemoryMax=2G
+# TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

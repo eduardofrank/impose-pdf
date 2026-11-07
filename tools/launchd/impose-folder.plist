@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+
+One watched folder, as a launchd agent. Copy it per folder, change the label
+and the two paths, and keep the file's name the same as the label:
+
+    install -m 755 tools/watch-fswatch.sh /usr/local/libexec/impose-watch
+    cp tools/launchd/impose-folder.plist \
+       ~/Library/LaunchAgents/impose-folder.a4-nup.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/impose-folder.a4-nup.plist
+    launchctl print gui/$(id -u)/impose-folder.a4-nup
+    tail -f /usr/local/var/log/impose/a4-nup.log
+
+and to stop one, which is per folder like everything else here:
+
+    launchctl bootout gui/$(id -u)/impose-folder.a4-nup
+
+An agent runs as the logged-in user, which is the easy way to start and what
+a shop watching a share it has mounted wants. A LaunchDaemon in
+/Library/LaunchDaemons runs without anybody logged in, and then two things
+change: give it a `UserName` of its own, and keep the folder out of Desktop,
+Documents and Downloads -- those need the operator to grant Full Disk Access
+before FSEvents will say anything about them, and a watcher that is simply
+never told is the worst of the failures here.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>impose-folder.a4-nup</string>
+
+	<!-- The script, then the folder. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/libexec/impose-watch</string>
+		<string>/Users/Shared/impose/a4-nup</string>
+	</array>
+
+	<!-- launchd hands a job a PATH of its own, which is how a watcher that
+	     works in a terminal files every file it is sent at exit 127. Point
+	     this at wherever impose is installed; the watcher checks at startup
+	     and refuses rather than finding out one file at a time. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/impose/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Start it again if it stops with anything but 0. launchd has no way
+	     to say "except exit 2", which is the watcher refusing to start: a
+	     policy.conf that is missing or wrong, another watcher holding the
+	     folder, a filesystem that cannot hard-link. So a folder in that
+	     state restarts every ThrottleInterval seconds and writes its one
+	     sentence to the log each time, which is loud rather than silent --
+	     read the log, fix the policy. -->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+
+	<!-- The line per file ends up here: `a4-nup.pdf: done (0)`. Make the
+	     directory first; launchd will not. -->
+	<key>StandardOutPath</key>
+	<string>/usr/local/var/log/impose/a4-nup.log</string>
+	<key>StandardErrorPath</key>
+	<string>/usr/local/var/log/impose/a4-nup.log</string>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

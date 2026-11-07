@@ -1173,6 +1173,90 @@ does. The orphan used to claim a file out of `in/` while the new watcher held
 the lock. It now checks the lock still names it, finds that it does not, and
 stops.
 
+### One folder, one service
+
+A folder that only runs while somebody's terminal is open is not a folder.
+`tools/systemd/impose-folder@.service` and `tools/launchd/impose-folder.plist`
+are the other half: one service per folder, started at boot, logging where
+the rest of the machine's logs go, and enabled or stopped without touching
+any other folder.
+
+On Linux the instance name is the folder's name, which is the whole reason
+the unit is a template:
+
+```bash
+install -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
+install -m 644 tools/systemd/impose-folder@.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now impose-folder@a4-nup
+journalctl -fu impose-folder@a4-nup
+```
+
+Three lines in it are yours: the script, the directory the folders live in,
+and the `PATH`. The rest is written to be left alone, and four parts of it
+are worth knowing about.
+
+**It restarts, except when restarting cannot help.** `Restart=on-failure`
+with `RestartPreventExitStatus=2`, because `2` is the watcher refusing to
+start — a policy that is missing or wrong, another watcher on the folder, a
+filesystem that cannot hard-link — and none of those are different in five
+seconds. Anything else is the event source ending, which a restart fixes.
+
+**The `PATH` is in the unit because a service does not have yours.** This is
+the commonest way a watched folder fails: it works by hand and files
+everything it is sent at exit `127` as a service. `systemd` and `launchd`
+both hand a job a `PATH` of their own. The watcher now tries its policy at
+startup and refuses, so the failure is one sentence at boot rather than a
+`failed/` bucket.
+
+**Stopping is a signal to the cgroup**, which is `KillMode=control-group` and
+is deliberately not overridden: a watcher is a pipeline, and the signal has
+to reach the event source, the loop reading it, and the `impose` that may be
+part way through a sheet. `TimeoutStopSec=30` is the time impose is given to
+unwind and take its own temporary with it.
+
+**It is shut in, because impose does not need anything.** No network at all
+(`PrivateNetwork=yes`), a read-only filesystem apart from the folder
+(`ProtectSystem=strict` plus `ReadWritePaths`), its own `/tmp`, no devices,
+no new privileges. If the policy's `OUT` or `PROOF` point outside the folder,
+they go in `ReadWritePaths` too. Two more directives that belong there,
+`MemoryDenyWriteExecute` and `SystemCallFilter`, are left commented out, and
+so are `MemoryMax` and `TasksMax` — which a folder exposed to anybody you do
+not know wants, set from the largest job it is meant to take.
+
+One honest caveat: the unit file is the one thing in this repository that
+could not be tried in it. It was written against the systemd documentation on
+a machine that has no systemd, so its syntax is checked and its directives
+are not. Run `systemd-analyze verify impose-folder@a4-nup.service` once it is
+in place.
+
+On macOS it is a launchd agent, one plist per folder, and that one *was*
+measured here:
+
+```bash
+install -m 755 tools/watch-fswatch.sh /usr/local/libexec/impose-watch
+cp tools/launchd/impose-folder.plist \
+   ~/Library/LaunchAgents/impose-folder.a4-nup.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/impose-folder.a4-nup.plist
+launchctl bootout gui/$(id -u)/impose-folder.a4-nup
+```
+
+Loaded against a test folder holding one A4 office export, the agent came up
+with the plist's `PATH`, swept the inbox, wrote the press file into `out/`
+and the proof into `proof/`, filed the source into `done/` beside its
+sentence, and logged `minutes.pdf: done (0)` to the path the plist names.
+Then it exited `0` — there is no `fswatch` on this machine, so there was no
+event source to keep it alive — and `KeepAlive`/`SuccessfulExit` correctly
+did not restart it.
+
+launchd has no `RestartPreventExitStatus`, so a folder whose policy is wrong
+restarts every `ThrottleInterval` seconds and writes its sentence to the log
+each time. Loud rather than silent, which is the best available there. And if
+you make it a daemon rather than an agent, keep the folder out of Desktop,
+Documents and Downloads: those need Full Disk Access granted before FSEvents
+will say anything at all, and a watcher that is simply never told is the
+worst of the failures here.
+
 ## Using it as a library
 
 ```python
