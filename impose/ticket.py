@@ -294,6 +294,39 @@ def run(  # pylint: disable=too-many-arguments
         job["damaged"] = damaged
     dry = plan_only or bool(job.pop("dry_run", False))
     source, output, proof = _paths(job, source, output, proof)
+    schema = _schema(job)
+    _expand_up(job)
+    # Back into the job rather than into variables of their own: both are
+    # arguments the schemas take, and everything left in `job` is handed over
+    # as keyword arguments anyway.
+    job["marks"] = _marks(job.pop("marks", "registration"))
+    job["gutters"] = _gutters(job.pop("gutters", None))
+    if schema == "cover":
+        return _run_cover(
+            job, source, output, proof, dry=dry, out=out, overwrite=overwrite
+        )
+    result = impose_document(
+        source,
+        output,
+        schema=schema,
+        proof=proof,
+        plan_only=dry,
+        overwrite=overwrite,
+        **job,
+    )
+    _report(out, result, output, proof, dry=dry)
+    return result
+
+
+def _schema(job: dict) -> str:
+    """The schema to impose, with the sidedness it implies folded in.
+
+    Sidedness is one question in a job file and two in the schemas: step and
+    repeat counts the sides of an item, and the schemas that deal a document
+    across the cells count the sides of the sheet. And a perfect-bound book
+    whose sections are folded is the signature schema under another name,
+    which is what ``folded`` says.
+    """
     schema = job.pop("schema")
     sides = job.pop("sides", None)
     if sides is not None:
@@ -307,39 +340,12 @@ def run(  # pylint: disable=too-many-arguments
                 "Folding a section into one sheet is how a perfect-bound "
                 f"book is made. The {schema} schema does not gather sections."
             )
-        schema = "signature"
-    _expand_up(job)
-    marks = _marks(job.pop("marks", "registration"))
-    gutters = _gutters(job.pop("gutters", None))
-    if schema == "cover":
-        return _run_cover(
-            job,
-            source,
-            output,
-            proof,
-            marks=marks,
-            gutters=gutters,
-            dry=dry,
-            out=out,
-            overwrite=overwrite,
-        )
-    result = impose_document(
-        source,
-        output,
-        schema=schema,
-        marks=marks,
-        gutters=gutters,
-        proof=proof,
-        plan_only=dry,
-        overwrite=overwrite,
-        **job,
-    )
-    _report(out, result, output, proof, dry=dry)
-    return result
+        return "signature"
+    return schema
 
 
 def _run_cover(  # pylint: disable=too-many-arguments
-    job, source, output, proof, *, marks, gutters, dry, out, overwrite=False
+    job, source, output, proof, *, dry, out, overwrite=False
 ):
     """A cover job is the text block plus the gauge, not the flat itself."""
     if "paper_caliper" not in job:
@@ -362,8 +368,6 @@ def _run_cover(  # pylint: disable=too-many-arguments
         section_pages=job.pop("section_pages", 4),
         artwork=job.pop("artwork", None),
         bleed=job.pop("bleed", "2mm"),
-        marks=marks,
-        gutters=gutters,
         proof=proof,
         plan_only=dry,
         overwrite=overwrite,

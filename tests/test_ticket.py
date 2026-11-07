@@ -620,3 +620,43 @@ class TestAPolicyAndTheRunsOwnJudgements(unittest.TestCase):
             )
             self.assertEqual(status, 0, err)
             self.assertTrue(output.exists())
+
+
+class TestACoverJob(unittest.TestCase):
+    """The one schema `run` reaches by another path.
+
+    A cover job builds the flat from the text block before anything is
+    imposed, so it goes through `_run_cover` rather than straight to
+    `impose_document` -- and it was the one stored schema nothing ran.
+    """
+
+    def test_it_builds_the_flat_and_imposes_it(self):
+        with workspace(pages=64) as source:
+            job = source.with_name("cover.json")
+            job.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "schema": "cover",
+                        "paper_caliper": "0.1mm",
+                        "section_pages": 16,
+                        # Through the job, like every other option a schema
+                        # takes, which is what this is here to hold.
+                        "marks": "black",
+                        "gutters": "4mm",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = source.with_name("flat.pdf")
+            proof = source.with_name("flat-proof.pdf")
+            status, text, err = run(
+                "run", str(job), str(source), "-o", str(output), "--proof", str(proof)
+            )
+            self.assertEqual(status, 0, err)
+            # 32 leaves of 0.1 mm, so the spine is 3.2 mm and the flat is the
+            # two A6 pages plus that.
+            self.assertIn("spine 3.2 mm (32 leaves × 0.1 mm)", text)
+            self.assertIn("213.2 × 148 mm", text)
+            self.assertTrue(output.exists())
+            self.assertTrue(proof.exists())

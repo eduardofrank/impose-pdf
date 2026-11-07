@@ -153,6 +153,12 @@ failure it prevents and, where one was measured, what it cost. Comments earn
 their place the same way — a comment restating the next line will be removed, a
 comment recording why a tolerance is 0.25 mm and not 0.01 pt will not.
 
+The dev tools are deliberately unpinned, so CI may be running a newer pylint
+than you are, and a new release can count one more local variable in a
+function that was passing. `pip install -U pylint` before you trust a clean
+local run; the answer when a cap then bites is the next paragraph, not a
+higher cap.
+
 When pylint's line or complexity caps bite, **split rather than raise the cap**.
 `tests/test_cli.py` became `tests/test_cli.py` plus `tests/test_unattended.py`
 for this reason, and `impose/signals.py` came out of `impose/cli.py` for the
