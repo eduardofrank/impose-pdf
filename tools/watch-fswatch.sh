@@ -29,7 +29,15 @@ set -eu
 root=${1:?usage: watch-fswatch.sh FOLDER}
 in="$root/in"
 work="$root/work"
-mkdir -p "$in" "$work" "$root/out" "$root/done" "$root/rejected" "$root/failed"
+
+# Five directories, each of them one question answered: see watch-inotify.sh.
+# Where the press file goes is the policy's to say, so it is made further
+# down.
+if ! trouble=$(mkdir -p "$in" "$work" "$root/done" "$root/rejected" \
+    "$root/failed" 2>&1); then
+    printf '%s: cannot lay out %s:\n%s\n' "$0" "$root" "$trouble" >&2
+    exit 2
+fi
 
 policy="$root/policy.conf"
 
@@ -58,6 +66,14 @@ if [ ! -f "$policy" ]; then
 # whose value has a space in it needs a job file instead. --trim-from,
 # --damaged and --overwrite are the three options a job file may not carry:
 # they belong here, where somebody chose them for this folder.
+
+# Where the press files go. Default out, beside this file; an absolute path
+# for a RIP's own hot folder somewhere else. Anywhere but inside in/.
+# OUT=/srv/rip/in
+
+# Where the proofs go, if this folder makes them. Empty means it does not.
+# Keep them out of OUT: a RIP watching that folder would print them.
+# PROOF=proof
 FORM
     printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \
         "$0" "$policy" >&2
@@ -76,6 +92,8 @@ fi
 SCHEMA=
 JOB=
 OPTIONS=
+OUT=
+PROOF=
 cr=$(printf '\r')
 while IFS= read -r line || [ -n "$line" ]; do
     # A share edited from Windows leaves carriage returns behind.
@@ -93,9 +111,12 @@ while IFS= read -r line || [ -n "$line" ]; do
     SCHEMA) SCHEMA=$value ;;
     JOB) JOB=$value ;;
     OPTIONS) OPTIONS=$value ;;
+    OUT) OUT=$value ;;
+    PROOF) PROOF=$value ;;
     *)
-        printf '%s: %s: %s is not a key of a policy. Known: SCHEMA, JOB, OPTIONS.\n' \
+        printf '%s: %s: %s is not a key of a policy.\n' \
             "$0" "$policy" "${line%%=*}" >&2
+        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF.\n' >&2
         exit 2
         ;;
     esac
@@ -115,20 +136,64 @@ if [ -z "$SCHEMA" ] && [ -z "$JOB" ]; then
 fi
 
 # A job file is named beside the policy that names it, so a folder moves in
-# one piece. An absolute path is taken as given.
+# one piece. An absolute path is taken as given, here and for the two
+# directories below.
 case $JOB in
 '' | /*) job=$JOB ;;
 *) job=$root/$JOB ;;
 esac
+case ${OUT:=out} in
+/*) out=$OUT ;;
+*) out=$root/$OUT ;;
+esac
+case $PROOF in
+'' | /*) proofs=$PROOF ;;
+*) proofs=$root/$PROOF ;;
+esac
+
+# Neither of them inside the inbox, or the folder would fire on its own
+# output: a press file written into `in/` matches *.pdf, gets claimed, and is
+# imposed again as though it were artwork.
+for written in "$out" "$proofs"; do
+    case ${written:-/dev/null} in
+    "$in" | "$in"/*)
+        printf '%s: %s writes to %s, which is the inbox or inside it. The\n' \
+            "$0" "$policy" "$written" >&2
+        printf 'folder would impose its own press files as artwork.\n' >&2
+        exit 2
+        ;;
+    esac
+done
+
+# And not the same directory as each other: the proof and the press file take
+# the arriving file's name, so one directory for both is one name for both.
+if [ -n "$proofs" ] && [ "$proofs" = "$out" ]; then
+    printf '%s: %s writes the proofs and the press files both to %s, where\n' \
+        "$0" "$policy" "$out" >&2
+    printf 'they would be one name. A proof wants a directory of its own --\n' >&2
+    printf 'and out of the way of whatever is watching for press files.\n' >&2
+    exit 2
+fi
+
+# Made, not assumed: a proof directory exists only for a folder that asked
+# for proofs, and a press file is not written into a directory nobody made.
+if ! trouble=$(mkdir -p "$out" ${proofs:+"$proofs"} 2>&1); then
+    printf '%s: cannot make somewhere to write in %s:\n%s\n' "$0" "$root" "$trouble" >&2
+    exit 2
+fi
+
 
 # The invocation, assembled from the policy. OPTIONS is split on whitespace
 # by `set --`, which inside a function sets that function's own positional
 # parameters, with globbing off across the split.
 impose_it() {
-    local claimed=$1 press_file=$2
+    local claimed=$1 press_file=$2 proof_file=$3
     set -f
     set -- $OPTIONS
     set +f
+    if [ -n "$proof_file" ]; then
+        set -- "$@" --proof "$proof_file"
+    fi
     if [ -n "$job" ]; then
         impose run "$job" "$claimed" -o "$press_file" "$@"
     else
@@ -143,7 +208,7 @@ impose_it() {
 # particular hands a job a PATH of its own, which is how a watcher that works
 # in a terminal files everything into failed/ as a service.
 status=0
-trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null 2>&1) || status=$?
+trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null "" 2>&1) || status=$?
 if [ "$status" != 3 ]; then
     printf '%s: %s does not describe a run this impose can make (exit %s):\n%s\n' \
         "$0" "$policy" "$status" "$trouble" >&2
@@ -230,8 +295,11 @@ settled() {
 
 # Impose a file already claimed into `work/`, and file it by what happened.
 impose_claimed() {
-    local name=$1 status=0 message bucket
-    message=$(impose_it "$work/$name" "$root/out/$name" 2>&1) || status=$?
+    local name=$1 status=0 message bucket proof_file=""
+    if [ -n "$proofs" ]; then
+        proof_file="$proofs/$name"
+    fi
+    message=$(impose_it "$work/$name" "$out/$name" "$proof_file" 2>&1) || status=$?
 
     # The status says which bucket; the sentence says why. Both go with the
     # file, because whoever opens that folder wants to know without digging

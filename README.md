@@ -832,6 +832,24 @@ options a job file may not carry — `--trim-from`, `--damaged`, `--overwrite`
 — belong here either way, because here is where somebody chose them for this
 folder rather than for one file.
 
+Two keys say where the work goes, and both are optional:
+
+```
+OUT=/srv/rip/in
+PROOF=proof
+```
+
+`OUT` is where the press files are written — `out/` beside the policy by
+default, or an absolute path, which is how the RIP's own hot folder becomes
+this folder's outbox and nothing has to copy anything afterwards. `PROOF` is
+a directory for [proofs](#options-every-schema-takes), and a folder that does not name one
+does not make them; proofs get a directory of their own rather than a suffix
+in `out/`, because whatever is watching `out/` for press files would
+otherwise print them. Neither may be the inbox or inside it, and the two may
+not be the same directory — a proof and a press file both take the arriving
+file's name, so one directory for both is one name for both. Both refusals
+are at startup.
+
 Starting a folder that has no `policy.conf` writes a commented one and stops:
 
 ```console
@@ -1043,11 +1061,22 @@ a4-nup/
 ├── in/              what the watcher watches; nothing else writes here
 ├── work/            claimed, and being imposed, one file at a time
 ├── out/             press files — outside the watch path, which is the point
-├── done/            imposed
-├── rejected/        the file or the job
-├── failed/          the environment
+├── proof/           proofs, if the policy asks for them; never in out/
+├── done/            the artwork, imposed
+├── rejected/        the artwork, turned away: the file or the job
+├── failed/          the artwork, not imposed: the environment
 └── .watcher.lock/   held by the one watcher working this folder
 ```
+
+Each of those answers one question, and no file is ever in two of them. `in/`
+is the only one anything else writes to, so it is the only one that needs to
+be open to whoever sends work. `work/` holds the claim: a file is there for
+exactly as long as impose is reading it, which is what makes anything left in
+it after a restart a job to finish rather than a job to guess about. `out/`
+and `proof/` are what the folder produced, outside the watch path — `out/` is
+`OUT`, so it is often not in the folder at all. The last three hold the
+artwork afterwards, and which one it is in *is* the answer to what happened
+to it.
 
 Where a file lands is the exit status and nothing else, which is why the
 statuses are worth having:
