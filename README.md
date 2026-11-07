@@ -311,7 +311,7 @@ Every command and option is listed below.
 impose SCHEMA INPUT [options]     impose a document
 impose fit SIZE|PDF [options]     how many fit, with or without a file
 impose presses                    list the press profiles
-impose run JOB                    impose a stored job file
+impose run JOB [PDF] [options]    impose a stored job, or a file by its policy
 ```
 
 Sizes and lengths accept `mm`, `cm`, `in`, `pt`, `pc`, or a bare number meaning
@@ -662,8 +662,10 @@ command takes, with two that are spelled out rather than negated or prefixed:
 Paths in the file are read relative to the file, so a folder of jobs can move
 with its artwork.
 
-`--trim-from` is the one option a job cannot carry. It is a judgement about the
-file in front of somebody, not a standing instruction to a hot folder.
+`--trim-from`, `--damaged` and `--overwrite` are the options a job cannot
+carry. Each is a judgement about the file in front of somebody, not a standing
+instruction to a hot folder, and each is an option of every run — including
+`impose run`, which is a run.
 
 A field no schema has is named, and so is one that belongs to a different
 schema than the job asks for — the mistake there is usually the schema:
@@ -734,6 +736,57 @@ to start from, so `{"name": "indigo-5000", "margins": {"bottom": "15mm"}}` is
 that press with the gripper strip this shop measured and its own figures for
 the other three edges. `imageable` may be given instead of `margins`, and is
 centred in the sheet.
+
+### A job with no source is a folder's policy
+
+A stored job names its source, which is what makes it a job. A folder is the
+other thing: a different file every time, imposed the same way every time.
+Leave the source out, and the file comes from the command line —
+
+```console
+$ impose run a4-nup.json in/minutes.pdf -o out/minutes.pdf --trim-from mediabox
+impose: warning: No TrimBox on all 8 pages: the finished size 210 × 297 mm was
+taken from the MediaBox, as this run asked. Check it is the finished page and
+not the sheet the artwork was drawn on, which carries whatever bleed and marks
+came with it.
+  n-up: 8 pages onto 2 sheet(s) at 2 up (1 × 2 turned), page 310 × 450 mm on indigo-5000; finished page 210 × 297 mm
+wrote out/minutes.pdf
+
+$ impose run a4-nup.json in/agenda.pdf -o out/agenda.pdf --trim-from mediabox
+impose: warning: No TrimBox on all 12 pages: the finished size 210 × 297 mm was
+taken from the MediaBox, as this run asked. Check it is the finished page and
+not the sheet the artwork was drawn on, which carries whatever bleed and marks
+came with it.
+  n-up: 12 pages onto 3 sheet(s) at 2 up (1 × 2 turned), page 310 × 450 mm on indigo-5000; finished page 210 × 297 mm
+wrote out/agenda.pdf
+```
+
+— where the policy those two runs share is the whole of this file:
+
+```json
+{
+  "version": 1,
+  "schema": "nup",
+  "up": "1x2",
+  "expect_size": "210mmx297mm"
+}
+```
+
+`-o` and `--proof` are overrides of the same kind, and for the same reason: a
+folder cannot write every arrival to the one name a job stored. A job that
+does name a source still runs on its own, and naming a file anyway imposes
+that one with the job's settings. Paths given on the command line are read
+from the terminal's directory, where paths inside a job are read beside the
+job.
+
+With nothing to impose, a job that names no source says which of the two it
+is:
+
+```console
+$ impose run a4-nup.json
+impose: a4-nup.json names no source, so it is a folder's policy rather than a
+job. Name the file to impose on the command line.
+```
 
 ## Running from a watched folder
 

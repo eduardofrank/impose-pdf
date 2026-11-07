@@ -132,7 +132,9 @@ file without mentioning it" — each the thing its own refusal exists to prevent
 
 If you add an option, decide which it is and say why in the commit message. If
 it is storable it needs a `_KEYS` entry, an `_options` entry, a `_plain` branch
-for any non-JSON type, and a round-trip test.
+for any non-JSON type, and a round-trip test. If it is per-run it needs to be
+an option of `impose run` as well — a stored job is still run by somebody, and
+a judgement nobody can make is not a judgement, it is a refusal.
 
 ## Style
 

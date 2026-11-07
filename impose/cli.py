@@ -707,7 +707,13 @@ def build_parser() -> argparse.ArgumentParser:  # pylint: disable=too-many-state
         "presses", help="List the press profiles.", description="List press profiles."
     )
     presses.set_defaults(command="presses")
-    add_command(subcommands)
+    # The `run` command's own options are added here rather than beside it:
+    # these three are what a job file may not carry, and a stored job is
+    # still run by somebody who may need to make them.
+    stored = add_command(subcommands)
+    _add_trim_from(stored)
+    _add_damaged(stored)
+    _add_overwrite(stored)
     return parser
 
 
@@ -1137,7 +1143,17 @@ def _dispatch(  # pylint: disable=too-many-return-statements
     if args.command == "fit":
         return _fit(args, out)
     if args.command == "run":
-        run_job(args.job, out, plan_only=args.dry_run, overwrite=args.overwrite)
+        run_job(
+            args.job,
+            out,
+            source=args.source,
+            output=args.output,
+            proof=args.proof,
+            trim_from=args.trim_from,
+            damaged=args.damaged,
+            plan_only=args.dry_run,
+            overwrite=args.overwrite,
+        )
         return 0
     if not args.input.exists():
         raise SourceError(f"No such file: {args.input}")

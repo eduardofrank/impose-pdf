@@ -5,15 +5,17 @@
 
 import contextlib
 import json
+import os
 import pathlib
 import tempfile
 import unittest
 
 from impose import ImposeError
+from impose.geometry import Size
 from impose.ticket import load
 from impose.units import MM
 
-from .support import make_pdf, truncated_pdf
+from .support import make_office_pdf, make_pdf, truncated_pdf
 from .test_cli import run, workspace
 
 
@@ -416,3 +418,205 @@ class TestDamagedIsPerRunToo(unittest.TestCase):
             status, _, err = run("run", str(job))
             self.assertEqual(status, 1)
             self.assertIn("'damaged', which is not a field of a job", err)
+
+
+class TestAPolicyRatherThanAJob(unittest.TestCase):
+    """A job with no source is what a watched folder stores.
+
+    A folder imposes a different file every time and the same way every
+    time. The way is the job file; the file is the command line's to say.
+    """
+
+    policy = {"version": 1, "schema": "nup", "up": "1x2"}
+
+    def test_one_policy_imposes_every_file_handed_to_it(self):
+        with workspace(pages=8) as source:
+            folder = source.parent
+            job = folder / "a4-nup.json"
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            second = folder / "agenda.pdf"
+            second.write_bytes(source.read_bytes())
+            for arrival in (source, second):
+                output = folder / "out" / arrival.name
+                output.parent.mkdir(exist_ok=True)
+                status, text, err = run(
+                    "run", str(job), str(arrival), "-o", str(output)
+                )
+                self.assertEqual(status, 0, err)
+                self.assertTrue(output.exists())
+                self.assertIn("n-up", text)
+
+    def test_with_no_file_to_impose_it_says_what_it_is(self):
+        with workspace(pages=4) as source:
+            job = source.with_name("a4-nup.json")
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            status, _, err = run("run", str(job))
+            self.assertEqual(status, 1)
+            self.assertIn("names no source", err)
+            self.assertIn("on the command line", err)
+
+    def test_the_file_in_front_of_somebody_beats_the_stored_one(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "nup", str(source), "--up", "1x2", "--record", str(job), "--dry-run"
+            )
+            self.assertEqual(status, 0, err)
+            self.assertEqual(
+                json.loads(job.read_text(encoding="utf-8"))["source"], str(source)
+            )
+            other = source.with_name("agenda.pdf")
+            other.write_bytes(source.read_bytes())
+            output = source.with_name("sheets.pdf")
+            status, _, err = run("run", str(job), str(other), "-o", str(output))
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())
+            # The job's own output is beside its own source; naming a file
+            # here has to move the press file too, or a folder would write
+            # every arrival over one name.
+            self.assertFalse(source.with_name("book-imposed.pdf").exists())
+
+    def test_the_proof_goes_where_the_run_says(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("a4-nup.json")
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            output = source.with_name("sheets.pdf")
+            proof = source.with_name("signoff.pdf")
+            status, text, err = run(
+                "run",
+                str(job),
+                str(source),
+                "-o",
+                str(output),
+                "--proof",
+                str(proof),
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(proof.exists())
+            self.assertIn(str(proof), text)
+
+    def test_imposing_a_file_over_itself_is_still_refused(self):
+        with workspace(pages=8) as source:
+            job = source.with_name("a4-nup.json")
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            status, _, err = run("run", str(job), str(source), "-o", str(source))
+            self.assertEqual(status, 4)
+            self.assertIn("both the file being imposed and the press file", err)
+
+    def test_a_file_named_here_is_read_from_here_not_beside_the_job(self):
+        """Paths in a job are relative to the job; this one is not.
+
+        A watcher's working directory is its own, and the file it names is
+        the one it means -- not whatever shares that name with the policy.
+        """
+        with workspace(pages=8) as source:
+            jobs = source.parent / "jobs"
+            jobs.mkdir()
+            job = jobs / "a4-nup.json"
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            # A decoy of the same name beside the job, with a page count no
+            # imposition of the real file could produce.
+            make_pdf(2).save(jobs / source.name)
+            output = source.parent / "sheets.pdf"
+            here = os.getcwd()
+            os.chdir(source.parent)
+            try:
+                status, text, err = run("run", str(job), source.name, "-o", str(output))
+            finally:
+                os.chdir(here)
+            self.assertEqual(status, 0, err)
+            self.assertIn("8 pages", text)
+
+
+class TestAPolicyAndTheRunsOwnJudgements(unittest.TestCase):
+    """The three options a job may not carry, made by `impose run`.
+
+    A folder of office exports is the case this exists for: the schema, the
+    grid and the size it expects are standing policy, and *where the
+    finished size comes from* is the judgement that cannot stand. Without
+    both halves the folder is either refused every file or imposing at
+    whatever size the MediaBox happens to be.
+    """
+
+    policy = {
+        "version": 1,
+        "schema": "nup",
+        "up": "1x2",
+        "expect_size": "210mmx297mm",
+    }
+
+    @contextlib.contextmanager
+    def folder(self, pages=8, build=make_office_pdf, **kwargs):
+        """A policy file and one arrival, in a directory."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            job = root / "a4-nup.json"
+            job.write_text(json.dumps(self.policy), encoding="utf-8")
+            arrival = root / "minutes.pdf"
+            build(pages, size=Size(210 * MM, 297 * MM), **kwargs).save(arrival)
+            yield job, arrival, root / "sheets.pdf"
+
+    def test_the_run_takes_the_size_from_the_mediabox_when_asked(self):
+        with self.folder() as (job, arrival, output):
+            status, text, err = run(
+                "run",
+                str(job),
+                str(arrival),
+                "-o",
+                str(output),
+                "--trim-from",
+                "mediabox",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertIn("taken from the MediaBox", err)
+            self.assertIn("finished page 210 × 297 mm", text)
+
+    def test_the_same_policy_refuses_the_same_file_without_it(self):
+        with self.folder() as (job, arrival, output):
+            status, _, err = run("run", str(job), str(arrival), "-o", str(output))
+            self.assertNotEqual(status, 0)
+            self.assertIn("TrimBox", err)
+            self.assertFalse(output.exists())
+
+    def test_the_stored_size_still_refuses_the_wrong_artwork(self):
+        """The check that makes the judgement safe is the stored half."""
+        with self.folder() as (job, arrival, output):
+            a5 = arrival.with_name("flyer.pdf")
+            make_office_pdf(8, size=Size(148 * MM, 210 * MM)).save(a5)
+            status, _, err = run(
+                "run", str(job), str(a5), "-o", str(output), "--trim-from", "mediabox"
+            )
+            self.assertEqual(status, 1)
+            self.assertIn("this run expects 210 × 297 mm", err)
+
+    def test_a_job_file_naming_either_of_them_is_still_refused(self):
+        for option in ("trim_from", "damaged"):
+            with self.subTest(option=option), self.folder() as (job, arrival, output):
+                job.write_text(
+                    json.dumps({**self.policy, option: "mediabox"}), encoding="utf-8"
+                )
+                status, _, err = run("run", str(job), str(arrival), "-o", str(output))
+                self.assertEqual(status, 1)
+                self.assertIn(f"{option!r}, which is not a field of a job", err)
+
+    def test_a_half_copied_file_is_imposed_only_when_the_run_says_so(self):
+        with damaged_workspace() as arrival:
+            job = arrival.with_name("saddle.json")
+            job.write_text(
+                json.dumps({"version": 1, "schema": "saddle"}), encoding="utf-8"
+            )
+            output = arrival.with_name("sheets.pdf")
+            status, _, err = run("run", str(job), str(arrival), "-o", str(output))
+            self.assertEqual(status, 3)
+            self.assertIn("cross-reference table", err)
+            status, _, err = run(
+                "run",
+                str(job),
+                str(arrival),
+                "-o",
+                str(output),
+                "--damaged",
+                "recover",
+            )
+            self.assertEqual(status, 0, err)
+            self.assertTrue(output.exists())

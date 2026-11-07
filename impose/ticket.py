@@ -10,10 +10,15 @@ already takes, so imposing the file and imposing the command are one job.
 
 Paths in the file are relative to the file itself. A job moved with its
 artwork still finds the artwork.
+
+A job that names no source is a folder's standing policy rather than one
+job: the file to impose and where it goes are given to :func:`run` per file,
+which is what a hot folder has and a stored document cannot.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import sys
@@ -117,8 +122,13 @@ def schema_options(args, schema: str | None = None) -> dict:
     return options
 
 
-def add_command(subcommands) -> None:
-    """The ``run`` command: impose a job file."""
+def add_command(subcommands) -> argparse.ArgumentParser:
+    """The ``run`` command: impose a job file.
+
+    Returned so that the caller can add the options a job file may not carry
+    -- see :data:`_PER_RUN`. Running a stored job is still a run, and those
+    three are a run's to make.
+    """
     command = subcommands.add_parser(
         "run",
         help="Impose a stored job.",
@@ -126,22 +136,40 @@ def add_command(subcommands) -> None:
         "the file, so a folder of jobs can move with its artwork.",
     )
     command.add_argument("job", type=pathlib.Path, help="The job file, JSON.")
+    # A folder's policy is a job with no source: the schema, the press, the
+    # size it expects, and nothing about which file. The watcher has the
+    # file, so it says so here, and one job file serves every file that
+    # lands. Given both, the command line is the file in front of somebody
+    # and wins; paths here are relative to the terminal, where paths in the
+    # job are relative to the job.
+    command.add_argument(
+        "source",
+        nargs="?",
+        type=pathlib.Path,
+        help="The PDF to impose, if the job does not name one, or instead "
+        "of the one it names.",
+    )
+    command.add_argument(
+        "-o",
+        "--output",
+        type=pathlib.Path,
+        help="Where to write, instead of what the job says. Default: what "
+        "the job says, or the source with -imposed appended.",
+    )
+    command.add_argument(
+        "--proof",
+        type=pathlib.Path,
+        metavar="FILE",
+        help="Where to write the proof, instead of what the job says.",
+    )
     command.add_argument(
         "-n",
         "--dry-run",
         action="store_true",
         help="Show the ordering and write no press file. Overrides the file.",
     )
-    # A stored job names one output, so running it a second time lands on the
-    # press file the first run wrote. That is a thing to say out loud rather
-    # than a reason the job can only be run once.
-    command.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Replace the press file and proof this job names, if they are "
-        "already there. A job cannot carry this; the run makes it.",
-    )
     command.set_defaults(command="run")
+    return command
 
 
 def recorded(args, options: dict, output, proof) -> dict:
@@ -169,8 +197,13 @@ def recorded(args, options: dict, output, proof) -> dict:
     return job
 
 
-def load(path: str | pathlib.Path) -> dict:
-    """Read a job file. Paths come back absolute, beside the file."""
+def load(path: str | pathlib.Path, *, needs_source: bool = True) -> dict:
+    """Read a job file. Paths come back absolute, beside the file.
+
+    *needs_source* is false when the caller is supplying the file itself, as
+    a watched folder does: the job is then a policy, and a policy that named
+    a source would impose that one file for ever.
+    """
     file = pathlib.Path(path)
     try:
         data = json.loads(file.read_text(encoding="utf-8"))
@@ -188,8 +221,13 @@ def load(path: str | pathlib.Path) -> dict:
         raise ImposeError(
             f"{file} is job version {version}. This impose reads version {VERSION}."
         )
-    if "source" not in data or "schema" not in data:
-        raise ImposeError(f"{file} needs a source and a schema.")
+    if "schema" not in data:
+        raise ImposeError(f"{file} needs a schema: it is what the job is.")
+    if needs_source and "source" not in data:
+        raise ImposeError(
+            f"{file} names no source, so it is a folder's policy rather than "
+            f"a job. Name the file to impose on the command line."
+        )
     if data["schema"] not in SCHEMAS:
         raise ImposeError(
             f"Unknown schema {data['schema']!r}. Known schemas: "
@@ -221,16 +259,41 @@ def dump(path: str | pathlib.Path, job: dict) -> None:
         )
 
 
-def run(
-    path: str | pathlib.Path, out, *, plan_only: bool = False, overwrite: bool = False
+def run(  # pylint: disable=too-many-arguments
+    path: str | pathlib.Path,
+    out,
+    *,
+    source=None,
+    output=None,
+    proof=None,
+    trim_from: str | None = None,
+    damaged: str | None = None,
+    plan_only: bool = False,
+    overwrite: bool = False,
 ):
-    """Impose the job in *path*. Returns the same result imposing it would."""
-    job = load(path)
+    """Impose the job in *path*. Returns the same result imposing it would.
+
+    *source*, *output* and *proof* are the three facts about one file, and a
+    caller that has them overrides whatever the job stored. That is what lets
+    one job file be a folder's policy: the folder's watcher knows which file
+    arrived and the job knows everything else. A job with no source needs
+    one here.
+
+    *trim_from* and *damaged* are the judgements a job file may not store,
+    and this is a run, so it may make them.
+    """
+    job = load(path, needs_source=source is None)
     job.pop("version", None)
+    # The two options a job file is refused for naming, put in by hand
+    # because this is a run and they are a run's to make. A folder of office
+    # exports is a stored policy and `--trim-from mediabox`, and there is
+    # nowhere else for that to be said.
+    if trim_from is not None:
+        job["trim_from"] = trim_from
+    if damaged is not None:
+        job["damaged"] = damaged
     dry = plan_only or bool(job.pop("dry_run", False))
-    source = job.pop("source")
-    output = job.pop("output", None) or _beside(source)
-    proof = job.pop("proof", None)
+    source, output, proof = _paths(job, source, output, proof)
     schema = job.pop("schema")
     sides = job.pop("sides", None)
     if sides is not None:
@@ -309,6 +372,24 @@ def _run_cover(  # pylint: disable=too-many-arguments
     print(cover.describe(), file=out)
     _report(out, result, output, proof, dry=dry)
     return result
+
+
+def _paths(job: dict, source, output, proof):
+    """The three facts about one file: the run's, or else the job's.
+
+    All three are taken out of *job* whether or not they are being
+    overridden, because what is left in it is handed to the schema as
+    keyword arguments and a key that stayed behind would arrive twice.
+    """
+    stored_source = job.pop("source", None)
+    stored_output = job.pop("output", None)
+    stored_proof = job.pop("proof", None)
+    source = stored_source if source is None else source
+    return (
+        source,
+        output or stored_output or _beside(source),
+        stored_proof if proof is None else proof,
+    )
 
 
 def _report(out, result, output, proof, *, dry: bool) -> None:
