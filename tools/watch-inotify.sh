@@ -42,7 +42,38 @@ if ! mkdir "$lock" 2>/dev/null; then
         "$0" "${held:-unknown}" >&2
 fi
 printf '%s\n' "$$" >"$lock/pid"
-trap 'rm -rf "$lock"' EXIT HUP INT TERM
+
+# Two traps and not one. A trap does not run while the shell is waiting on a
+# foreground command, and the event pipeline at the bottom of this script
+# never returns -- so a signal aimed at this pid alone does nothing at all
+# (measured: five seconds later, still watching, lock untouched). What stops
+# a watcher is a signal to the whole process group: `systemctl stop` sends
+# one to the service's cgroup and Ctrl-C to the foreground job, the pipeline
+# then ends, and the EXIT trap below clears the lock. Exit 143 either way.
+#
+# The one window where a signal trap does fire is startup, between taking the
+# lock and reaching the loop. `trap 'rm -rf "$lock"' EXIT HUP INT TERM`,
+# which is what this was, deleted the lock there and then carried on into the
+# loop: measured with the probe slowed down, a watcher still claiming files
+# with nothing left to refuse a second one started on the same folder. So the
+# cleanup hangs off EXIT, which runs however this leaves, and each signal's
+# only job is to leave -- with the status a shell reports for that signal,
+# which is the status `impose` itself now exits with.
+trap 'rm -rf "$lock"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Whether this run still holds the folder. The loop at the bottom is a
+# pipeline child, so it is a second process, and it survives a SIGKILL -- or
+# a crash -- of this one. The lock then names a pid nobody is running, which
+# the next watcher to start is entitled to clear and does. Measured without
+# this check: the orphaned loop claimed a file out of in/ while the new
+# watcher held the lock, which is the two-watchers-one-folder the lock exists
+# to prevent. It finds out here instead, before the next file, and stops.
+owned() {
+    [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$$" ]
+}
 
 # The claim below is a hard link, so `in/` and `work/` have to support one.
 # Nearly everything does; some SMB mounts and exFAT do not, and there the
@@ -171,6 +202,7 @@ sweep() {
 inotifywait -m -q -e close_write -e moved_to --format '%f' "$in" | {
     sweep
     while read -r name; do
+        owned || break
         handle "$name" || true
     done
 }

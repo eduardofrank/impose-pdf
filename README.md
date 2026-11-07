@@ -1049,6 +1049,28 @@ A file that is imposed but cannot then be filed — a full disk, a bucket
 somebody chmodded — stays in `work/` with a line on stderr, and the next start
 sweeps it up. One file nobody can file does not stop the watcher.
 
+**Stop the whole thing, not the script.** A watcher is two processes: the
+event source and the loop reading it, which is a pipeline. That has one
+consequence worth knowing before you write a stop command. A shell runs no
+trap while it is waiting on a foreground command, and the pipeline never
+returns, so a signal aimed at the script's own pid does nothing at all —
+measured, five seconds later: still watching, lock untouched. What stops a
+watcher is a signal to the whole group, which is what `systemctl stop` sends
+to the service's cgroup and what Ctrl-C sends to a foreground job. The
+pipeline ends, the lock is cleared, and the status is `143`.
+
+Two narrower things the scripts now answer for, both measured against the
+version before them. A stop signal arriving during *startup* — the window
+between taking the lock and reaching the loop — used to run a trap that
+deleted the lock and then carried on into the loop, leaving a watcher
+claiming files with nothing left to refuse a second one started on the same
+folder; it now leaves instead, with `143`. And a watcher ended with SIGKILL,
+or by crashing, leaves that reading loop alive while the lock names a pid
+nobody is running — which the next watcher to start is entitled to clear, and
+does. The orphan used to claim a file out of `in/` while the new watcher held
+the lock. It now checks the lock still names it, finds that it does not, and
+stops.
+
 ## Using it as a library
 
 ```python

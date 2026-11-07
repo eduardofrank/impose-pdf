@@ -38,7 +38,24 @@ if ! mkdir "$lock" 2>/dev/null; then
         "$0" "${held:-unknown}" >&2
 fi
 printf '%s\n' "$$" >"$lock/pid"
-trap 'rm -rf "$lock"' EXIT HUP INT TERM
+
+# Cleanup on EXIT, and each signal's only job is to leave. A trap does not run
+# while the shell waits on the pipeline at the bottom, so what stops this is a
+# signal to the process group -- `launchctl bootout`, or Ctrl-C. The one that
+# used to cover all four here deleted the lock during startup and carried on
+# watching without it. See watch-inotify.sh.
+trap 'rm -rf "$lock"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Whether this run still holds the folder: see watch-inotify.sh. The loop
+# below is a pipeline child and survives a SIGKILL of this script, after which
+# the lock names a dead pid and the next watcher clears it; this is how the
+# orphan finds out, instead of working a folder somebody else now holds.
+owned() {
+    [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$$" ]
+}
 
 # The claim below is a hard link, so `in/` and `work/` have to support one.
 # Most volumes do; some SMB mounts and exFAT do not, and there the claim would
@@ -180,6 +197,7 @@ sweep() {
 fswatch -0 --event Created --event MovedTo --event Updated "$in" | {
     sweep
     while read -r -d "" path; do
+        owned || break
         handle "$(basename "$path")" || true
     done
 }
