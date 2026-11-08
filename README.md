@@ -803,6 +803,12 @@ follows is what impose does so that a folder is safe to leave running, and
 `tools/watch-inotify.sh` and `tools/watch-fswatch.sh` are worked examples of
 the other half.
 
+[RUNNING.md](RUNNING.md) is the same ground from the other side: one shop's
+procedure for these folders — what they are called, what goes in a policy and
+what is left at its default, what a status means at seven in the morning, and
+the seven steps for adding a folder. Read that one to run a folder, and this
+one to know why it refuses what it refuses.
+
 **One folder, one schema, one policy.** Not a constraint impose imposes — a
 consequence of the options being per folder. `--expect-size A4` is a statement
 about what arrives in *this* folder, and a folder that takes two finished sizes
@@ -2243,9 +2249,10 @@ for `--dry-run`, which is the real call with one flag changed.
 
 MIT — see [LICENSE](LICENSE).
 
-[SECURITY.md](SECURITY.md) says what to do about a vulnerability, what this
-code does and does not do with a file it did not write, and what a watched
-folder should be careful about.
+[RUNNING.md](RUNNING.md) is the shop's operating procedure for watched
+folders, and [SECURITY.md](SECURITY.md) says what to do about a vulnerability,
+what this code does and does not do with a file it did not write, and what a
+watched folder should be careful about.
 
 The single dependency is [pikepdf](https://github.com/pikepdf/pikepdf)
 (MPL-2.0, over QPDF's Apache-2.0). PyMuPDF is deliberately not used: it is
