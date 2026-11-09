@@ -2112,6 +2112,10 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
 | ✅ | `signals` — a run stopped from outside takes its half-written file with it |
+| ✅ | A folder's policy — a stored job with no source, imposed on whatever arrives |
+| ✅ | `policy.conf` — what a watched folder is for, written in the folder and parsed, not sourced |
+| ✅ | One folder, one service — a systemd template and a launchd plist per watched folder |
+| ✅ | One outbox, one folder — the directory a folder writes into claimed at startup |
 
 ## Several copies to a sheet
 
@@ -2266,7 +2270,10 @@ be turned down for.
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 ```
 
-Over 900 tests, no system libraries, under four seconds. The suite asserts
+Over 900 tests, no system libraries, under five seconds. Four of them run the
+reference watchers in `tools/`, so they want a shell and `impose` on the PATH,
+and say so by skipping where either is missing; the rest are the library. The
+suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.

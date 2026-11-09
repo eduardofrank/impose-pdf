@@ -148,7 +148,13 @@ them; and:
 - Run the watcher as a user with nothing else to lose — it needs to read the
   inbox and write the output directory, and that is all. Not root.
 - Put the output directory somewhere only that user writes. The temporary is
-  created `0644`, so a shared output directory means a readable temporary.
+  created `0644`, so a shared output directory means a readable temporary. Two
+  *folders* sharing one is worse than readable: the same filename arriving in
+  both is one press file, and two runs racing for that name both report
+  success with one imposition left. The reference watchers claim `OUT` and
+  `PROOF` at startup and refuse a directory another folder already holds, so
+  give each folder its own — a directory under the shared one if a RIP reads
+  that. Nothing claims it against a writer that is not one of these scripts.
 - Cap the input size before impose sees it, and put `ulimit`, `systemd`'s
   `MemoryMax`, or both in front of a folder exposed to anybody you do not know.
 - Keep `--overwrite` out of the invocation, which is the default. A resend then

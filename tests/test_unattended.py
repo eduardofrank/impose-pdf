@@ -43,6 +43,24 @@ _WATCHERS = (
 )
 
 
+def _runnable_watchers():
+    """The watchers this machine can run, by the shebang each one carries.
+
+    `/bin/bash` is not a given -- a minimal container has `/bin/sh` and
+    nothing else -- and running a script whose interpreter is missing raises
+    `FileNotFoundError` naming the *script*, which reads like the script is
+    the thing that is absent. Skipping the one that cannot run says what is
+    really going on, and still tests the other.
+    """
+    runnable = []
+    for watcher in _WATCHERS:
+        shebang = watcher.read_text(encoding="utf-8").splitlines()[0]
+        interpreter = shebang.removeprefix("#!").split()[0]
+        if pathlib.Path(interpreter).exists():
+            runnable.append(watcher)
+    return tuple(runnable)
+
+
 class TestClobber(unittest.TestCase):
     """Nothing already written is replaced without being asked.
 
@@ -523,6 +541,9 @@ class TestOneOutboxOneFolder(unittest.TestCase):
     """
 
     def setUp(self):
+        self.watchers = _runnable_watchers()
+        if not self.watchers:
+            self.skipTest("no interpreter for either reference watcher")
         self.root = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
         self.shared = self.root / "rip-in"
@@ -577,7 +598,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
 
     def test_a_second_folder_on_one_outbox_is_refused_by_name(self):
         claim = self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
-        for watcher in _WATCHERS:
+        for watcher in self.watchers:
             with self.subTest(watcher.name):
                 root = self.folder(f"second-{watcher.stem}", out=self.shared)
                 finished = self.start(watcher, root)
@@ -599,7 +620,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
 
     def test_a_shared_proof_directory_is_refused_the_same_way(self):
         self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
-        for watcher in _WATCHERS:
+        for watcher in self.watchers:
             with self.subTest(watcher.name):
                 root = self.folder(f"proofs-{watcher.stem}")
                 (root / "policy.conf").write_text(
@@ -616,7 +637,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
 
     def test_a_claim_whose_holder_is_gone_is_cleared_and_taken(self):
         dead = self.reaped_pid()
-        for watcher in _WATCHERS:
+        for watcher in self.watchers:
             with self.subTest(watcher.name):
                 shared = self.root / f"debris-{watcher.stem}"
                 shared.mkdir()
@@ -631,7 +652,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
         # The default layout cannot collide -- one out/ per folder -- so the
         # claim must be invisible there: taken, and gone again afterwards, or
         # every restart would meet its own debris.
-        for watcher in _WATCHERS:
+        for watcher in self.watchers:
             with self.subTest(watcher.name):
                 root = self.folder(f"own-{watcher.stem}")
                 finished = self.start(watcher, root)
