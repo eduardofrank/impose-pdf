@@ -262,7 +262,13 @@ printf '%s\n' "$$" >"$lock/pid"
 # cleanup hangs off EXIT, which runs however this leaves, and each signal's
 # only job is to leave -- with the status a shell reports for that signal,
 # which is the status `impose` itself now exits with.
-trap 'rm -rf "$lock"' EXIT
+#
+# The two claims taken below are released the same way. They are empty until
+# they are taken, and `${x:+"$x"}` is one word or nothing at all, so a signal
+# arriving during startup cannot remove a directory this run does not hold.
+out_claim=
+proof_claim=
+trap 'rm -rf "$lock" ${out_claim:+"$out_claim"} ${proof_claim:+"$proof_claim"}' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -277,6 +283,71 @@ trap 'exit 143' TERM
 owned() {
     [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$$" ]
 }
+
+# One outbox, one folder. The lock above settles two watchers on one folder;
+# this settles two folders on one outbox, which is the other way to arrive at
+# two runs writing a single press file -- and the one a policy can ask for by
+# accident, since `OUT=/srv/rip/in` in two folders is one directory, and any
+# filename that arrives in both is one name there. impose refuses that
+# sequentially: the press file is already at that name, exit 4, and the file
+# lands in `failed/` with the sentence. It cannot refuse the concurrent case,
+# because both runs look at a directory where the name is still free, and it
+# says so in `impose/destination.py` -- the rename is atomic and nothing
+# reserves the name. Measured: two runs, one `-o`, both exit 0, one press
+# file, the other run's sheets gone and nothing said about it.
+#
+# So the directory is claimed once, at startup, with the same `mkdir` that
+# claims the folder. Not `flock` around the impose call: that serialises every
+# folder sharing an outbox behind whichever one is part way through a
+# 3000-page job, which is the opposite of a service per folder, and `flock(1)`
+# is util-linux -- there is none on macOS, so watch-fswatch.sh could not carry
+# the same guarantee. `mkdir` is atomic on every filesystem, including the SMB
+# and NFS mounts a RIP's inbox tends to be, where flock is absent or advisory.
+#
+# PROOF is claimed too. A proof takes the arriving file's name as well, so two
+# folders sharing a proof directory lose a proof the same way.
+claim_written() {
+    directory=$1
+    role=$2
+    claim="$directory/.impose-writer.lock"
+    if ! trouble=$(mkdir "$claim" 2>&1); then
+        # Tell the two failures apart. A name already taken is another
+        # folder's claim and wants the sentence below; anything else -- a
+        # read-only mount, a directory somebody chmodded -- is this folder's
+        # own problem and wants the errno.
+        if [ ! -d "$claim" ]; then
+            printf '%s: cannot claim %s as this folder'"'"'s %s:\n%s\n' \
+                "$0" "$directory" "$role" "$trouble" >&2
+            exit 2
+        fi
+        held=$(cat "$claim/pid" 2>/dev/null || true)
+        holder=$(cat "$claim/folder" 2>/dev/null || true)
+        if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
+            printf '%s: %s is already the %s of %s (pid %s).\n' \
+                "$0" "$directory" "$role" "${holder:-another folder}" "$held" >&2
+            printf 'One %s, one folder: two folders writing one directory\n' "$role" >&2
+            printf 'write one file for every name that arrives in both, and two runs\n' >&2
+            printf 'racing for that name both report success. Give this folder a\n' >&2
+            printf 'directory of its own -- under that one, if a RIP reads it.\n' >&2
+            exit 2
+        fi
+        # The holder is gone, so the claim is debris, exactly as the folder
+        # lock's is.
+        printf '%s: clearing a claim on %s left by pid %s, which is no longer running.\n' \
+            "$0" "$directory" "${held:-unknown}" >&2
+    fi
+    # Both, because the pid says whether the claim is live and the folder says
+    # which policy to go and fix.
+    printf '%s\n' "$$" >"$claim/pid"
+    printf '%s\n' "$root" >"$claim/folder"
+}
+
+claim_written "$out" outbox
+out_claim="$out/.impose-writer.lock"
+if [ -n "$proofs" ]; then
+    claim_written "$proofs" "proof directory"
+    proof_claim="$proofs/.impose-writer.lock"
+fi
 
 # The claim below is a hard link, so `in/` and `work/` have to support one.
 # Nearly everything does; some SMB mounts and exFAT do not, and there the

@@ -14,7 +14,9 @@ of odd cases.
 
 import contextlib
 import io
+import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import sys
@@ -31,6 +33,14 @@ from impose.units import MM
 
 from .support import make_office_pdf, make_pdf, truncated_pdf
 from .test_cli import run, workspace
+
+#: The reference watchers. Both of them, because the claim is written out once
+#: per script -- they are copied to a server one file at a time and share no
+#: library, so one of the two is exactly the thing that drifts.
+_WATCHERS = (
+    pathlib.Path(__file__).resolve().parents[1] / "tools" / "watch-inotify.sh",
+    pathlib.Path(__file__).resolve().parents[1] / "tools" / "watch-fswatch.sh",
+)
 
 
 class TestClobber(unittest.TestCase):
@@ -493,3 +503,141 @@ def _write(data):
         return path
 
     return make
+
+
+class TestOneOutboxOneFolder(unittest.TestCase):
+    """Two folders writing one directory, answered where it can still be seen.
+
+    Measured before the watchers claimed the directory they write into: two
+    runs with one `-o`, started together, both exit 0 and leave one press
+    file, so a whole imposition is gone with nothing said about it. impose
+    cannot refuse that -- :func:`impose.destination.reserve` is looking at a
+    directory where the name is still free, and the rename that follows is
+    atomic but reserves nothing -- and the mistake is made in a policy, so the
+    folder's watcher is where it has to be answered.
+
+    The event source is stubbed out rather than relied on. A stub that exits
+    at once ends the pipeline, so the script runs every check, sweeps, and
+    leaves: deterministic on a machine that has inotify-tools or fswatch and
+    on one that has neither.
+    """
+
+    def setUp(self):
+        self.root = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.shared = self.root / "rip-in"
+        self.shared.mkdir()
+        impose = pathlib.Path(sys.executable).parent / "impose"
+        if not impose.exists():
+            self.skipTest(f"no impose beside {sys.executable}")
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        (self.bin / "impose").symlink_to(impose)
+        for stub in ("inotifywait", "fswatch"):
+            path = self.bin / stub
+            path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            path.chmod(0o755)
+
+    def folder(self, name, out=None):
+        """A watched folder whose policy writes into *out*, or its own out/."""
+        root = self.root / name
+        root.mkdir()
+        policy = "SCHEMA=nup\nOPTIONS=--up 1x2 --expect-size A4\n"
+        if out is not None:
+            policy += f"OUT={out}\n"
+        (root / "policy.conf").write_text(policy, encoding="utf-8")
+        return root
+
+    def start(self, watcher, root):
+        """Run *watcher* on *root*, with the stubs ahead of anything real."""
+        return subprocess.run(
+            [str(watcher), str(root)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env={**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}"},
+        )
+
+    @staticmethod
+    def hold(directory, pid, folder):
+        """Put a claim on *directory* in the name of *pid* and *folder*."""
+        claim = directory / ".impose-writer.lock"
+        claim.mkdir()
+        (claim / "pid").write_text(f"{pid}\n", encoding="utf-8")
+        (claim / "folder").write_text(f"{folder}\n", encoding="utf-8")
+        return claim
+
+    @staticmethod
+    def reaped_pid():
+        """A pid that is certainly not running: one started and waited for."""
+        with subprocess.Popen([sys.executable, "-c", ""]) as child:
+            child.wait()
+        return child.pid
+
+    def test_a_second_folder_on_one_outbox_is_refused_by_name(self):
+        claim = self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
+        for watcher in _WATCHERS:
+            with self.subTest(watcher.name):
+                root = self.folder(f"second-{watcher.stem}", out=self.shared)
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn(
+                    f"{self.shared} is already the outbox of /srv/impose/a4-nup "
+                    f"(pid {os.getpid()})",
+                    finished.stderr,
+                )
+                self.assertIn("One outbox, one folder", finished.stderr)
+                # And it leaves the holder's claim alone on the way out, which
+                # is what the trap's `${x:+"$x"}` is for: a refusal that
+                # cleaned up after itself would hand the folder to the next
+                # one to start.
+                self.assertEqual(
+                    (claim / "pid").read_text(encoding="utf-8").strip(),
+                    str(os.getpid()),
+                )
+
+    def test_a_shared_proof_directory_is_refused_the_same_way(self):
+        self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
+        for watcher in _WATCHERS:
+            with self.subTest(watcher.name):
+                root = self.folder(f"proofs-{watcher.stem}")
+                (root / "policy.conf").write_text(
+                    f"SCHEMA=nup\nOPTIONS=--up 1x2 --expect-size A4\n"
+                    f"PROOF={self.shared}\n",
+                    encoding="utf-8",
+                )
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn(
+                    f"{self.shared} is already the proof directory of", finished.stderr
+                )
+                self.assertIn("One proof directory, one folder", finished.stderr)
+
+    def test_a_claim_whose_holder_is_gone_is_cleared_and_taken(self):
+        dead = self.reaped_pid()
+        for watcher in _WATCHERS:
+            with self.subTest(watcher.name):
+                shared = self.root / f"debris-{watcher.stem}"
+                shared.mkdir()
+                self.hold(shared, dead, "/srv/impose/whoever")
+                root = self.folder(f"heir-{watcher.stem}", out=shared)
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 0, finished.stderr)
+                self.assertIn(f"clearing a claim on {shared}", finished.stderr)
+                self.assertIn(f"left by pid {dead}", finished.stderr)
+
+    def test_a_folder_writing_its_own_out_claims_and_releases_it(self):
+        # The default layout cannot collide -- one out/ per folder -- so the
+        # claim must be invisible there: taken, and gone again afterwards, or
+        # every restart would meet its own debris.
+        for watcher in _WATCHERS:
+            with self.subTest(watcher.name):
+                root = self.folder(f"own-{watcher.stem}")
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 0, finished.stderr)
+                self.assertEqual(finished.stderr, "")
+                self.assertEqual(
+                    sorted(path.name for path in (root / "out").iterdir()), []
+                )
+                self.assertFalse((root / ".watcher.lock").exists())

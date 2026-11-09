@@ -59,9 +59,14 @@ def writing(destination):
     rather than everything that appears.
 
     Note what this does *not* do: it does not reserve the name. Two runs
-    writing one destination still race, and the last rename wins. One watched
-    folder writing into its own output directory does not have that problem,
-    and :func:`reserve` refuses the overwrite that would make it one.
+    writing one destination still race, and the last rename wins -- measured
+    on two concurrent runs with one output path: both exit 0, one press file,
+    one whole imposition gone. One watched folder writing into its own output
+    directory does not have that problem, and :func:`reserve` refuses the
+    sequential overwrite that would make it one. Two *folders* sharing an
+    output directory do have it, and nothing here can see it coming, which is
+    why the reference watchers in ``tools/`` claim the directory they write
+    into at startup rather than trusting a policy not to name somebody else's.
     """
     if is_pass_through(destination):
         yield destination

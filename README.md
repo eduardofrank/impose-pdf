@@ -856,6 +856,45 @@ not be the same directory — a proof and a press file both take the arriving
 file's name, so one directory for both is one name for both. Both refusals
 are at startup.
 
+**One outbox, one folder**, and this one is claimed rather than trusted. Two
+policies naming `OUT=/srv/rip/in` are two folders writing one directory, and
+any filename that arrives in both is one press file there. Sequentially impose
+refuses it — the press file is already at that name, exit `4`, and the artwork
+lands in `failed/` with the sentence. Concurrently it cannot: both runs look at
+a directory where the name is still free, and `impose/destination.py` says so
+in as many words — the rename is atomic and nothing reserves the name. Measured
+on two runs with one `-o`: both exit `0`, one press file, the other run's
+sheets gone and nothing said about it. So each script claims the directories it
+writes into, `OUT` and `PROOF`, with a `.impose-writer.lock` carrying its pid
+and the folder it serves; a second folder naming either of them is refused at
+startup, by name:
+
+```console
+$ tools/watch-inotify.sh ./a5-saddle
+tools/watch-inotify.sh: /srv/rip/in is already the outbox of /srv/impose/a4-nup (pid 4131).
+One outbox, one folder: two folders writing one directory
+write one file for every name that arrives in both, and two runs
+racing for that name both report success. Give this folder a
+directory of its own -- under that one, if a RIP reads it.
+```
+
+A folder's own `out/` is unique by construction, so the claim never fires for
+the default layout. Feeding one RIP from several folders is still the right
+shape; give each one its own directory under the inbox —
+`OUT=/srv/rip/in/a4-nup` — and let the RIP read them. A claim whose holder is
+gone is cleared with a sentence, like the folder lock, and both are released on
+the way out. `mkdir` is the claim and not `flock`: locking around the impose
+call would serialise every folder sharing an outbox behind whichever one is
+part way through a 3000-page job, which is the opposite of a service per
+folder, and `flock(1)` is util-linux — there is none on macOS, so the fswatch
+script could not carry the same guarantee. `mkdir` is atomic on every
+filesystem, including the SMB and NFS mounts a RIP's inbox tends to be.
+
+What the claim does not cover is a writer that is not one of these scripts:
+the RIP itself, a person, another shop's tool. Nothing can lock those out from
+here, and for them the rule is the documentation — a directory impose writes
+press files into is impose's to write.
+
 Starting a folder that has no `policy.conf` writes a commented one and stops:
 
 ```console
@@ -1080,9 +1119,10 @@ be open to whoever sends work. `work/` holds the claim: a file is there for
 exactly as long as impose is reading it, which is what makes anything left in
 it after a restart a job to finish rather than a job to guess about. `out/`
 and `proof/` are what the folder produced, outside the watch path — `out/` is
-`OUT`, so it is often not in the folder at all. The last three hold the
-artwork afterwards, and which one it is in *is* the answer to what happened
-to it.
+`OUT`, so it is often not in the folder at all, and each of the two carries a
+`.impose-writer.lock` while the watcher runs, which is the claim that keeps a
+second folder out of it. The last three hold the artwork afterwards, and which
+one it is in *is* the answer to what happened to it.
 
 Where a file lands is the exit status and nothing else, which is why the
 statuses are worth having:
@@ -1134,7 +1174,11 @@ The third is another watcher already holding the folder: `.watcher.lock`
 carries its pid, a second start is turned away by name, and a lock whose
 holder is gone is cleared with a sentence.
 
-The fourth is not being able to claim a file at all. The scripts claim one by
+The fourth is a directory this folder writes into that another folder already
+claims, as above: `OUT` or `PROOF` naming somebody else's outbox is turned away
+by name, and a claim whose holder is gone is cleared with a sentence.
+
+The fifth is not being able to claim a file at all. The scripts claim one by
 hard-linking its name from `in/` into `work/` — `ln` fails when the name is
 taken, which is what makes it a claim, where `mv -n` skips a taken name and
 exits 0 anyway. So linking has to work, and it does not on some SMB mounts or

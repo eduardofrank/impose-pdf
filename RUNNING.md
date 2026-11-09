@@ -63,6 +63,7 @@ start:
 | `rejected/` | the artwork, turned away: the file or the job |
 | `failed/` | the artwork, not imposed: the environment |
 | `.watcher.lock/` | held by the one watcher working this folder |
+| `out/.impose-writer.lock/` | this folder's claim on its outbox, and the same inside `proof/` |
 
 No file is ever in two of them, and which of the last three a file is in *is*
 the answer to what happened to it. A file lands beside a `book.pdf.txt` holding
@@ -252,6 +253,15 @@ What each thing you find means:
 - **A resend of a name already in `out/`.** Exit `4`, by design. Move the old
   press file aside, or put `--overwrite` in that folder's `OPTIONS` if the
   folder is one where the latest file always wins.
+- **A folder that will not start, naming another folder's outbox.** Two
+  policies have been pointed at one directory. Give this one its own, under
+  the shared directory if a RIP reads that. Nothing is lost by the refusal;
+  it is the configuration that would have lost a press file.
+- **A press file that vanished with nobody reporting a failure.** If `OUT` is
+  shared with anything that is not one of these watchers — the RIP writing
+  back, somebody copying by hand, another shop's tool — no claim covers it,
+  and the last writer of a name wins. A directory impose writes press files
+  into is impose's to write.
 
 ## Adding a folder
 
@@ -311,7 +321,14 @@ OPTIONS=--trim-from mediabox
 ```
 
 Set `OUT` to the RIP's own hot folder if there is one, and nothing has to copy
-anything afterwards. Leave `PROOF` out and the folder makes no proofs.
+anything afterwards — but **give this folder its own directory under it**,
+`OUT=/srv/rip/in/a6-saddle` rather than `OUT=/srv/rip/in`. One outbox, one
+folder: two folders writing one directory write one press file for every name
+that arrives in both, and two runs racing for that name both report success
+with one imposition left. The watcher claims `OUT` and `PROOF` at startup and
+refuses a directory another folder already holds, so this is a rule you find
+out about at boot rather than in a month. Leave `PROOF` out and the folder
+makes no proofs.
 
 **5. Start it by hand again and read the refusal, if there is one.** Every
 policy problem is caught before a file is touched, and the policy is *tried*
@@ -333,6 +350,13 @@ Known: SCHEMA, JOB, OPTIONS, OUT, PROOF.
 $ impose-watch /srv/impose/a6-saddle            # SCHEMA and JOB both
 impose-watch: /srv/impose/a6-saddle/policy.conf says both SCHEMA (saddle) and
 JOB (a6-saddle.json). One of them is the policy; pick which.
+
+$ impose-watch /srv/impose/a6-saddle            # OUT=/srv/rip/in, already a4-nup's
+impose-watch: /srv/rip/in is already the outbox of /srv/impose/a4-nup (pid 4131).
+One outbox, one folder: two folders writing one directory
+write one file for every name that arrives in both, and two runs
+racing for that name both report success. Give this folder a
+directory of its own -- under that one, if a RIP reads it.
 ```
 
 **6. Drop a sample in `in/` and start it one more time.** The sweep runs before

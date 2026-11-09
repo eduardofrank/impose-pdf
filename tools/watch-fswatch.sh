@@ -236,7 +236,11 @@ printf '%s\n' "$$" >"$lock/pid"
 # signal to the process group -- `launchctl bootout`, or Ctrl-C. The one that
 # used to cover all four here deleted the lock during startup and carried on
 # watching without it. See watch-inotify.sh.
-trap 'rm -rf "$lock"' EXIT
+# The two claims below are released the same way, and are empty until taken,
+# so a signal during startup cannot remove a directory this run does not hold.
+out_claim=
+proof_claim=
+trap 'rm -rf "$lock" ${out_claim:+"$out_claim"} ${proof_claim:+"$proof_claim"}' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -248,6 +252,51 @@ trap 'exit 143' TERM
 owned() {
     [ "$(cat "$lock/pid" 2>/dev/null || true)" = "$$" ]
 }
+
+# One outbox, one folder. The lock above settles two watchers on one folder;
+# this settles two folders on one outbox -- `OUT=/srv/rip/in` in two policies
+# is one directory, and a filename arriving in both is one press file there.
+# impose refuses that sequentially (exit 4, already at that name) and cannot
+# refuse it concurrently: measured, two runs with one `-o` both exit 0 and one
+# of the two impositions is gone. `mkdir` rather than `flock` around the
+# impose call, which there is no `flock(1)` for on macOS anyway. See
+# watch-inotify.sh for the whole of the reasoning. PROOF is claimed too: a
+# proof takes the arriving name as well.
+claim_written() {
+    local directory=$1 role=$2 claim held holder trouble
+    claim="$directory/.impose-writer.lock"
+    if ! trouble=$(mkdir "$claim" 2>&1); then
+        # A name already taken is another folder; anything else -- a read-only
+        # mount, a directory somebody chmodded -- wants its errno instead.
+        if [ ! -d "$claim" ]; then
+            printf '%s: cannot claim %s as this folder'"'"'s %s:\n%s\n' \
+                "$0" "$directory" "$role" "$trouble" >&2
+            exit 2
+        fi
+        held=$(cat "$claim/pid" 2>/dev/null || true)
+        holder=$(cat "$claim/folder" 2>/dev/null || true)
+        if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
+            printf '%s: %s is already the %s of %s (pid %s).\n' \
+                "$0" "$directory" "$role" "${holder:-another folder}" "$held" >&2
+            printf 'One %s, one folder: two folders writing one directory\n' "$role" >&2
+            printf 'write one file for every name that arrives in both, and two runs\n' >&2
+            printf 'racing for that name both report success. Give this folder a\n' >&2
+            printf 'directory of its own -- under that one, if a RIP reads it.\n' >&2
+            exit 2
+        fi
+        printf '%s: clearing a claim on %s left by pid %s, which is no longer running.\n' \
+            "$0" "$directory" "${held:-unknown}" >&2
+    fi
+    printf '%s\n' "$$" >"$claim/pid"
+    printf '%s\n' "$root" >"$claim/folder"
+}
+
+claim_written "$out" outbox
+out_claim="$out/.impose-writer.lock"
+if [ -n "$proofs" ]; then
+    claim_written "$proofs" "proof directory"
+    proof_claim="$proofs/.impose-writer.lock"
+fi
 
 # The claim below is a hard link, so `in/` and `work/` have to support one.
 # Most volumes do; some SMB mounts and exFAT do not, and there the claim would
