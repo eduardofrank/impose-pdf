@@ -2268,12 +2268,16 @@ be turned down for.
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
+shellcheck tools/*.sh
 ```
 
 Over 900 tests, no system libraries, under five seconds. Four of them run the
 reference watchers in `tools/`, so they want a shell and `impose` on the PATH,
-and say so by skipping where either is missing; the rest are the library. The
-suite asserts
+and say so by skipping where either is missing; the rest are the library.
+shellcheck is the fourth command and the only part of the gate that is not a
+Python package: those watchers are what a shop copies as the starting point
+for a hot folder, so they get a linter of their own and it has to be as silent
+as pylint. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.

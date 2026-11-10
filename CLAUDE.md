@@ -29,7 +29,11 @@ Before each commit, the gate:
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
+shellcheck tools/*.sh
 ```
+
+shellcheck has to be silent too, same as pylint, and the scripts in `tools/`
+are the ones a shop copies into production.
 
 Subject line a declarative sentence ending in a period; body in prose for the
 why. Push when the change is complete, and report CI as pass or fail.

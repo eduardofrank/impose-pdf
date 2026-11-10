@@ -18,20 +18,44 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 Use `./.venv/bin/python` for everything. A system `python` will not have
 pikepdf, and the error it gives is not the one you will expect.
 
-Three commands, and they are the whole gate:
+Four commands, and they are the whole gate:
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
+shellcheck tools/*.sh
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14. **pylint has to be silent,
 not merely 10.00/10.** The score rounds, so 10.00/10 is quite possible with a
 message still showing — pylint exits nonzero for any message at all, which is
-what CI reads, and a message nobody acts on is a message nobody reads. `tools/`
-is deliberately outside it: shell is not linted, and `check-artwork.py` imports
-a renderer the package will not depend on.
+what CI reads, and a message nobody acts on is a message nobody reads.
+`check-artwork.py` is deliberately outside pylint: it imports a renderer the
+package will not depend on.
+
+**shellcheck has to be silent as well**, and for a better reason than symmetry:
+the watchers in `tools/` are what a shop copies as the starting point for every
+hot folder it builds, and a defect in one of them is a defect in somebody's
+production folder. It is not a Python package — `brew install shellcheck`, or
+`apt install shellcheck` — and like the rest of the dev tools it is unpinned,
+so CI may be running a release behind or ahead of yours.
+
+Default severity, and **not** `--enable=all`. The optional checks want `[[ ]]`
+over `[ ]`, braces round every variable reference, and a `|| true` on every
+command substitution; the first two are a different house style from this one,
+and the third contradicts what those scripts do on purpose — `message=$(impose
+…) || status=$?` is how a watcher turns a failure into a bucket instead of
+dying on it.
+
+At default severity the watchers raised two findings, the same two in each
+script, and the two went different ways. `set -- $OPTIONS` keeps its
+unquoted expansion and carries a `# shellcheck disable=SC2086` with the reason
+beside it, because the splitting is the point of the line and `set -f` is what
+makes it safe; a `# shellcheck disable` earns its place exactly the way a
+`# pylint: disable` does, narrowest form and a reason. The other was an
+unquoted `done` as a bucket name, which shellcheck reads as the end of a loop
+— quicker to quote than to explain, and quoted.
 
 ## One dependency, and it stays that way
 

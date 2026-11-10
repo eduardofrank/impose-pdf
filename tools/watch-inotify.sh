@@ -201,6 +201,9 @@ impose_it() {
     press_file=$2
     proof_file=$3
     set -f
+    # The splitting is the point of this line, and `set -f` is what makes it
+    # safe, so the quotes shellcheck asks for here would break it.
+    # shellcheck disable=SC2086
     set -- $OPTIONS
     set +f
     if [ -n "$proof_file" ]; then
@@ -384,10 +387,12 @@ impose_claimed() {
     # The status says which bucket; the sentence says why. Both go with the
     # file, because whoever opens that folder wants to know without digging
     # through a log.
+    # Quoted, all three, because an unquoted `done` reads to shellcheck as
+    # the end of a loop (SC1010) and the three are one set.
     case $status in
-    0) bucket=done ;;
-    1 | 3) bucket=rejected ;; # the file or the job: do not retry
-    *) bucket=failed ;;       # the environment: fix it and run it again
+    0) bucket="done" ;;
+    1 | 3) bucket="rejected" ;; # the file or the job: do not retry
+    *) bucket="failed" ;;       # the environment: fix it and run it again
     esac
 
     # Guarded, and this is not pedantry: `set -eu` makes an unguarded failure

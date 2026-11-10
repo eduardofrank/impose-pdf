@@ -50,3 +50,8 @@ jobs:
       - run: python -m pylint impose tests
       - run: python -m black --check --diff .
       - run: python -m isort --check --diff .
+
+      # The runner image ships ShellCheck, and it is unpinned here for the
+      # same reason the Python tools are: a watcher that only passes the
+      # linter it was written against is not a watcher anybody should copy.
+      - run: shellcheck tools/*.sh
