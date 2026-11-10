@@ -18,13 +18,14 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 Use `./.venv/bin/python` for everything. A system `python` will not have
 pikepdf, and the error it gives is not the one you will expect.
 
-Four commands, and they are the whole gate:
+Five commands, and they are the whole gate:
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
-shellcheck tools/*.sh
+shellcheck tools/*.sh tests/shell/*.sh
+bats tests/shell
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14. **pylint has to be silent,
@@ -115,6 +116,57 @@ in its docstring which real-world producer emits that shape.
 
 Name a test after the claim it makes, as a sentence:
 `test_a_producer_s_rounding_is_not_a_different_size`, not `test_tolerance_2`.
+
+## The shell tests
+
+The watchers are tested in two places, and the split is deliberate.
+
+`tests/test_unattended.py` runs them from Python with an event source that
+exits immediately. That reaches every startup refusal and the sweep, costs
+nothing, and skips by itself on a machine with no `/bin/bash` or no `impose`.
+What it cannot reach is the loop at the bottom of the script, because a source
+that exits never reports an event.
+
+`tests/shell/watch-inotify.bats` reaches it, by doing what a shop does: start
+the watcher on a folder, hand it a PDF while it is running, and read the
+folder back afterwards. A file that arrives lands in `done/`, `rejected/` or
+`failed/` by what impose did with it, the status that put it there is in the
+log, and impose's sentence is in a `.txt` beside the file. Those are the
+claims an operator relies on every morning and none of them were tested
+before.
+
+It is in bats rather than in more Python for one reason: driving a service is
+most of the work — a process group of its own, a live event source, a signal
+that a pipeline will actually notice — and in `subprocess` that plumbing reads
+nothing like the shell it is testing. Here the test is the same language as
+the thing under test.
+
+**It is not part of the Python suite and does not change what that suite
+needs.** `unittest discover` still wants nothing but the install. `bats
+tests/shell` wants bats (`brew install bats-core`, or `apt install bats`) and
+an `impose` it can run, and it skips the whole file rather than failing when
+there is no impose to find. It is also slow by this project's standards —
+seven seconds for six tests, measured, because waiting for an event source is
+wall-clock time and nothing makes it shorter.
+
+Two things to know before adding a test there:
+
+**inotify is a Linux interface, so most of the time the event source is a
+stand-in.** `tests/shell/inotifywait-stand-in.sh` polls the inbox and prints
+what appears. It copies the one behaviour of inotify the script depends on --
+silence about files that were already there, which is the whole reason the
+script sweeps at startup -- and it copies nothing else, `close_write` least of
+all. The real `inotifywait` runs in CI's `shell` job, and that is the only
+place it runs.
+
+**Give a file a second chance in `prove_watching` and nowhere else.** Neither
+event source says when it has started watching, so the tests hand over one
+file of their own first and re-announce it until it comes back; everything
+after that is read once, with no retry. Measured the other way round, with the
+retry inside the wait that every test uses: deleting the call to `sweep` from
+the watcher left all six tests passing, because the file put in the inbox
+before startup was picked up by the retry's event instead. A test that cannot
+fail is worse than no test, and that is what a generous retry buys.
 
 ## Measure what you claim
 

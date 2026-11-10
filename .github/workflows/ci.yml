@@ -54,4 +54,24 @@ jobs:
       # The runner image ships ShellCheck, and it is unpinned here for the
       # same reason the Python tools are: a watcher that only passes the
       # linter it was written against is not a watcher anybody should copy.
-      - run: shellcheck tools/*.sh
+      - run: shellcheck tools/*.sh tests/shell/*.sh
+
+  # The one job that runs a watcher against real inotify. The tests work on a
+  # macOS laptop too, through the stand-in in tests/shell, but a stand-in is
+  # a stand-in: what a shop puts under systemd is this script on top of
+  # inotify-tools, and this is where that pair is measured.
+  shell:
+    name: shell (bats)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y bats inotify-tools
+      - run: bats --timing tests/shell

@@ -2268,19 +2268,27 @@ be turned down for.
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
-shellcheck tools/*.sh
+shellcheck tools/*.sh tests/shell/*.sh
+bats tests/shell
 ```
 
 Over 900 tests, no system libraries, under five seconds. Four of them run the
 reference watchers in `tools/`, so they want a shell and `impose` on the PATH,
-and say so by skipping where either is missing; the rest are the library.
-shellcheck is the fourth command and the only part of the gate that is not a
-Python package: those watchers are what a shop copies as the starting point
-for a hot folder, so they get a linter of their own and it has to be as silent
-as pylint. The suite asserts
-geometry and structure rather than pixels: an imposition is right or wrong by
-where the trims land on the sheet, and expectations are literals from ISO 216
-and ISO 217 rather than restatements of what the code computes.
+and say so by skipping where either is missing; the rest are the library. The
+suite asserts geometry and structure rather than pixels: an imposition is
+right or wrong by where the trims land on the sheet, and expectations are
+literals from ISO 216 and ISO 217 rather than restatements of what the code
+computes.
+
+The last two commands are the shell, and they are the only part of the gate
+that wants anything installed on the machine. shellcheck is the linter those
+two watchers never had, and it has to be as silent as pylint: they are what a
+shop copies as the starting point for a hot folder, so a defect in one of them
+is a defect in somebody's production folder. `bats tests/shell` is six tests
+that start one of them on a temporary folder, drop a PDF in, and assert which
+bucket the file lands in and what status put it there — the service running,
+rather than the startup checks the Python tests cover. Seven seconds, and it
+skips itself when there is no `impose` to run.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the

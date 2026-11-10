@@ -29,11 +29,14 @@ Before each commit, the gate:
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
-shellcheck tools/*.sh
+shellcheck tools/*.sh tests/shell/*.sh
+bats tests/shell
 ```
 
 shellcheck has to be silent too, same as pylint, and the scripts in `tools/`
-are the ones a shop copies into production.
+are the ones a shop copies into production. `bats tests/shell` starts a
+watcher on a temporary folder and drops files into it; it needs bats and an
+installed `impose`, and it takes seven seconds, which is most of the gate.
 
 Subject line a declarative sentence ending in a period; body in prose for the
 why. Push when the change is complete, and report CI as pass or fail.
