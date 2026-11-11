@@ -523,21 +523,15 @@ def _write(data):
     return make
 
 
-class TestOneOutboxOneFolder(unittest.TestCase):
-    """Two folders writing one directory, answered where it can still be seen.
-
-    Measured before the watchers claimed the directory they write into: two
-    runs with one `-o`, started together, both exit 0 and leave one press
-    file, so a whole imposition is gone with nothing said about it. impose
-    cannot refuse that -- :func:`impose.destination.reserve` is looking at a
-    directory where the name is still free, and the rename that follows is
-    atomic but reserves nothing -- and the mistake is made in a policy, so the
-    folder's watcher is where it has to be answered.
+class WatchedFolder(unittest.TestCase):
+    """A folder for a reference watcher to run on, and a way to run it.
 
     The event source is stubbed out rather than relied on. A stub that exits
     at once ends the pipeline, so the script runs every check, sweeps, and
     leaves: deterministic on a machine that has inotify-tools or fswatch and
-    on one that has neither.
+    on one that has neither. What that reaches is startup and the sweep. The
+    live event loop is `tests/shell/watch-inotify.bats`, which needs bats and
+    is not part of this suite.
     """
 
     def setUp(self):
@@ -546,8 +540,6 @@ class TestOneOutboxOneFolder(unittest.TestCase):
             self.skipTest("no interpreter for either reference watcher")
         self.root = pathlib.Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
-        self.shared = self.root / "rip-in"
-        self.shared.mkdir()
         impose = pathlib.Path(sys.executable).parent / "impose"
         if not impose.exists():
             self.skipTest(f"no impose beside {sys.executable}")
@@ -559,14 +551,19 @@ class TestOneOutboxOneFolder(unittest.TestCase):
             path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
 
-    def folder(self, name, out=None):
-        """A watched folder whose policy writes into *out*, or its own out/."""
+    def folder(self, name, **policy):
+        """A watched folder, with *policy* over the top of the house one.
+
+        The keywords are policy keys, spelled the way `policy.conf` spells
+        them, because that file is the thing under test.
+        """
         root = self.root / name
         root.mkdir()
-        policy = "SCHEMA=nup\nOPTIONS=--up 1x2 --expect-size A4\n"
-        if out is not None:
-            policy += f"OUT={out}\n"
-        (root / "policy.conf").write_text(policy, encoding="utf-8")
+        keys = {"SCHEMA": "nup", "OPTIONS": "--up 1x2 --expect-size A4", **policy}
+        (root / "policy.conf").write_text(
+            "".join(f"{key}={value}\n" for key, value in keys.items()),
+            encoding="utf-8",
+        )
         return root
 
     def start(self, watcher, root):
@@ -579,6 +576,24 @@ class TestOneOutboxOneFolder(unittest.TestCase):
             check=False,
             env={**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}"},
         )
+
+
+class TestOneOutboxOneFolder(WatchedFolder):
+    """Two folders writing one directory, answered where it can still be seen.
+
+    Measured before the watchers claimed the directory they write into: two
+    runs with one `-o`, started together, both exit 0 and leave one press
+    file, so a whole imposition is gone with nothing said about it. impose
+    cannot refuse that -- :func:`impose.destination.reserve` is looking at a
+    directory where the name is still free, and the rename that follows is
+    atomic but reserves nothing -- and the mistake is made in a policy, so the
+    folder's watcher is where it has to be answered.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.shared = self.root / "rip-in"
+        self.shared.mkdir()
 
     @staticmethod
     def hold(directory, pid, folder):
@@ -600,7 +615,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
         claim = self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
         for watcher in self.watchers:
             with self.subTest(watcher.name):
-                root = self.folder(f"second-{watcher.stem}", out=self.shared)
+                root = self.folder(f"second-{watcher.stem}", OUT=self.shared)
                 finished = self.start(watcher, root)
                 self.assertEqual(finished.returncode, 2, finished.stderr)
                 self.assertIn(
@@ -622,12 +637,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
         self.hold(self.shared, os.getpid(), "/srv/impose/a4-nup")
         for watcher in self.watchers:
             with self.subTest(watcher.name):
-                root = self.folder(f"proofs-{watcher.stem}")
-                (root / "policy.conf").write_text(
-                    f"SCHEMA=nup\nOPTIONS=--up 1x2 --expect-size A4\n"
-                    f"PROOF={self.shared}\n",
-                    encoding="utf-8",
-                )
+                root = self.folder(f"proofs-{watcher.stem}", PROOF=self.shared)
                 finished = self.start(watcher, root)
                 self.assertEqual(finished.returncode, 2, finished.stderr)
                 self.assertIn(
@@ -642,7 +652,7 @@ class TestOneOutboxOneFolder(unittest.TestCase):
                 shared = self.root / f"debris-{watcher.stem}"
                 shared.mkdir()
                 self.hold(shared, dead, "/srv/impose/whoever")
-                root = self.folder(f"heir-{watcher.stem}", out=shared)
+                root = self.folder(f"heir-{watcher.stem}", OUT=shared)
                 finished = self.start(watcher, root)
                 self.assertEqual(finished.returncode, 0, finished.stderr)
                 self.assertIn(f"clearing a claim on {shared}", finished.stderr)
