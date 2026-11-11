@@ -145,9 +145,11 @@ the thing under test.
 needs.** `unittest discover` still wants nothing but the install. `bats
 tests/shell` wants bats (`brew install bats-core`, or `apt install bats`) and
 an `impose` it can run, and it skips the whole file rather than failing when
-there is no impose to find. It is also slow by this project's standards —
-seven seconds for six tests, measured, because waiting for an event source is
-wall-clock time and nothing makes it shorter.
+there is no impose to find. It is also slow by this project's standards — four
+to five and a half seconds for seven tests, measured over four runs, because
+waiting for an event source is wall-clock time and nothing makes it shorter.
+The spread is `prove_watching` re-announcing a file in the tests that start
+before their event source does.
 
 Two things to know before adding a test there:
 
@@ -164,8 +166,8 @@ event source says when it has started watching, so the tests hand over one
 file of their own first and re-announce it until it comes back; everything
 after that is read once, with no retry. Measured the other way round, with the
 retry inside the wait that every test uses: deleting the call to `sweep` from
-the watcher left all six tests passing, because the file put in the inbox
-before startup was picked up by the retry's event instead. A test that cannot
+the watcher left every test passing, because the file put in the inbox before
+startup was picked up by the retry's event instead. A test that cannot
 fail is worse than no test, and that is what a generous retry buys.
 
 ## Measure what you claim

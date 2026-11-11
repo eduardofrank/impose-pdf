@@ -13,7 +13,9 @@ of odd cases.
 """
 
 import contextlib
+import datetime
 import io
+import json
 import os
 import pathlib
 import shutil
@@ -672,3 +674,124 @@ class TestOneOutboxOneFolder(WatchedFolder):
                     sorted(path.name for path in (root / "out").iterdir()), []
                 )
                 self.assertFalse((root / ".watcher.lock").exists())
+
+
+class TestJsonLog(WatchedFolder):
+    """`LOG_FORMAT=json`: the same record, for a reader that is not a person.
+
+    What a watcher says about a file -- `book.pdf: done (0)` -- was written
+    for whoever is tailing the journal, and it is three facts in a sentence.
+    A shop that wants to count this morning's jobs, find the slow ones, or
+    raise something when a bucket fills has to parse them back out of prose
+    that nothing here promised to keep. So a folder may ask for one object a
+    file instead, and two facts the sentence never carried come with it: when
+    the run started, and how long impose took.
+
+    The files go into `work/` rather than `in/`, which is the
+    left-over-from-an-earlier-run path. It reaches `impose_claimed` without
+    the fswatch script's three-second wait for a file to settle, so both
+    watchers cost the same here. The live event path is
+    `tests/shell/watch-inotify.bats`.
+    """
+
+    def sweep(self, watcher, files, **policy):
+        """Run *watcher* over *files*, already claimed, and give back its run.
+
+        A name whose value is `None` is a print-ready PDF; anything else is
+        the bytes to write under that name.
+        """
+        root = self.folder(f"log-{watcher.stem}", OPTIONS="--up 2x2", **policy)
+        work = root / "work"
+        work.mkdir()
+        for name, data in files.items():
+            if data is None:
+                make_pdf(2).save(work / name)
+            else:
+                (work / name).write_bytes(data)
+        finished = self.start(watcher, root)
+        self.assertEqual(finished.returncode, 0, finished.stderr)
+        return root, finished
+
+    def test_one_object_a_file_saying_what_happened_to_it(self):
+        # A name with a quote, a backslash and a tab in it, because a hot
+        # folder's filenames come from strangers and these are the three that
+        # would otherwise write a line nothing can parse.
+        odd = 'odd "name"\tand a \\ copy.pdf'
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root, finished = self.sweep(
+                    watcher,
+                    {"book.pdf": None, odd: None, "quote.pdf": b"not artwork\n"},
+                    LOG_FORMAT="json",
+                )
+                lines = finished.stdout.splitlines()
+                self.assertEqual(len(lines), 3, finished.stdout)
+                # Escaped, not sent raw: a tab in a filename reaching the
+                # line as a tab is a second field to whatever reads it.
+                self.assertNotIn("\t", finished.stdout)
+
+                logged = {}
+                for line in lines:
+                    entry = json.loads(line)
+                    logged[entry["file"]] = entry
+                self.assertEqual(sorted(logged), sorted(["book.pdf", odd, "quote.pdf"]))
+
+                imposed = logged["book.pdf"]
+                self.assertEqual(
+                    sorted(imposed),
+                    [
+                        "bucket",
+                        "duration",
+                        "exit",
+                        "file",
+                        "folder",
+                        "message",
+                        "timestamp",
+                    ],
+                )
+                self.assertEqual(imposed["folder"], str(root))
+                self.assertEqual(imposed["bucket"], "done")
+                self.assertEqual(imposed["exit"], 0)
+                self.assertIn("n-up: 2 pages onto 1 sheet", imposed["message"])
+
+                # The two facts the text line never carried. The duration is
+                # whatever impose took and nothing else -- not the claim, not
+                # the filing -- so it is small, and it is not negative.
+                started = datetime.datetime.strptime(
+                    imposed["timestamp"], "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+                self.assertLess(
+                    abs(datetime.datetime.now(datetime.timezone.utc) - started),
+                    datetime.timedelta(minutes=5),
+                )
+                self.assertGreaterEqual(imposed["duration"], 0)
+                self.assertLess(imposed["duration"], 60)
+
+                # The status and the bucket are the same decision the text
+                # line reports, which is the whole point of the field.
+                turned_away = logged["quote.pdf"]
+                self.assertEqual(turned_away["exit"], 3)
+                self.assertEqual(turned_away["bucket"], "rejected")
+                self.assertTrue(
+                    turned_away["message"].startswith("impose: "),
+                    turned_away["message"],
+                )
+
+    def test_a_format_nobody_implements_is_refused_before_anything_is_imposed(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"xml-{watcher.stem}", LOG_FORMAT="xml")
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn(
+                    "LOG_FORMAT=xml is not a format this writes", finished.stderr
+                )
+                # Before anything: no outbox, so no file was ever at risk of
+                # being imposed and logged in a format nobody asked for.
+                self.assertFalse((root / "out").exists())
+
+    def test_the_default_is_still_the_line_a_person_reads(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                _, finished = self.sweep(watcher, {"book.pdf": None})
+                self.assertEqual(finished.stdout, "book.pdf: done (0)\n")

@@ -75,6 +75,13 @@ if [ ! -f "$policy" ]; then
 # Where the proofs go, if this folder makes them. Empty means it does not.
 # Keep them out of OUT: a RIP watching that folder would print them.
 # PROOF=proof
+
+# How this folder says what it did, one line per file either way. The
+# default, text, is `book.pdf: done (0)`, written for whoever is reading the
+# log. json is one object per file -- when it ran, which folder, which file,
+# which bucket, impose's exit status, how long impose took, and what it said
+# -- for when something other than a person is reading.
+# LOG_FORMAT=json
 FORM
     printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \
         "$0" "$policy" >&2
@@ -95,6 +102,7 @@ JOB=
 OPTIONS=
 OUT=
 PROOF=
+LOG_FORMAT=
 cr=$(printf '\r')
 while IFS= read -r line || [ -n "$line" ]; do
     # A share edited from Windows leaves carriage returns behind.
@@ -114,10 +122,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     OPTIONS) OPTIONS=$value ;;
     OUT) OUT=$value ;;
     PROOF) PROOF=$value ;;
+    LOG_FORMAT) LOG_FORMAT=$value ;;
     *)
         printf '%s: %s: %s is not a key of a policy.\n' \
             "$0" "$policy" "${line%%=*}" >&2
-        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF.\n' >&2
+        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT.\n' >&2
         exit 2
         ;;
     esac
@@ -135,6 +144,31 @@ if [ -z "$SCHEMA" ] && [ -z "$JOB" ]; then
     printf 'folder is for yet.\n' >&2
     exit 2
 fi
+
+# A format nobody implements is named rather than ignored, and the clock is
+# settled once rather than per file: see watch-inotify.sh for both.
+case $LOG_FORMAT in
+'' | text) log_json= ;;
+json) log_json=yes ;;
+*)
+    printf '%s: %s: LOG_FORMAT=%s is not a format this writes.\n' \
+        "$0" "$policy" "$LOG_FORMAT" >&2
+    printf 'Say text, the default, which is one line a file for a person; or\n' >&2
+    printf 'json, which is one object a file for whatever reads the log.\n' >&2
+    exit 2
+    ;;
+esac
+
+case $(date +%N 2>/dev/null) in
+*[0-9]*)
+    clock='%s.%N'
+    places=3
+    ;;
+*)
+    clock='%s'
+    places=0
+    ;;
+esac
 
 # A job file is named beside the policy that names it, so a folder moves in
 # one piece. An absolute path is taken as given, here and for the two
@@ -346,17 +380,84 @@ settled() {
     done
 }
 
+# How long the run took, and what this folder says about one file: see
+# watch-inotify.sh, which carries the commentary on the clock, on escaping a
+# filename into JSON, and on why the values reach awk through the environment.
+elapsed() {
+    awk -v from="$1" -v to="$2" -v places="$places" \
+        'BEGIN { printf "%." places "f", to - from }'
+}
+
+log_line() {
+    local name=$1 bucket=$2 status=$3 stamp=$4 duration=$5 message=$6
+
+    if [ -z "$log_json" ]; then
+        printf '%s: %s (%s)\n' "$name" "$bucket" "$status"
+        return 0
+    fi
+
+    IMPOSE_LOG_STAMP=$stamp \
+        IMPOSE_LOG_FOLDER=$root \
+        IMPOSE_LOG_FILE=$name \
+        IMPOSE_LOG_BUCKET=$bucket \
+        IMPOSE_LOG_EXIT=$status \
+        IMPOSE_LOG_DURATION=$duration \
+        IMPOSE_LOG_MESSAGE=$message \
+        awk '
+        function escape(raw,    out, i, c) {
+            out = ""
+            for (i = 1; i <= length(raw); i++) {
+                c = substr(raw, i, 1)
+                out = out ((c in escaped) ? escaped[c] : c)
+            }
+            return out
+        }
+        BEGIN {
+            for (i = 1; i < 32; i++) {
+                escaped[sprintf("%c", i)] = sprintf("\\u%04x", i)
+            }
+            escaped["\b"] = "\\b"
+            escaped["\t"] = "\\t"
+            escaped["\n"] = "\\n"
+            escaped["\f"] = "\\f"
+            escaped["\r"] = "\\r"
+            escaped["\""] = "\\\""
+            escaped["\\"] = "\\\\"
+
+            printf "{\"timestamp\":\"%s\",\"folder\":\"%s\",\"file\":\"%s\"," \
+                "\"bucket\":\"%s\",\"exit\":%s,\"duration\":%s," \
+                "\"message\":\"%s\"}\n", \
+                ENVIRON["IMPOSE_LOG_STAMP"], \
+                escape(ENVIRON["IMPOSE_LOG_FOLDER"]), \
+                escape(ENVIRON["IMPOSE_LOG_FILE"]), \
+                ENVIRON["IMPOSE_LOG_BUCKET"], \
+                ENVIRON["IMPOSE_LOG_EXIT"], \
+                ENVIRON["IMPOSE_LOG_DURATION"], \
+                escape(ENVIRON["IMPOSE_LOG_MESSAGE"])
+        }'
+}
+
 # Impose a file already claimed into `work/`, and file it by what happened.
 impose_claimed() {
-    local name=$1 status=0 message bucket proof_file=""
+    local name=$1 status=0 message bucket proof_file="" clocked stamp started
+    local duration
     if [ -n "$proofs" ]; then
         proof_file="$proofs/$name"
     fi
+
+    # The pair brackets the impose run and nothing else -- not the wait for
+    # the file to settle, which happens in `handle` before this is called,
+    # because what a shop asks of this number is how long the job took.
+    clocked=$(date -u +"%Y-%m-%dT%H:%M:%SZ $clock")
+    stamp=${clocked% *}
+    started=${clocked#* }
     message=$(impose_it "$work/$name" "$out/$name" "$proof_file" 2>&1) || status=$?
+    duration=$(elapsed "$started" "$(date -u +"$clock")")
 
     # The status says which bucket; the sentence says why. Both go with the
     # file, because whoever opens that folder wants to know without digging
     # through a log.
+    #
     # Quoted, all three, because an unquoted `done` reads to shellcheck as
     # the end of a loop (SC1010) and the three are one set.
     case $status in
@@ -376,7 +477,7 @@ impose_claimed() {
         return 1
     fi
     [ -n "$message" ] && printf '%s\n' "$message" >"$root/$bucket/$name.txt"
-    printf '%s: %s (%s)\n' "$name" "$bucket" "$status"
+    log_line "$name" "$bucket" "$status" "$stamp" "$duration" "$message"
     return 0
 }
 

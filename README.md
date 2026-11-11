@@ -895,6 +895,52 @@ the RIP itself, a person, another shop's tool. Nothing can lock those out from
 here, and for them the rule is the documentation — a directory impose writes
 press files into is impose's to write.
 
+**One line a file, and the folder says who is reading it.** The sixth key is
+`LOG_FORMAT`, on stdout either way, because stdout is the journal under both
+service managers. The default is `text`:
+
+```
+book.pdf: done (0)
+```
+
+— three facts in a sentence, for whoever is tailing it. `LOG_FORMAT=json` is
+the same record as one object a file, and carries two facts the sentence never
+could:
+
+```json
+{
+  "timestamp": "2026-11-11T10:52:43Z",
+  "folder": "./a4-nup",
+  "file": "book.pdf",
+  "bucket": "done",
+  "exit": 0,
+  "duration": 0.100,
+  "message": "n-up: 8 pages onto 1 sheet(s) at 4 up (2 × 2 upright), page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm\nwrote a4-nup/out/book.pdf"
+}
+```
+
+That is one line in the log — 274 characters of it; it is `jq .` here so the
+fields can be read. `timestamp` is when the run started, UTC, to the second.
+`duration` is how long impose took and nothing else: not the claim, not the
+filing, and in the fswatch script not the wait for the file to settle either,
+because what a shop asks of this number is how long the job took. Three
+decimal places where `date` has `%N` to measure them with, and whole seconds
+where it has not, rather than three places of invention. `bucket` is in the
+object although the status is there too, so that nothing downstream has to
+reimplement the one decision this script makes.
+
+`message` is what impose said, newlines and all, which is the other reason
+the format exists: a sentence is the natural thing to write and the worst
+thing to parse. Both strings that come from outside — the filename and
+impose's own output, which carries whatever QPDF said — are escaped properly,
+including every C0 control as `\u00xx`, because a hot folder takes its
+filenames from strangers and a tab in one is a second field to whatever reads
+the line. Measured on a file called `odd "name"<TAB>and a \ copy.pdf`: the
+line parses, and the name comes back out of it exactly as it went in.
+
+A `LOG_FORMAT` naming a format the script does not write is refused at
+startup, with the other policy refusals, rather than logged in the other one.
+
 Starting a folder that has no `policy.conf` writes a commented one and stops:
 
 ```console
@@ -1148,12 +1194,12 @@ event source ending and worth starting again.
 
 The first two are the policy. A `policy.conf` that is missing is written and
 stopped on, as above; one that is there is read, and a key it does not know,
-a line that is not `KEY=value`, both halves at once, or neither of them is a
-sentence naming the line. Then the policy is *tried*, once, against a
-filename that is not there — a source that does not exist is exit `3`, so a
-`3` back means the rest of the invocation is one this impose can make, and
-anything else is the options, the job file, or impose not being on the PATH
-the service runs with:
+a line that is not `KEY=value`, both halves at once, neither of them, or a
+`LOG_FORMAT` it cannot write is a sentence naming the line. Then the policy
+is *tried*, once, against a filename that is not there — a source that does
+not exist is exit `3`, so a `3` back means the rest of the invocation is one
+this impose can make, and anything else is the options, the job file, or
+impose not being on the PATH the service runs with:
 
 ```console
 $ tools/watch-inotify.sh ./a4-nup
@@ -2116,6 +2162,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `policy.conf` — what a watched folder is for, written in the folder and parsed, not sourced |
 | ✅ | One folder, one service — a systemd template and a launchd plist per watched folder |
 | ✅ | One outbox, one folder — the directory a folder writes into claimed at startup |
+| ✅ | `LOG_FORMAT=json` — one object a file, for a folder whose log is read by a program |
 
 ## Several copies to a sheet
 
@@ -2272,9 +2319,10 @@ shellcheck tools/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-Over 900 tests, no system libraries, under five seconds. Four of them run the
-reference watchers in `tools/`, so they want a shell and `impose` on the PATH,
-and say so by skipping where either is missing; the rest are the library. The
+Over 900 tests, no system libraries, six seconds. Seven of them run the
+reference watchers in `tools/` and are nearly half of that time, so they want
+a shell and `impose` on the PATH, and say so by skipping where either is
+missing; the rest are the library. The
 suite asserts geometry and structure rather than pixels: an imposition is
 right or wrong by where the trims land on the sheet, and expectations are
 literals from ISO 216 and ISO 217 rather than restatements of what the code
@@ -2284,11 +2332,11 @@ The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
 two watchers never had, and it has to be as silent as pylint: they are what a
 shop copies as the starting point for a hot folder, so a defect in one of them
-is a defect in somebody's production folder. `bats tests/shell` is six tests
+is a defect in somebody's production folder. `bats tests/shell` is seven tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Seven seconds, and it
-skips itself when there is no `impose` to run.
+rather than the startup checks the Python tests cover. Four to five seconds,
+and it skips itself when there is no `impose` to run.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the

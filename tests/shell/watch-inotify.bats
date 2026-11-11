@@ -39,11 +39,12 @@ setup_file() {
     # the gate runs against; a system-wide impose otherwise.
     if [ -x "$repo/.venv/bin/impose" ]; then
         export IMPOSE="$repo/.venv/bin/impose"
-        python=$repo/.venv/bin/python
+        export PYTHON="$repo/.venv/bin/python"
     elif command -v impose >/dev/null 2>&1; then
         export IMPOSE="$(command -v impose)"
-        python=$(command -v python3 || true)
-        [ -n "$python" ] || skip "no python3 to build a fixture with"
+        PYTHON=$(command -v python3 || true)
+        export PYTHON
+        [ -n "$PYTHON" ] || skip "no python3 to build a fixture with"
     else
         skip "no impose: install the project, or put one on the PATH"
     fi
@@ -51,7 +52,7 @@ setup_file() {
     # One fixture for the whole file, from the builders every other test here
     # uses: eight print-ready A6 pages with a TrimBox, bleed and a slug area.
     export ARTWORK="$BATS_FILE_TMPDIR/artwork.pdf"
-    ( cd "$repo" && "$python" -c '
+    ( cd "$repo" && "$PYTHON" -c '
 import sys
 from tests.support import make_pdf
 make_pdf(8).save(sys.argv[1])
@@ -148,7 +149,7 @@ start_watcher() {
 # with no retry at all -- which is what keeps "it landed in done/" a claim
 # about the watcher instead of a claim about this loop. It cost a test to
 # learn that: while `filed` did the re-announcing, deleting the call to
-# `sweep` from the script left all six tests passing, because the file put in
+# `sweep` from the script left every test passing, because the file put in
 # the inbox before startup was picked up by the retry's event instead.
 prove_watching() {
     local name=warm-up.pdf waited=0
@@ -298,6 +299,29 @@ filed() {
     # person before it will run again.
     [ ! -e "$root/.watcher.lock" ]
     [ ! -e "$root/out/.impose-writer.lock" ]
+}
+
+@test "a folder that asks for json gets one object a file" {
+    printf '%s\n' 'SCHEMA=nup' 'OPTIONS=--up 2x2' 'LOG_FORMAT=json' \
+        >"$root/policy.conf"
+    start_watcher
+    drop book.pdf
+
+    [ "$(filed book.pdf)" = done ]
+
+    # The object for this file, parsed by something that is strict about
+    # JSON rather than by a grep that would accept a line no reader can
+    # take. The fields are the ones a log is wanted for: which folder, which
+    # bucket, what impose exited with, and how long it took.
+    line=$(grep -F '"file":"book.pdf"' "$log")
+    run "$PYTHON" -c '
+import json, sys
+one = json.loads(sys.argv[1])
+print(one["bucket"], one["exit"], one["folder"] == sys.argv[2],
+      isinstance(one["duration"], (int, float)), "n-up" in one["message"])
+' "$line" "$root"
+    [ "$status" -eq 0 ]
+    [ "$output" = "done 0 True True True" ]
 }
 
 @test "a folder with no policy writes the form and refuses to start" {

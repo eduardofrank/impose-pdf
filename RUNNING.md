@@ -95,6 +95,15 @@ impose: a4-nup.json has 'trim_from', which is not a field of a job.
 `OPTIONS` reaches impose split on whitespace, so an option whose value has a
 space in it wants the ticket instead.
 
+**`LOG_FORMAT`, where the log is read by something rather than somebody.**
+The default is a sentence a file — `book.pdf: done (0)` — and it is the right
+thing for a folder somebody watches. A folder whose journal feeds a dashboard,
+a nightly count or an alert wants `LOG_FORMAT=json` in its policy instead:
+one object a file, on one line, carrying the folder, the file, the bucket,
+impose's exit status, how long impose took and what it said. It goes in the
+policy and not in the ticket, because who reads this folder's log is a fact
+about the folder. The fields are in the README.
+
 **The job ticket: everything the bindery told us, and anything too long for a
 line.** `JOB=` in the policy, a JSON file beside it. What belongs there:
 
@@ -262,6 +271,22 @@ What each thing you find means:
   back, somebody copying by hand, another shop's tool — no claim covers it,
   and the last writer of a name wins. A directory impose writes press files
   into is impose's to write.
+
+For a folder that carries `LOG_FORMAT=json`, the second and third commands
+above are one command:
+
+```bash
+journalctl -u impose-folder@a4-nup --since 06:00 -o cat |
+    jq -r 'select(.bucket != "done") | "\(.file): \(.bucket) (\(.exit))"'
+
+journalctl -u impose-folder@a4-nup --since 06:00 -o cat |
+    jq -rs 'group_by(.bucket)[] | "\(.[0].bucket) \(length) files"'
+```
+
+`-o cat` is what leaves the line as the watcher wrote it, with systemd's own
+prefix off the front. Both of those jq programs were run against the lines a
+folder writes; the `journalctl` in front of them is the part this laptop
+cannot try.
 
 ## Adding a folder
 
