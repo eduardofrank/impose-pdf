@@ -1324,8 +1324,8 @@ One honest caveat, smaller than it was: the unit file is still the one thing
 here that cannot be run on the machine it was written on, which has no
 systemd. What it gets instead is a systemd reading it — CI runs
 `systemd-analyze verify` over it on every push, and fails the job on any
-output at all, because a misspelled directive is reported and then ignored
-rather than refused. That checks the spelling, not the choices: whether
+line of the report that names it, because a misspelled directive is reported
+and then ignored rather than refused. That checks the spelling, not the choices: whether
 `ProtectSystem=strict` is the right setting for your folder is still a thing
 only your folder can say. Run `systemd-analyze verify
 impose-folder@a4-nup.service` once it is in place, where it can see your
@@ -2346,9 +2346,11 @@ and it skips itself when there is no `impose` to run.
 A third check on the same material runs in CI only, in the job those two
 share: `systemd-analyze verify` on `tools/systemd/impose-folder@.service`,
 with the watcher installed first at the path the unit names, because verify
-checks that `ExecStart=` is executable. It fails on any output rather than on
-the exit status — systemd reports a misspelled directive and carries on, so
-the exit status alone would pass a unit with `Restat=on-failure` in it.
+checks that `ExecStart=` is executable. It reads the report rather than the
+exit status — systemd reports a misspelled directive and carries on, so the
+exit status alone would pass a unit saying `Restat=on-failure` — and reads
+only the lines naming this unit, because verify loads the host's units too
+and a runner has warnings of its own.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the

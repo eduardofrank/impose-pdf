@@ -89,9 +89,18 @@ jobs:
       # does at load time, and that is the mistake this job exists to catch.
       # Measured on systemd 255 and 261; an unreadable value and an unknown
       # section behave the same way.
+      #
+      # Silence about this unit, that is. Verify reads the host's units as
+      # well, and this runner ships three that warn about a `CPUAccounting=`
+      # of their own -- which failed the job the first time it ran, on a file
+      # nobody here wrote. So dependencies are left out of the verdict, and
+      # what is read is the lines naming this unit: by file in a warning, by
+      # instance in a refusal.
       - name: Verify the unit
         run: |
-          report=$(systemd-analyze verify tools/systemd/impose-folder@.service 2>&1)
+          report=$(systemd-analyze verify --recursive-errors=no \
+              tools/systemd/impose-folder@.service 2>&1 |
+              grep -F impose-folder) || true
           if [ -n "$report" ]; then
             printf '%s\n' "$report" >&2
             exit 1

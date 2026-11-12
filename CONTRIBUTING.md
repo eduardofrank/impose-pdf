@@ -34,9 +34,12 @@ what a shop copies into production — shellcheck on the watchers,
 `systemd-analyze verify` on `tools/systemd/impose-folder@.service`, and bats
 on a temporary folder with the real `inotifywait` under it. Only the unit
 check is CI-only; there is no systemd on a macOS laptop to run it with. It
-fails on any output rather than on the exit status, because systemd reports
-a misspelled directive and then ignores it — `Unknown key 'Restat'`, exit 0 —
-which is precisely the mistake worth catching in a file nobody here can boot.
+fails on any line of the report naming the unit, rather than on the exit
+status, because systemd reports a misspelled directive and then ignores it —
+`Unknown key 'Restat'`, exit 0 — which is precisely the mistake worth
+catching in a file nobody here can boot. The lines not naming it belong to
+the host: verify reads the runner's own units on the way, and some of those
+warn.
 
 **pylint has to be silent, not merely 10.00/10.** The score rounds, so
 10.00/10 is quite possible with a message still showing — pylint exits
