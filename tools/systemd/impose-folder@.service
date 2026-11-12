@@ -13,10 +13,12 @@
 # live in, and the PATH that has impose on it. Everything else is written to
 # be left alone.
 #
-# This file is a worked example, like the scripts it runs. It is also the one
-# part of this repository that cannot be tested in it -- it was written
-# against the systemd documentation on a machine with no systemd, so read it
-# before you trust it, and `systemd-analyze verify` it once it is in place.
+# This file is a worked example, like the scripts it runs. It was written
+# against the systemd documentation on a machine with no systemd, and CI
+# runs `systemd-analyze verify` over it on every push -- which catches a
+# directive spelled wrong here, and cannot tell whether a directive spelled
+# right is the one your shop wants. So read it before you trust it, and
+# verify it again once it is in place, where the paths it names are yours.
 
 [Unit]
 Description=Impose every PDF dropped into the %i folder

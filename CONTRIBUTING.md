@@ -28,10 +28,20 @@ shellcheck tools/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-CI runs exactly those, on Python 3.10 through 3.14. **pylint has to be silent,
-not merely 10.00/10.** The score rounds, so 10.00/10 is quite possible with a
-message still showing — pylint exits nonzero for any message at all, which is
-what CI reads, and a message nobody acts on is a message nobody reads.
+CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
+two more: `lint`, and `watched folder` for the three checks that are about
+what a shop copies into production — shellcheck on the watchers,
+`systemd-analyze verify` on `tools/systemd/impose-folder@.service`, and bats
+on a temporary folder with the real `inotifywait` under it. Only the unit
+check is CI-only; there is no systemd on a macOS laptop to run it with. It
+fails on any output rather than on the exit status, because systemd reports
+a misspelled directive and then ignores it — `Unknown key 'Restat'`, exit 0 —
+which is precisely the mistake worth catching in a file nobody here can boot.
+
+**pylint has to be silent, not merely 10.00/10.** The score rounds, so
+10.00/10 is quite possible with a message still showing — pylint exits
+nonzero for any message at all, which is what CI reads, and a message nobody
+acts on is a message nobody reads.
 `check-artwork.py` is deliberately outside pylint: it imports a renderer the
 package will not depend on.
 
@@ -158,8 +168,8 @@ stand-in.** `tests/shell/inotifywait-stand-in.sh` polls the inbox and prints
 what appears. It copies the one behaviour of inotify the script depends on --
 silence about files that were already there, which is the whole reason the
 script sweeps at startup -- and it copies nothing else, `close_write` least of
-all. The real `inotifywait` runs in CI's `shell` job, and that is the only
-place it runs.
+all. The real `inotifywait` runs in CI's `watched folder` job, and that is the
+only place it runs.
 
 **Give a file a second chance in `prove_watching` and nowhere else.** Neither
 event source says when it has started watching, so the tests hand over one

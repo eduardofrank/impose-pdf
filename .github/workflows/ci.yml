@@ -51,17 +51,13 @@ jobs:
       - run: python -m black --check --diff .
       - run: python -m isort --check --diff .
 
-      # The runner image ships ShellCheck, and it is unpinned here for the
-      # same reason the Python tools are: a watcher that only passes the
-      # linter it was written against is not a watcher anybody should copy.
-      - run: shellcheck tools/*.sh tests/shell/*.sh
-
-  # The one job that runs a watcher against real inotify. The tests work on a
-  # macOS laptop too, through the stand-in in tests/shell, but a stand-in is
-  # a stand-in: what a shop puts under systemd is this script on top of
-  # inotify-tools, and this is where that pair is measured.
-  shell:
-    name: shell (bats)
+  # Everything a shop copies into production: the two watcher scripts, the
+  # systemd unit that runs one of them, and the folder they work on. None of
+  # it can be tested on the macOS laptop this was written on -- the unit has
+  # no systemd to read it, and the watcher runs there only against a polling
+  # stand-in. This is the job where the real pair is measured.
+  folder:
+    name: watched folder
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -74,4 +70,34 @@ jobs:
           python -m pip install -e .
           sudo apt-get update -qq
           sudo apt-get install -y bats inotify-tools
+
+      # The runner image ships ShellCheck, and it is unpinned here for the
+      # same reason the Python tools are: a watcher that only passes the
+      # linter it was written against is not a watcher anybody should copy.
+      - run: shellcheck tools/*.sh tests/shell/*.sh
+
+      # systemd-analyze verify reads the unit the way systemd would, which
+      # includes checking that ExecStart= names something executable. So the
+      # watcher goes in first, under the path the unit names and by the
+      # install line the unit's own header gives.
+      - name: Install the watcher where the unit says it is
+        run: sudo install -D -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
+
+      # Silence is the test, not the exit status. A misspelled directive --
+      # `Restat=on-failure` -- is reported as `Unknown key` and then exits 0,
+      # because ignoring what it does not understand is what systemd itself
+      # does at load time, and that is the mistake this job exists to catch.
+      # Measured on systemd 255 and 261; an unreadable value and an unknown
+      # section behave the same way.
+      - name: Verify the unit
+        run: |
+          report=$(systemd-analyze verify tools/systemd/impose-folder@.service 2>&1)
+          if [ -n "$report" ]; then
+            printf '%s\n' "$report" >&2
+            exit 1
+          fi
+
+      # The smoke test: a watcher started on a temporary folder, a PDF handed
+      # to it while it runs, and the folder read back. On this job the event
+      # source is the real /usr/bin/inotifywait.
       - run: bats --timing tests/shell

@@ -1320,11 +1320,16 @@ they go in `ReadWritePaths` too. Two more directives that belong there,
 so are `MemoryMax` and `TasksMax` — which a folder exposed to anybody you do
 not know wants, set from the largest job it is meant to take.
 
-One honest caveat: the unit file is the one thing in this repository that
-could not be tried in it. It was written against the systemd documentation on
-a machine that has no systemd, so its syntax is checked and its directives
-are not. Run `systemd-analyze verify impose-folder@a4-nup.service` once it is
-in place.
+One honest caveat, smaller than it was: the unit file is still the one thing
+here that cannot be run on the machine it was written on, which has no
+systemd. What it gets instead is a systemd reading it — CI runs
+`systemd-analyze verify` over it on every push, and fails the job on any
+output at all, because a misspelled directive is reported and then ignored
+rather than refused. That checks the spelling, not the choices: whether
+`ProtectSystem=strict` is the right setting for your folder is still a thing
+only your folder can say. Run `systemd-analyze verify
+impose-folder@a4-nup.service` once it is in place, where it can see your
+paths too.
 
 On macOS it is a launchd agent, one plist per folder, and that one *was*
 measured here:
@@ -2337,6 +2342,13 @@ that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
 rather than the startup checks the Python tests cover. Four to five seconds,
 and it skips itself when there is no `impose` to run.
+
+A third check on the same material runs in CI only, in the job those two
+share: `systemd-analyze verify` on `tools/systemd/impose-folder@.service`,
+with the watcher installed first at the path the unit names, because verify
+checks that `ExecStart=` is executable. It fails on any output rather than on
+the exit status — systemd reports a misspelled directive and carries on, so
+the exit status alone would pass a unit with `Restat=on-failure` in it.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the
