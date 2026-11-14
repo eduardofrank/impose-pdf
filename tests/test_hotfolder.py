@@ -282,10 +282,13 @@ class TestInstall(unittest.TestCase):
         line. A small claim that covers the mode, the shebang and the copy at
         once -- a 0644 file does not run at all.
 
-        The status is 1, not the 2 that every other refusal to start uses:
-        the folder is `${1:?usage ...}`, and an unset parameter is the shell
-        exiting, not the script. Measured on this machine's `/bin/sh` and
-        `/bin/bash`.
+        Nonzero rather than a number, and this is the measurement that says
+        why: the folder is `${1:?usage ...}`, so the status for leaving it
+        out belongs to the shell and not to the script. 1 under bash, which
+        is both scripts on macOS, and 2 under dash, which is `/bin/sh` on
+        Debian and Ubuntu and so is the inotify watcher on a CI runner. A
+        service always passes its folder; this is the person at the terminal,
+        and what they need is the sentence.
         """
         self._install()
         for bundled in FILES:
@@ -300,7 +303,7 @@ class TestInstall(unittest.TestCase):
                 done = subprocess.run(
                     [str(script)], capture_output=True, text=True, check=False
                 )
-                self.assertEqual(done.returncode, 1, done.stderr)
+                self.assertNotEqual(done.returncode, 0, done.stdout)
                 self.assertIn("usage:", done.stderr)
 
 
