@@ -29,6 +29,7 @@ import pikepdf
 
 from impose import DestinationError
 from impose.geometry import Size
+from impose.hotfolder.cli import FILES as BUNDLED
 from impose.job import impose_document
 from impose.signals import STOP_SIGNALS, stop, stopping_cleanly
 from impose.units import MM
@@ -36,13 +37,13 @@ from impose.units import MM
 from .support import make_office_pdf, make_pdf, truncated_pdf
 from .test_cli import run, workspace
 
-#: The reference watchers. Both of them, because the claim is written out once
-#: per script -- they are copied to a server one file at a time and share no
-#: library, so one of the two is exactly the thing that drifts.
-_WATCHERS = (
-    pathlib.Path(__file__).resolve().parents[1] / "tools" / "watch-inotify.sh",
-    pathlib.Path(__file__).resolve().parents[1] / "tools" / "watch-fswatch.sh",
-)
+#: The reference watchers, taken from what the package ships rather than from
+#: a path spelled again here: these tests and `impose-hotfolder` have to be
+#: talking about the same two files. Both of them, because the claim is
+#: written out once per script -- they are copied to a server one file at a
+#: time and share no library, so one of the two is exactly the thing that
+#: drifts.
+_WATCHERS = tuple(bundled.path for bundled in BUNDLED if bundled.name.endswith(".sh"))
 
 
 def _runnable_watchers():

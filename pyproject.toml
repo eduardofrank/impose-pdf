@@ -33,6 +33,9 @@ dependencies = [
 
 [project.scripts]
 impose = "impose.cli:main"
+# The folder half of the project installs with it: an operator who pip-installs
+# impose has no checkout to copy a watcher out of, and this is how they get one.
+impose-hotfolder = "impose.hotfolder.cli:main"
 
 [project.optional-dependencies]
 dev = ["black", "isort", "pylint"]
@@ -50,6 +53,16 @@ include = ["impose*"]
 # embedded, so a font that is only present in a source checkout would mean
 # imposed sheets that conform from one install and not from another.
 "impose.fonts" = ["*.ttf", "LICENSE-OFL.txt"]
+# The watchers and the two service templates: the folder half of this project,
+# which an install without them sends every operator back to GitHub for.
+#
+# Declared rather than relied on. Measured on setuptools 84.0.0, with
+# pyproject's include-package-data default: all four ship with this line
+# deleted, and with the whole table deleted, and the directory's README.md
+# stays out of the wheel either way. So what the line buys is saying which
+# files are meant -- a backend that stops guessing, or a guess that changes,
+# then drops nothing silently.
+"impose.hotfolder" = ["*.sh", "*.service", "*.plist"]
 
 [tool.black]
 line-length = 88

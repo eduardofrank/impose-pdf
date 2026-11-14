@@ -3,8 +3,10 @@
 # One watched folder, as a service. The instance name is the folder's name,
 # so each folder is enabled, stopped and watched on its own:
 #
-#     install -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
-#     install -m 644 tools/systemd/impose-folder@.service /etc/systemd/system/
+#     sudo install -m 755 "$(impose-hotfolder --path watch-inotify.sh)" \
+#         /usr/local/libexec/impose-watch
+#     sudo install -m 644 "$(impose-hotfolder --path impose-folder@.service)" \
+#         /etc/systemd/system/
 #     systemctl daemon-reload
 #     systemctl enable --now impose-folder@a4-nup
 #     journalctl -fu impose-folder@a4-nup

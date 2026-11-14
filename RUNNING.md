@@ -296,12 +296,19 @@ written on. `impose` throughout is the one on the service's `PATH`, not the one
 on yours, and `impose-watch` is whichever of the two watcher scripts suits the
 platform, installed under that name. One copy of the watcher serves every
 folder, and installing it is a thing you do once per machine rather than once
-per folder:
+per folder. Both scripts ship inside the package, and `impose-hotfolder`
+prints where they are, so there is no checkout to find:
 
 ```bash
-sudo install -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch  # Linux
-sudo install -m 755 tools/watch-fswatch.sh /usr/local/libexec/impose-watch  # macOS
+sudo install -m 755 "$(impose-hotfolder --path watch-inotify.sh)" \
+    /usr/local/libexec/impose-watch   # Linux
+sudo install -m 755 "$(impose-hotfolder --path watch-fswatch.sh)" \
+    /usr/local/libexec/impose-watch   # macOS
 ```
+
+`impose-hotfolder` on its own lists the four files and marks the two this
+machine can use; `impose-hotfolder --install DIRECTORY` takes copies of all
+four, which is what you want before changing one.
 
 **1. Settle the grid before the folder exists.** `impose fit` answers with
 what fits and what the leftovers cost:
@@ -413,7 +420,8 @@ that file, the folder is right.
 touching any other:
 
 ```bash
-sudo install -m 644 tools/systemd/impose-folder@.service /etc/systemd/system/
+sudo install -m 644 "$(impose-hotfolder --path impose-folder@.service)" \
+    /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now impose-folder@a6-saddle
 systemd-analyze verify impose-folder@a6-saddle.service
@@ -426,11 +434,11 @@ filesystem apart from what it is given, so every file would fail at exit `4`
 with a permission error naming the output directory, which is the one place
 the fix is not.
 
-On macOS it is one plist per folder, copied from
-`tools/launchd/impose-folder.plist` with its `Label` and its folder changed:
+On macOS it is one plist per folder, copied from the package with its
+`Label` and its folder changed:
 
 ```bash
-cp tools/launchd/impose-folder.plist \
+cp "$(impose-hotfolder --path impose-folder.plist)" \
    ~/Library/LaunchAgents/impose-folder.a6-saddle.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/impose-folder.a6-saddle.plist
 launchctl bootout gui/$(id -u)/impose-folder.a6-saddle

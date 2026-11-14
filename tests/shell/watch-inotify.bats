@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
 #
-# tools/watch-inotify.sh, driven the way a shop drives it: started on a
+# impose/hotfolder/watch-inotify.sh, driven the way a shop drives it: started
 # folder, handed a PDF while it is running, and read back afterwards by what
 # is in the folder. The claim under test is the one an operator makes every
 # morning -- a file that arrives lands in `done/`, `rejected/` or `failed/`
@@ -33,7 +33,7 @@
 
 setup_file() {
     repo=$(cd "$BATS_TEST_DIRNAME/../.." && pwd)
-    export WATCHER="$repo/tools/watch-inotify.sh"
+    export WATCHER="$repo/impose/hotfolder/watch-inotify.sh"
 
     # The project's own venv first, because that is the install the rest of
     # the gate runs against; a system-wide impose otherwise.

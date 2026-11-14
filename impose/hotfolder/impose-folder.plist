@@ -4,8 +4,9 @@
 One watched folder, as a launchd agent. Copy it per folder, change the label
 and the two paths, and keep the file's name the same as the label:
 
-    install -m 755 tools/watch-fswatch.sh /usr/local/libexec/impose-watch
-    cp tools/launchd/impose-folder.plist \
+    sudo install -m 755 "$(impose-hotfolder --path watch-fswatch.sh)" \
+        /usr/local/libexec/impose-watch
+    cp "$(impose-hotfolder --path impose-folder.plist)" \
        ~/Library/LaunchAgents/impose-folder.a4-nup.plist
     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/impose-folder.a4-nup.plist
     launchctl print gui/$(id -u)/impose-folder.a4-nup

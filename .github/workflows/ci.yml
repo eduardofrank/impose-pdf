@@ -74,14 +74,39 @@ jobs:
       # The runner image ships ShellCheck, and it is unpinned here for the
       # same reason the Python tools are: a watcher that only passes the
       # linter it was written against is not a watcher anybody should copy.
-      - run: shellcheck tools/*.sh tests/shell/*.sh
+      - run: shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 
-      # systemd-analyze verify reads the unit the way systemd would, which
-      # includes checking that ExecStart= names something executable. So the
-      # watcher goes in first, under the path the unit names and by the
-      # install line the unit's own header gives.
-      - name: Install the watcher where the unit says it is
-        run: sudo install -D -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
+      # The folder half ships as package data, and this is where that claim is
+      # kept: a wheel, built here and installed into a virtual environment
+      # with no checkout behind it, is where the watcher and the unit come
+      # from for the rest of this job. --no-deps because impose-hotfolder
+      # hands over files and needs no pikepdf to do it.
+      #
+      # It also puts the watcher at the path the unit names, which is the
+      # install line the unit's own header gives -- and verify needs it
+      # there, because it checks that ExecStart= is something executable.
+      - name: Install from a wheel, the way a shop would
+        run: |
+          python -m pip wheel . --no-deps -w "$RUNNER_TEMP/dist"
+          python -m venv "$RUNNER_TEMP/shop"
+          "$RUNNER_TEMP/shop/bin/pip" install -q --no-deps "$RUNNER_TEMP"/dist/*.whl
+          shop="$RUNNER_TEMP/shop/bin/impose-hotfolder"
+          "$shop"
+          watcher=$("$shop" --path watch-inotify.sh)
+          unit=$("$shop" --path 'impose-folder@.service')
+          # A path outside that environment would mean the command found the
+          # checkout rather than the wheel, and the whole step proved nothing.
+          for path in "$watcher" "$unit"; do
+            case $path in
+            "$RUNNER_TEMP/shop"/*) ;;
+            *)
+                printf '%s is not from the wheel\n' "$path" >&2
+                exit 1
+                ;;
+            esac
+          done
+          sudo install -D -m 755 "$watcher" /usr/local/libexec/impose-watch
+          printf 'UNIT=%s\n' "$unit" >> "$GITHUB_ENV"
 
       # Silence is the test, not the exit status. A misspelled directive --
       # `Restat=on-failure` -- is reported as `Unknown key` and then exits 0,
@@ -96,10 +121,14 @@ jobs:
       # nobody here wrote. So dependencies are left out of the verdict, and
       # what is read is the lines naming this unit: by file in a warning, by
       # instance in a refusal.
+      #
+      # The unit read here is the one in the wheel, not the one in the tree:
+      # package data that stopped shipping would fail this step rather than
+      # pass it quietly.
       - name: Verify the unit
         run: |
           report=$(systemd-analyze verify --recursive-errors=no \
-              tools/systemd/impose-folder@.service 2>&1 |
+              "$UNIT" 2>&1 |
               grep -F impose-folder) || true
           if [ -n "$report" ]; then
             printf '%s\n' "$report" >&2

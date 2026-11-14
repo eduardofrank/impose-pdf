@@ -65,8 +65,9 @@ def writing(destination):
     directory does not have that problem, and :func:`reserve` refuses the
     sequential overwrite that would make it one. Two *folders* sharing an
     output directory do have it, and nothing here can see it coming, which is
-    why the reference watchers in ``tools/`` claim the directory they write
-    into at startup rather than trusting a policy not to name somebody else's.
+    why the reference watchers in ``impose/hotfolder/`` claim the directory
+    they write into at startup rather than trusting a policy not to name
+    somebody else's.
     """
     if is_pass_through(destination):
         yield destination

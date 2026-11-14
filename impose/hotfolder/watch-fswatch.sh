@@ -6,7 +6,7 @@
 #
 # Impose every PDF dropped into a folder, on macOS, with fswatch.
 #
-#     tools/watch-fswatch.sh ~/impose/a4-nup
+#     impose-watch ~/impose/a4-nup
 #
 # The companion to watch-inotify.sh, which carries the commentary on the
 # folder layout, the lock, the claim and the invocation. This one differs in
@@ -18,9 +18,9 @@
 # in this script; the first start of a folder writes a commented one and
 # stops. See watch-inotify.sh.
 #
-# Deliberately not part of the package: a worked example to adapt, not a
-# supported product. Put it under launchd --
-# tools/launchd/impose-folder.plist is an agent for one folder.
+# It ships inside the package, which `impose-hotfolder` is the way into, and
+# is a worked example to adapt rather than a supported product. Put it under
+# launchd -- `impose-folder.plist`, beside it, is an agent for one folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
 # not set up, and starting it again changes nothing until that is fixed.

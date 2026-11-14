@@ -95,9 +95,12 @@ and garbage files: all exit `3` or `1`, none print a stack trace.
 - **A refusal.** Being turned away is the design, including the known false
   positive where a complete file with a stale `startxref` is refused as damaged.
   `--damaged recover` is the opt-in.
-- **Anything in `tools/`.** Worked examples to adapt, not supported code, and
-  not linted. If you adapt a watcher and it is wrong, that is worth an issue —
-  but it is the example that is wrong, not a vulnerability in a shipped product.
+- **The hot-folder files in `impose/hotfolder/`, and anything in `tools/`.**
+  Worked examples to adapt, not supported code. The watchers ship with the
+  package so that an install has them, and they are linted — shellcheck in the
+  gate, `systemd-analyze verify` on the unit in CI — but a folder you build
+  from one of them is yours. If an example is wrong, that is worth an issue;
+  it is the example that is wrong, not a vulnerability in a shipped product.
 - **A crash in QPDF reached through pikepdf** — report it upstream, and see
   below.
 

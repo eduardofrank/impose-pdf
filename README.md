@@ -800,8 +800,9 @@ shape most shops want, and it changes nothing about the imposition and
 everything about the failures: there is nobody at the terminal to read a
 warning, and the only thing the watcher understands is the exit status. What
 follows is what impose does so that a folder is safe to leave running, and
-`tools/watch-inotify.sh` and `tools/watch-fswatch.sh` are worked examples of
-the other half.
+`impose/hotfolder/watch-inotify.sh` and `watch-fswatch.sh` beside it are
+worked examples of the other half. They ship in the package, so an install
+has them: `impose-hotfolder`.
 
 [RUNNING.md](RUNNING.md) is the same ground from the other side: one shop's
 procedure for these folders — what they are called, what goes in a policy and
@@ -870,8 +871,8 @@ and the folder it serves; a second folder naming either of them is refused at
 startup, by name:
 
 ```console
-$ tools/watch-inotify.sh ./a5-saddle
-tools/watch-inotify.sh: /srv/rip/in is already the outbox of /srv/impose/a4-nup (pid 4131).
+$ impose/hotfolder/watch-inotify.sh ./a5-saddle
+impose/hotfolder/watch-inotify.sh: /srv/rip/in is already the outbox of /srv/impose/a4-nup (pid 1882).
 One outbox, one folder: two folders writing one directory
 write one file for every name that arrives in both, and two runs
 racing for that name both report success. Give this folder a
@@ -944,9 +945,9 @@ startup, with the other policy refusals, rather than logged in the other one.
 Starting a folder that has no `policy.conf` writes a commented one and stops:
 
 ```console
-$ tools/watch-inotify.sh ./a4-nup
-tools/watch-inotify.sh: wrote ./a4-nup/policy.conf. Say what this folder is
-for, then start it again.
+$ impose/hotfolder/watch-inotify.sh ./a4-nup
+impose/hotfolder/watch-inotify.sh: wrote ./a4-nup/policy.conf. Say what this
+folder is for, then start it again.
 ```
 
 It stops because the alternative is guessing, and a guess here is somebody's
@@ -1142,9 +1143,8 @@ Each is the thing its refusal exists to prevent, written down as a standing
 instruction. The size check is the one that refuses rather than assumes, so it
 stays.
 
-**What the reference scripts lay out.** `tools/watch-inotify.sh` and
-`tools/watch-fswatch.sh` take one argument, the folder, and make the rest of it
-themselves:
+**What the reference scripts lay out.** Both watchers take one argument, the
+folder, and make the rest of it themselves:
 
 ```
 a4-nup/
@@ -1202,8 +1202,8 @@ this impose can make, and anything else is the options, the job file, or
 impose not being on the PATH the service runs with:
 
 ```console
-$ tools/watch-inotify.sh ./a4-nup
-tools/watch-inotify.sh: ./a4-nup/policy.conf does not describe a run this impose can make (exit 1):
+$ impose/hotfolder/watch-inotify.sh ./a4-nup
+impose/hotfolder/watch-inotify.sh: ./a4-nup/policy.conf does not describe a run this impose can make (exit 1):
 impose: Cannot open a4-nup/a4-nup.json: [Errno 2] No such file or directory: 'a4-nup/a4-nup.json'
 ```
 
@@ -1234,9 +1234,9 @@ for, because a `work/` nobody can write to looks the same from here and wants
 a different fix:
 
 ```console
-$ tools/watch-inotify.sh ./a4-nup
-tools/watch-inotify.sh: cannot claim a file in ./a4-nup:
-ln: ./a4-nup/work/.impose-link-probe.49159: Permission denied
+$ impose/hotfolder/watch-inotify.sh ./a4-nup
+impose/hotfolder/watch-inotify.sh: cannot claim a file in ./a4-nup:
+ln: ./a4-nup/work/.impose-link-probe.70958: Permission denied
 A file is claimed by hard-linking its name from in/ into work/,
 so linking has to work. Some SMB mounts and exFAT cannot link at
 all. Put the folder on a filesystem that can, or replace the
@@ -1269,20 +1269,71 @@ does. The orphan used to claim a file out of `in/` while the new watcher held
 the lock. It now checks the lock still names it, finds that it does not, and
 stops.
 
+### The folder half is in the install
+
+Both watchers and both service templates ship inside the package, in
+`impose/hotfolder/`, because an operator who installed a wheel has no checkout
+to copy four files out of. `impose-hotfolder` is the way in:
+
+```console
+$ impose-hotfolder
+The hot-folder files are in this install, in
+/opt/impose/.venv/lib/python3.14/site-packages/impose/hotfolder:
+
+  watch-inotify.sh        the watcher, for Linux; needs inotify-tools  <- this machine
+  watch-fswatch.sh        the watcher, for macOS; needs fswatch
+  impose-folder@.service  a systemd unit, one instance per folder      <- this machine
+  impose-folder.plist     a launchd agent, one copy per folder
+
+They are worked examples, not supported code: what a folder is for
+is yours to say, and these are the shape to start from. Read one
+before you run it.
+
+Put the watcher where both templates expect it:
+
+    sudo install -m 755 "$(impose-hotfolder --path watch-inotify.sh)" \
+        /usr/local/libexec/impose-watch
+
+Or take a copy of all four, to read and change:
+
+    impose-hotfolder --install ~/impose-hotfolder
+```
+
+`--path NAME` prints one path and nothing else, which is what makes installing
+the watcher a line rather than a hunt through site-packages. `--install
+DIRECTORY` takes all four, for when what you want is the copy you are about to
+edit; a file already at one of those names is a refusal and exit `4`, the same
+answer impose gives over a press file, rather than a replacement nobody asked
+for.
+
+A copy is written `0755` for a script and `0644` for a template, from the name
+rather than from the mode of the file it came from. A wheel does carry the
+executable bit — measured, pip-installed on both Linux and macOS, both scripts
+land `0755` — but a watcher that reaches `/usr/local/libexec` at `0644` is an
+`ExecStart=` systemd cannot start, and that should not depend on how the copy
+travelled.
+
+Nothing is written outside the directory you name, and nothing is put into
+`/etc` or `/usr/local` for you. What belongs there is a copy somebody has
+read: these are worked examples to adapt, and the command that installed them
+unread would be making the one decision this package leaves to the shop.
+
 ### One folder, one service
 
 A folder that only runs while somebody's terminal is open is not a folder.
-`tools/systemd/impose-folder@.service` and `tools/launchd/impose-folder.plist`
-are the other half: one service per folder, started at boot, logging where
-the rest of the machine's logs go, and enabled or stopped without touching
-any other folder.
+`impose-folder@.service` and `impose-folder.plist`, beside the watchers in
+the package, are the other half: one service per folder, started at boot,
+logging where the rest of the machine's logs go, and enabled or stopped
+without touching any other folder.
 
 On Linux the instance name is the folder's name, which is the whole reason
 the unit is a template:
 
 ```bash
-install -m 755 tools/watch-inotify.sh /usr/local/libexec/impose-watch
-install -m 644 tools/systemd/impose-folder@.service /etc/systemd/system/
+sudo install -m 755 "$(impose-hotfolder --path watch-inotify.sh)" \
+    /usr/local/libexec/impose-watch
+sudo install -m 644 "$(impose-hotfolder --path impose-folder@.service)" \
+    /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now impose-folder@a4-nup
 journalctl -fu impose-folder@a4-nup
@@ -1325,9 +1376,9 @@ here that cannot be run on the machine it was written on, which has no
 systemd. What it gets instead is a systemd reading it — CI runs
 `systemd-analyze verify` over it on every push, and fails the job on any
 line of the report that names it, because a misspelled directive is reported
-and then ignored rather than refused. That checks the spelling, not the choices: whether
-`ProtectSystem=strict` is the right setting for your folder is still a thing
-only your folder can say. Run `systemd-analyze verify
+and then ignored rather than refused. That checks the spelling, not the
+choices: whether `ProtectSystem=strict` is the right setting for your folder
+is still a thing only your folder can say. Run `systemd-analyze verify
 impose-folder@a4-nup.service` once it is in place, where it can see your
 paths too.
 
@@ -1335,8 +1386,9 @@ On macOS it is a launchd agent, one plist per folder, and that one *was*
 measured here:
 
 ```bash
-install -m 755 tools/watch-fswatch.sh /usr/local/libexec/impose-watch
-cp tools/launchd/impose-folder.plist \
+sudo install -m 755 "$(impose-hotfolder --path watch-fswatch.sh)" \
+    /usr/local/libexec/impose-watch
+cp "$(impose-hotfolder --path impose-folder.plist)" \
    ~/Library/LaunchAgents/impose-folder.a4-nup.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/impose-folder.a4-nup.plist
 launchctl bootout gui/$(id -u)/impose-folder.a4-nup
@@ -2018,8 +2070,8 @@ watched folder rather than anything impose talks to.
 
 | | for | install |
 |---|---|---|
-| `inotify-tools` | `tools/watch-inotify.sh` | `apt install inotify-tools` |
-| `fswatch` | `tools/watch-fswatch.sh` | `brew install fswatch` |
+| `inotify-tools` | `watch-inotify.sh`, the Linux watcher | `apt install inotify-tools` |
+| `fswatch` | `watch-fswatch.sh`, the macOS watcher | `brew install fswatch` |
 | `pypdfium2` | `tools/check-artwork.py`, which renders to measure ink | `pip install pypdfium2` |
 | `black`, `isort`, `pylint` | development | `pip install -e ".[dev]"` |
 
@@ -2168,6 +2220,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | One folder, one service — a systemd template and a launchd plist per watched folder |
 | ✅ | One outbox, one folder — the directory a folder writes into claimed at startup |
 | ✅ | `LOG_FORMAT=json` — one object a file, for a folder whose log is read by a program |
+| ✅ | `impose-hotfolder` — the watchers and both service templates shipped with the package |
 
 ## Several copies to a sheet
 
@@ -2320,15 +2373,15 @@ be turned down for.
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
-shellcheck tools/*.sh tests/shell/*.sh
+shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
 Over 900 tests, no system libraries, six seconds. Seven of them run the
-reference watchers in `tools/` and are nearly half of that time, so they want
-a shell and `impose` on the PATH, and say so by skipping where either is
-missing; the rest are the library. The
-suite asserts geometry and structure rather than pixels: an imposition is
+reference watchers in `impose/hotfolder/` and are nearly half of that time,
+so they want a shell and `impose` on the PATH, and say so by skipping where
+either is missing; the rest are the library. The suite asserts geometry and
+structure rather than pixels: an imposition is
 right or wrong by where the trims land on the sheet, and expectations are
 literals from ISO 216 and ISO 217 rather than restatements of what the code
 computes.
@@ -2344,7 +2397,7 @@ rather than the startup checks the Python tests cover. Four to five seconds,
 and it skips itself when there is no `impose` to run.
 
 A third check on the same material runs in CI only, in the job those two
-share: `systemd-analyze verify` on `tools/systemd/impose-folder@.service`,
+share: `systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`,
 with the watcher installed first at the path the unit names, because verify
 checks that `ExecStart=` is executable. It reads the report rather than the
 exit status — systemd reports a misspelled directive and carries on, so the

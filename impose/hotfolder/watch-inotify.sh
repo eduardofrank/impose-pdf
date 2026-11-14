@@ -3,7 +3,7 @@
 #
 # Impose every PDF dropped into a folder, on Linux, with inotify.
 #
-#     tools/watch-inotify.sh /srv/impose/a4-nup
+#     impose-watch /srv/impose/a4-nup
 #
 # The folder is one schema and one policy: that is the whole design. A folder
 # that takes two finished sizes is two folders, because `--expect-size` is
@@ -20,9 +20,11 @@
 #
 #     apt install inotify-tools
 #
-# Deliberately not part of the package. It is a worked example to adapt, not
-# a supported product -- read it, put it under systemd, and change what you
-# need. tools/systemd/impose-folder@.service is a unit for one folder.
+# It ships inside the package so that an install has it -- `impose-hotfolder`
+# prints its path and hands out copies -- but it is a worked example to adapt
+# rather than a supported product: read it, put it under systemd, and change
+# what you need. `impose-folder@.service`, beside it, is a unit for one
+# folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
 # not set up, and starting it again changes nothing until that is fixed. Any

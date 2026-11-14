@@ -24,14 +24,14 @@ Five commands, and they are the whole gate:
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
-shellcheck tools/*.sh tests/shell/*.sh
+shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
 two more: `lint`, and `watched folder` for the three checks that are about
 what a shop copies into production — shellcheck on the watchers,
-`systemd-analyze verify` on `tools/systemd/impose-folder@.service`, and bats
+`systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`, and bats
 on a temporary folder with the real `inotifywait` under it. Only the unit
 check is CI-only; there is no systemd on a macOS laptop to run it with. It
 fails on any line of the report naming the unit, rather than on the exit
@@ -49,9 +49,9 @@ acts on is a message nobody reads.
 package will not depend on.
 
 **shellcheck has to be silent as well**, and for a better reason than symmetry:
-the watchers in `tools/` are what a shop copies as the starting point for every
-hot folder it builds, and a defect in one of them is a defect in somebody's
-production folder. It is not a Python package — `brew install shellcheck`, or
+the watchers in `impose/hotfolder/` ship in the wheel and are what a shop
+copies as the starting point for every hot folder it builds, so a defect in
+one of them is a defect in somebody's production folder. It is not a Python package — `brew install shellcheck`, or
 `apt install shellcheck` — and like the rest of the dev tools it is unpinned,
 so CI may be running a release behind or ahead of yours.
 
