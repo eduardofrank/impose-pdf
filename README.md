@@ -2201,7 +2201,10 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `fit` — densest grid, orientation, and run waste |
 | ✅ | `fit` from a file, and for the bound schemas' spread |
 | ✅ | `fit` for signatures — biggest fold that fits, or a named section size |
+| ✅ | Bindery limits — a saddle book too thick to staple is named, and the limit is a parameter for the stock in hand |
+| ✅ | `--dry-run` — the real call with one flag changed, so it describes the job that would run |
 | ✅ | `creep` — fore-edge push-out compensated per leaf, not per sheet |
+| ✅ | `--sheet fit` — a form imposed to be imposed again, with the fold recorded for the second pass |
 | ✅ | `repeat` — several complete copies of a bound job on one sheet |
 | ✅ | `proof` — a sheet with the folio in each cell, for signing off the order |
 | ✅ | `cover` — perfect-bound flat, spine from the text gauge, scores at the hinges |
@@ -2214,6 +2217,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
 | ✅ | `source` — a page count QPDF had to rebuild is refused, not imposed short |
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
+| ✅ | Where the finished size comes from — a page with no TrimBox is refused, and `--trim-from mediabox` is the opt-in |
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
 | ✅ | A claim that is exclusive — a resend is not worked twice, and a restart sweeps up what the events missed |
