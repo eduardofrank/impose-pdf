@@ -458,5 +458,7 @@ time. Loud rather than silent, which is the best available there.
   from the kind of failure and never from the message.
 - [One folder, one service](README.md#one-folder-one-service) — what is in the
   unit and the plist, and the one caveat about the unit.
-- [SECURITY.md](SECURITY.md) — what a folder open to people outside the shop
-  needs, which is more than this page asks for.
+- [A folder anybody can drop into](SECURITY.md#a-folder-anybody-can-drop-into)
+  — what a folder open to people outside the shop needs, which is more than
+  this page asks for: a user per folder, a memory and a task ceiling, and a
+  policy that keeps the damaged-file refusal.
