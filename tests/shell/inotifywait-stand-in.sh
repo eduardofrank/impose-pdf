@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 #
 # A stand-in for inotifywait(1), so that the shell tests can drive
 # watch-inotify.sh on a machine that has no inotify. That is every machine

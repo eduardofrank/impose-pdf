@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+<!-- Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 One watched folder, as a launchd agent. Copy it per folder, change the label
 and the two paths, and keep the file's name the same as the label:

@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 """What a cutter and a press check need beyond the crop marks.
 

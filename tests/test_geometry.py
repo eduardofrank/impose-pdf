@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 """Geometry in PDF coordinates: origin bottom-left, y growing upward."""
 

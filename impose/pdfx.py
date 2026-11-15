@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 """Carrying a source's PDF/X identity onto the imposed sheets.
 

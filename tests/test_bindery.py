@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 """Grind-off, the collation mark, the signature letter, and the folder lap."""
 

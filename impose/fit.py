@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 """How many fit, which way round, and what the leftovers cost.
 

@@ -238,7 +238,7 @@ and neither is negotiable; let them format and do not fight them by hand.
 Every file opens with:
 
 ```python
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 ```
 
 Docstrings say **why**, not what the signature already says. A module docstring

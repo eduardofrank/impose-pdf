@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 
 # pylint: disable=missing-function-docstring
 """Different finished sizes share a sheet. A book still refuses that."""

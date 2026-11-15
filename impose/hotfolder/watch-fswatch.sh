@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 #
 # bash, not sh: reading fswatch's null-separated output needs `read -d`, and
 # a filename is the one thing a hot folder cannot promise is well behaved.

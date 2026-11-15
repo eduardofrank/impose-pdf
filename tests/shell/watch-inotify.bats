@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE-MIT.
+# Copyright (c) 2026 Eduardo Frank. MIT licensed; see LICENSE.
 #
 # impose/hotfolder/watch-inotify.sh, driven the way a shop drives it: started
 # folder, handed a PDF while it is running, and read back afterwards by what
