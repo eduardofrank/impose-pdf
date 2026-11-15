@@ -920,7 +920,7 @@ could:
 }
 ```
 
-That is one line in the log — 274 characters of it; it is `jq .` here so the
+That is one line in the log — 274 bytes of it; it is `jq .` here so the
 fields can be read. `timestamp` is when the run started, UTC, to the second.
 `duration` is how long impose took and nothing else: not the claim, not the
 filing, and in the fswatch script not the wait for the file to settle either,
@@ -1193,13 +1193,15 @@ only status a refusal to start uses — so a service manager can be told that a
 event source ending and worth starting again.
 
 The first two are the policy. A `policy.conf` that is missing is written and
-stopped on, as above; one that is there is read, and a key it does not know,
-a line that is not `KEY=value`, both halves at once, neither of them, or a
-`LOG_FORMAT` it cannot write is a sentence naming the line. Then the policy
-is *tried*, once, against a filename that is not there — a source that does
-not exist is exit `3`, so a `3` back means the rest of the invocation is one
-this impose can make, and anything else is the options, the job file, or
-impose not being on the PATH the service runs with:
+stopped on, as above; one that anybody can write is refused before it is read
+at all, because it is the command this folder runs on everything it is sent;
+and one that is there is read, where a key it does not know, a line that is
+not `KEY=value`, both halves at once, neither of them, or a `LOG_FORMAT` it
+cannot write is a sentence naming the line. Then the policy is *tried*, once,
+against a filename that is not there — a source that does not exist is exit
+`3`, so a `3` back means the rest of the invocation is one this impose can
+make, and anything else is the options, the job file, or impose not being on
+the PATH the service runs with:
 
 ```console
 $ impose/hotfolder/watch-inotify.sh ./a4-nup
@@ -2214,6 +2216,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
+| ✅ | A claim that is exclusive — a resend is not worked twice, and a restart sweeps up what the events missed |
 | ✅ | `signals` — a run stopped from outside takes its half-written file with it |
 | ✅ | A folder's policy — a stored job with no source, imposed on whatever arrives |
 | ✅ | `policy.conf` — what a watched folder is for, written in the folder and parsed, not sourced |
@@ -2377,14 +2380,13 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-Over 900 tests, no system libraries, six seconds. Seven of them run the
-reference watchers in `impose/hotfolder/` and are nearly half of that time,
-so they want a shell and `impose` on the PATH, and say so by skipping where
-either is missing; the rest are the library. The suite asserts geometry and
-structure rather than pixels: an imposition is
-right or wrong by where the trims land on the sheet, and expectations are
-literals from ISO 216 and ISO 217 rather than restatements of what the code
-computes.
+950 tests today, no system libraries, under seven seconds. Seven of them run
+the reference watchers in `impose/hotfolder/` and are nearly half of that
+time, so they want a shell and `impose` on the PATH, and say so by skipping
+where either is missing; the rest are the library. The suite asserts geometry
+and structure rather than pixels: an imposition is right or wrong by where the
+trims land on the sheet, and expectations are literals from ISO 216 and ISO
+217 rather than restatements of what the code computes.
 
 The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
@@ -2393,8 +2395,9 @@ shop copies as the starting point for a hot folder, so a defect in one of them
 is a defect in somebody's production folder. `bats tests/shell` is seven tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Four to five seconds,
-and it skips itself when there is no `impose` to run.
+rather than the startup checks the Python tests cover. Five to twelve seconds,
+measured over nineteen runs, and it skips itself when there is no `impose` to
+run.
 
 A third check on the same material runs in CI only, in the job those two
 share: `systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`,
@@ -2404,6 +2407,12 @@ exit status — systemd reports a misspelled directive and carries on, so the
 exit status alone would pass a unit saying `Restat=on-failure` — and reads
 only the lines naming this unit, because verify loads the host's units too
 and a runner has warnings of its own.
+
+A fourth check in that job is the one that keeps this section honest. The
+wheel is built there and installed into a virtual environment with no
+checkout behind it, and the watcher and the unit everything above uses come
+from `impose-hotfolder --path` inside it — a path outside that environment
+means the command found the checkout instead, and the step proved nothing.
 
 The binding schemas are checked by **assembling the book and reading it**.
 `tests/booklet.py` turns the pages of a nested set of sheets — inward along the

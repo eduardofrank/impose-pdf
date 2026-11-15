@@ -365,7 +365,7 @@ makes no proofs.
 **5. Start it by hand again and read the refusal, if there is one.** Every
 policy problem is caught before a file is touched, and the policy is *tried*
 once against a filename that is not there — so what comes back is the sentence
-impose itself would have given. Three of them, with the usage block argparse
+impose itself would have given. Four of them, with the usage block argparse
 prints ahead of the first one left out:
 
 ```console
@@ -377,7 +377,7 @@ size. Use a name such as A4 or SRA3, or WIDTHxHEIGHT such as 320mmx450mm.
 
 $ impose-watch /srv/impose/a6-saddle            # SHEET=SRA3
 impose-watch: /srv/impose/a6-saddle/policy.conf: SHEET is not a key of a policy.
-Known: SCHEMA, JOB, OPTIONS, OUT, PROOF.
+Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT.
 
 $ impose-watch /srv/impose/a6-saddle            # SCHEMA and JOB both
 impose-watch: /srv/impose/a6-saddle/policy.conf says both SCHEMA (saddle) and

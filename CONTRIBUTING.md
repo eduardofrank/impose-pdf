@@ -29,8 +29,10 @@ bats tests/shell
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
-two more: `lint`, and `watched folder` for the three checks that are about
-what a shop copies into production — shellcheck on the watchers,
+two more: `lint`, and `watched folder` for the four checks that are about
+what a shop copies into production — shellcheck on the watchers, a wheel built
+and installed into a virtual environment with no checkout behind it, so that
+the watcher and the unit the rest of the job uses are the ones that shipped,
 `systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`, and bats
 on a temporary folder with the real `inotifywait` under it. Only the unit
 check is CI-only; there is no systemd on a macOS laptop to run it with. It
@@ -158,11 +160,12 @@ the thing under test.
 needs.** `unittest discover` still wants nothing but the install. `bats
 tests/shell` wants bats (`brew install bats-core`, or `apt install bats`) and
 an `impose` it can run, and it skips the whole file rather than failing when
-there is no impose to find. It is also slow by this project's standards — four
-to five and a half seconds for seven tests, measured over four runs, because
-waiting for an event source is wall-clock time and nothing makes it shorter.
-The spread is `prove_watching` re-announcing a file in the tests that start
-before their event source does.
+there is no impose to find. It is also slow by this project's standards — five
+and a half to twelve and a half seconds for seven tests, measured over nineteen
+runs, because waiting for an event source is wall-clock time and nothing makes
+it shorter. The spread is wider than the suite: `prove_watching` re-announces a
+file in the tests that start before their event source does, and how many times
+it has to depends on what else the machine is doing.
 
 Two things to know before adding a test there:
 
