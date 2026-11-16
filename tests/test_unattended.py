@@ -853,6 +853,89 @@ class TestFiling(WatchedFolder):
                 self.assertFalse(stale.exists())
 
 
+class TestWhatTheInboxTakes(WatchedFolder):
+    """Which names are artwork, and what becomes of the ones that are not.
+
+    Measured on the watcher as it was: `Mixed.Pdf` sat in the inbox for good,
+    because only `.pdf` and `.PDF` matched, and so did a text file, an
+    archive and a directory -- each of them with no line anywhere to say it
+    had been seen and passed over.
+    """
+
+    #: The test of a name, as both scripts spell it.
+    ARTWORK = (
+        '    case "$name" in\n'
+        "    .*) return 0 ;;\n"
+        "    *.[Pp][Dd][Ff]) ;;\n"
+        "    *) return 0 ;;\n"
+        "    esac\n"
+    )
+
+    def test_any_spelling_of_the_extension_is_a_pdf(self):
+        # Through `in/`, because the test of a name is in what handles an
+        # arrival. Only the inotify script is run: the fswatch one waits four
+        # seconds for a file's size to hold still before it will touch it,
+        # with a BSD `stat` that a Linux runner does not have -- so it is held
+        # to the same words instead, below.
+        for watcher in self.watchers:
+            if watcher.name != "watch-inotify.sh":
+                continue
+            root = self.folder("spelling", OPTIONS="--up 2x2")
+            (root / "in").mkdir()
+            make_pdf(2).save(root / "in" / "Mixed.Pdf")
+            finished = self.start(watcher, root)
+            self.assertIn("Mixed.Pdf: done (0)", finished.stdout)
+            self.assertTrue((root / "done" / "Mixed.Pdf").exists())
+
+    def test_both_scripts_ask_the_same_thing_of_a_name(self):
+        for watcher in _WATCHERS:
+            with self.subTest(watcher.name):
+                self.assertIn(self.ARTWORK, watcher.read_text(encoding="utf-8"))
+
+    def test_what_is_not_artwork_is_left_alone_and_named(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"strays-{watcher.stem}", OPTIONS="--up 2x2")
+                inbox = root / "in"
+                inbox.mkdir()
+                (inbox / "notes.txt").write_text("a quotation\n", encoding="utf-8")
+                (inbox / "book.pdf.part").write_bytes(b"%PDF-1.7 half of an upload")
+                (inbox / "job1").mkdir()
+                (inbox / "folder.pdf").mkdir()
+                (inbox / ".DS_Store").write_bytes(b"")
+                (inbox / "._book.pdf").write_bytes(b"what a Mac leaves on a share")
+                finished = self.start(watcher, root)
+
+                # Nothing moved: an upload under its temporary name is about
+                # to be renamed by the client that is writing it.
+                self.assertEqual(
+                    sorted(path.name for path in inbox.iterdir()),
+                    [
+                        ".DS_Store",
+                        "._book.pdf",
+                        "book.pdf.part",
+                        "folder.pdf",
+                        "job1",
+                        "notes.txt",
+                    ],
+                )
+                for bucket in ("done", "rejected", "failed"):
+                    self.assertEqual(list((root / bucket).iterdir()), [], bucket)
+                # And each one that can be seen is said, once.
+                for name in ("notes.txt", "book.pdf.part", "job1", "folder.pdf"):
+                    self.assertIn(f"{name}: left in in/", finished.stderr)
+                self.assertNotIn(".DS_Store", finished.stderr)
+                self.assertNotIn("._book.pdf", finished.stderr)
+
+    def test_an_empty_inbox_has_nothing_to_say(self):
+        # The pattern itself must not be reported as a file called `*`.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"empty-{watcher.stem}")
+                finished = self.start(watcher, root)
+                self.assertNotIn("left in in/", finished.stderr)
+
+
 class TestJsonLog(WatchedFolder):
     """`LOG_FORMAT=json`: the same record, for a reader that is not a person.
 

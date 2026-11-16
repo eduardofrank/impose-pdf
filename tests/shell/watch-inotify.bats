@@ -321,6 +321,38 @@ filed() {
     grep -Fq "book.pdf: done/ already holds a file of that name" "$err"
 }
 
+@test "a name with a leading space or an odd extension is still a PDF" {
+    policy
+    start_watcher
+
+    # The event path, which is the one that had the defect: the sweep finds
+    # names with a glob and never trimmed anything, while the loop's `read`
+    # did, and then looked for a file that was not called that.
+    drop ' cover.pdf'
+    drop Mixed.Pdf
+    [ "$(filed ' cover.pdf')" = done ]
+    [ "$(filed Mixed.Pdf)" = done ]
+    grep -Fqx ' cover.pdf: done (0)' "$log"
+    [ -z "$(ls -A "$root/in")" ]
+}
+
+@test "what is not artwork is left in the inbox for the client to finish" {
+    policy
+    start_watcher
+
+    # An upload under its temporary name, and what a Mac writes beside a file
+    # on a share. Then a real file, so that there is something to wait for:
+    # by the time it is filed, the two before it have been seen and passed.
+    drop book.pdf.part
+    drop ._book.pdf
+    drop book.pdf
+    [ "$(filed book.pdf)" = done ]
+
+    [ -f "$root/in/book.pdf.part" ]
+    [ -f "$root/in/._book.pdf" ]
+    [ ! -e "$root/rejected/._book.pdf" ]
+}
+
 @test "a watcher stopped the way systemd stops it exits 143 and lets go" {
     policy
     start_watcher

@@ -1063,6 +1063,30 @@ a name still being worked on. It does not settle a writer that still has the
 file open, which is what the refusal above is for; `mv -n` would not even
 settle the first two, since it skips a taken name and exits 0 anyway.
 
+**A PDF is a name ending in `.pdf`, however it is spelled, and nothing else
+is touched.** `Cover.Pdf` is artwork to whoever saved it on Windows, and it
+used to sit in the inbox for good because only `.pdf` and `.PDF` matched. A
+name with a leading space — the one a careless rename leaves — was worse:
+the loop's `read` trimmed it, looked for a file that was not called that, and
+left the real one until the next restart. Both measured, both taken now.
+
+What is not a PDF by name is left exactly where it is, and that is the
+design rather than an omission. Most such names are an upload passing
+through under its temporary one — `book.pdf.part`, `book.pdf.filepart` —
+which the client is about to rename, and a watcher that tidied it into
+`rejected/` would break the upload it was waiting for. The same goes for a
+name starting with a dot, which is what a Mac leaves beside a file on a
+share. So nothing is moved, and what is still there at the next start is
+named, once, by the sweep:
+
+```
+notes.txt: left in in/, which takes a file whose name ends in .pdf and nothing else
+job1: left in in/, which takes a file whose name ends in .pdf and nothing else
+```
+
+A directory is one of these whatever it is called: a folder watches one
+level, and a job sent as a directory of files is not something it opens.
+
 **An event does not survive a restart, so the scripts sweep.** inotify and
 FSEvents both report what happens from the moment they start watching, and say
 nothing about what is already there. Every file sitting in the inbox at boot,
@@ -2428,7 +2452,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-956 tests today, no system libraries, under nine seconds. Thirteen of them
+960 tests today, no system libraries, under ten seconds. Seventeen of them
 run the reference watchers in `impose/hotfolder/` and are more than half of
 that time, so they want a shell and `impose` on the PATH, and say so by skipping
 where either is missing; the rest are the library. The suite asserts geometry
@@ -2440,12 +2464,12 @@ The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
 two watchers never had, and it has to be as silent as pylint: they are what a
 shop copies as the starting point for a hot folder, so a defect in one of them
-is a defect in somebody's production folder. `bats tests/shell` is nine tests
+is a defect in somebody's production folder. `bats tests/shell` is eleven tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. About sixteen seconds,
-measured over five runs, and it skips itself when there is no `impose` to
-run.
+rather than the startup checks the Python tests cover. Seventeen to twenty-one
+seconds, measured over five runs, and it skips itself when there is no `impose`
+to run.
 
 A third check on the same material runs in CI only, in the job those two
 share: `systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`,

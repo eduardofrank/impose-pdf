@@ -534,8 +534,11 @@ impose_claimed() {
 # already in the inbox when this starts may still be arriving.
 handle() {
     local name=$1
+    # Which names are artwork, and why the rest are left where they are: see
+    # watch-inotify.sh.
     case "$name" in
-    *.pdf | *.PDF) ;;
+    .*) return 0 ;;
+    *.[Pp][Dd][Ff]) ;;
     *) return 0 ;;
     esac
     [ -f "$in/$name" ] || return 0
@@ -571,8 +574,21 @@ sweep() {
         impose_claimed "$name" || true
     done
     for path in "$in"/*; do
-        [ -f "$path" ] || continue
-        handle "${path##*/}" || true
+        # The pattern itself, when the inbox is empty.
+        [ -e "$path" ] || [ -L "$path" ] || continue
+        case ${path##*/} in
+        *.[Pp][Dd][Ff])
+            if [ -f "$path" ]; then
+                handle "${path##*/}" || true
+                continue
+            fi
+            ;;
+        esac
+        # Said once a start rather than once an event: an upload passing
+        # through under its temporary name is not worth a line, and something
+        # that is still here at the next start is.
+        printf '%s: left in in/, which takes a file whose name ends in .pdf and nothing else\n' \
+            "${path##*/}" >&2
     done
 }
 
@@ -583,7 +599,8 @@ sweep() {
 # name gone and costs nothing.
 fswatch -0 --event Created --event MovedTo --event Updated "$in" | {
     sweep
-    while read -r -d "" path; do
+    # `IFS=`, or `read` trims the path even with `-d`: see watch-inotify.sh.
+    while IFS= read -r -d "" path; do
         owned || break
         handle "$(basename "$path")" || true
     done

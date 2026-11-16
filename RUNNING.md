@@ -261,6 +261,12 @@ What each thing you find means:
 - **A file in `failed/`.** The environment. Clear whatever it names, then
   `mv failed/book.pdf in/` — and `rm failed/book.pdf.txt` with it, or
   yesterday's reason sits in the bucket after the file has gone.
+- **Something in `in/` that is not a PDF.** Left there on purpose: the folder
+  takes a name ending in `.pdf`, in any case, and moves nothing else, because
+  the usual stranger is an upload under its temporary name. Anything still
+  there at a restart is named in the journal — `notes.txt: left in in/`.
+  A directory is the common one: somebody sent a job as a folder of files.
+  Take it out by hand.
 - **Files in `in/` and the service up.** The event source is running and
   hearing nothing, which is a share remounted under it more often than
   anything else. An event source that *ends* is not this case — the watcher

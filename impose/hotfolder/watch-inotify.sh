@@ -604,8 +604,21 @@ impose_claimed() {
 # Claim one name out of the inbox, then impose it.
 handle() {
     name=$1
+    # Which names are artwork. Any spelling of the extension, because a file
+    # saved as `Cover.Pdf` on Windows is a PDF to whoever sent it, and one
+    # that matched nothing here sat in the inbox for good with no line
+    # anywhere saying why (measured). And nothing that starts with a dot:
+    # those are what a Mac leaves beside a file on a share (`._book.pdf`) and
+    # what an upload is called while it is still arriving.
+    #
+    # A name that is not artwork is left exactly where it is, and that is
+    # deliberate. Most of them are an upload under its temporary name --
+    # `book.pdf.part`, `book.pdf.filepart` -- which the client is about to
+    # rename, and a watcher that moved it away would break the upload it was
+    # waiting for. What does not belong is named by the sweep at each start.
     case "$name" in
-    *.pdf | *.PDF) ;;
+    .*) return 0 ;;
+    *.[Pp][Dd][Ff]) ;;
     *) return 0 ;;
     esac
 
@@ -646,8 +659,21 @@ sweep() {
         impose_claimed "$name" || true
     done
     for path in "$in"/*; do
-        [ -f "$path" ] || continue
-        handle "${path##*/}" || true
+        # The pattern itself, when the inbox is empty.
+        [ -e "$path" ] || [ -L "$path" ] || continue
+        case ${path##*/} in
+        *.[Pp][Dd][Ff])
+            if [ -f "$path" ]; then
+                handle "${path##*/}" || true
+                continue
+            fi
+            ;;
+        esac
+        # Said once a start rather than once an event: an upload passing
+        # through under its temporary name is not worth a line, and something
+        # that is still here at the next start is.
+        printf '%s: left in in/, which takes a file whose name ends in .pdf and nothing else\n' \
+            "${path##*/}" >&2
     done
 }
 
@@ -664,7 +690,10 @@ sweep() {
 # finds the name gone and costs nothing.
 inotifywait -m -q -e close_write -e moved_to --format '%f' "$in" | {
     sweep
-    while read -r name; do
+    # `IFS=`, or `read` trims the name: ` cover.pdf`, with the space a
+    # careless rename leaves, was looked for as `cover.pdf`, not found,
+    # and left in the inbox until the next restart swept it (measured).
+    while IFS= read -r name; do
         owned || break
         handle "$name" || true
     done
