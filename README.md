@@ -1186,6 +1186,27 @@ away. Each file arrives beside a `book.pdf.txt` holding what impose said about
 it, because whoever opens `rejected/` wants to know why without going to a
 log.
 
+**A name already in a bucket is never replaced.** A corrected `book.pdf`
+arrives under the name the first one had; that is the ordinary resend. The
+first is the record of what was printed, so it stays where it is and the new
+one is filed beside it, with the moment its run started in its name and its
+own sentence beside that:
+
+```
+done/book.pdf
+done/book.pdf.txt
+done/book.20261116T095411Z.pdf
+done/book.20261116T095411Z.pdf.txt
+```
+
+The watcher says so on stderr — `book.pdf: done/ already holds a file of that
+name, so this one is filed as book.20261116T095411Z.pdf` — and the line per
+file still names the file as it arrived. Measured before the buckets were
+filled this way: the same two files, two lines saying `done (0)`, and one
+file in `done/`, the second. A run that says nothing, which is `-q` in the
+policy, leaves no `.txt` and removes one already at that name, so a sentence
+is never read as belonging to a file it was not written about.
+
 **They refuse to start, rather than half work, and exit `2` when they do.**
 Everything below is checked before a single file is touched, and `2` is the
 only status a refusal to start uses — so a service manager can be told that a
@@ -2407,9 +2428,9 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-953 tests today, no system libraries, about seven seconds. Ten of them run
-the reference watchers in `impose/hotfolder/` and are about half of that
-time, so they want a shell and `impose` on the PATH, and say so by skipping
+956 tests today, no system libraries, under nine seconds. Thirteen of them
+run the reference watchers in `impose/hotfolder/` and are more than half of
+that time, so they want a shell and `impose` on the PATH, and say so by skipping
 where either is missing; the rest are the library. The suite asserts geometry
 and structure rather than pixels: an imposition is right or wrong by where the
 trims land on the sheet, and expectations are literals from ISO 216 and ISO
@@ -2419,11 +2440,11 @@ The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
 two watchers never had, and it has to be as silent as pylint: they are what a
 shop copies as the starting point for a hot folder, so a defect in one of them
-is a defect in somebody's production folder. `bats tests/shell` is eight tests
+is a defect in somebody's production folder. `bats tests/shell` is nine tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Eleven to fourteen seconds,
-measured over six runs, and it skips itself when there is no `impose` to
+rather than the startup checks the Python tests cover. About sixteen seconds,
+measured over five runs, and it skips itself when there is no `impose` to
 run.
 
 A third check on the same material runs in CI only, in the job those two

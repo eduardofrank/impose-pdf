@@ -760,6 +760,99 @@ class TestTheEventSource(WatchedFolder):
                 self.assertIn("usage:", finished.stderr)
 
 
+class TestFiling(WatchedFolder):
+    """What is filed under a name stays there, and says only what is its own.
+
+    The artwork in `done/` is the shop's record of what was printed. Measured
+    while the buckets were filled with `mv`: `book.pdf` sent, its press file
+    collected, a corrected `book.pdf` sent after it -- two lines saying
+    `done (0)`, one file in `done/`, and the first artwork gone with nothing
+    said. A resend under the same name is the ordinary case, not the odd one.
+
+    The files go into `work/`, as in :class:`TestJsonLog`, so both watchers
+    are measured without the fswatch script's wait for a file to settle.
+    """
+
+    def run_over(self, watcher, name, pages, tag, **policy):
+        """A folder with a *pages*-page file already claimed as *name*."""
+        policy = {"OPTIONS": "--up 2x2", **policy}
+        root = self.folder(f"{tag}-{watcher.stem}", **policy)
+        (root / "work").mkdir()
+        make_pdf(pages).save(root / "work" / name)
+        return root
+
+    def test_a_name_already_filed_is_kept_and_the_new_one_goes_beside_it(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.run_over(watcher, "book.pdf", 4, "resend")
+                (root / "done").mkdir()
+                first = root / "done" / "book.pdf"
+                first.write_bytes(b"the artwork that was printed")
+                (root / "done" / "book.pdf.txt").write_text("its sentence\n")
+                finished = self.start(watcher, root)
+
+                self.assertEqual(first.read_bytes(), b"the artwork that was printed")
+                self.assertEqual(
+                    (root / "done" / "book.pdf.txt").read_text(), "its sentence\n"
+                )
+                beside = sorted(
+                    path.name
+                    for path in (root / "done").iterdir()
+                    if path.name not in {"book.pdf", "book.pdf.txt"}
+                )
+                # One more file and its own sentence, the name carrying when
+                # its run started: book.20261116T101502Z.pdf.
+                self.assertEqual(len(beside), 2, beside)
+                self.assertRegex(beside[0], r"^book\.\d{8}T\d{6}Z\.pdf$")
+                self.assertEqual(beside[1], beside[0] + ".txt")
+                self.assertIn(
+                    f"book.pdf: done/ already holds a file of that name, so this "
+                    f"one is filed as {beside[0]}",
+                    finished.stderr,
+                )
+                self.assertIn("book.pdf: done (0)", finished.stdout)
+                self.assertEqual(list((root / "work").iterdir()), [])
+
+    def test_a_second_resend_in_the_same_second_still_has_a_name(self):
+        # The stamp is to the second, so the suffix alone is not a promise.
+        # Every name the stamp could give for a minute either side is taken
+        # here, which leaves only the counter.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.run_over(watcher, "book.pdf", 4, "twice")
+                (root / "done").mkdir()
+                (root / "done" / "book.pdf").write_bytes(b"first")
+                now = datetime.datetime.now(datetime.timezone.utc)
+                for offset in range(-60, 61):
+                    moment = now + datetime.timedelta(seconds=offset)
+                    taken = f"book.{moment:%Y%m%dT%H%M%SZ}.pdf"
+                    (root / "done" / taken).write_bytes(b"second")
+                self.start(watcher, root)
+                counted = [
+                    path.name
+                    for path in (root / "done").iterdir()
+                    if path.name.endswith("-2.pdf")
+                ]
+                self.assertEqual(len(counted), 1, counted)
+
+    def test_a_run_that_said_nothing_leaves_nobody_else_s_sentence(self):
+        # `-q` in the policy and a clean run: impose says nothing, so there is
+        # nothing to put beside the file -- and a sentence already at that
+        # name, left when somebody took an earlier file and not its `.txt`,
+        # must not be read as this file's.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.run_over(
+                    watcher, "book.pdf", 4, "quiet", OPTIONS="--up 2x2 -q"
+                )
+                (root / "done").mkdir()
+                stale = root / "done" / "book.pdf.txt"
+                stale.write_text("what impose said about another file\n")
+                self.start(watcher, root)
+                self.assertTrue((root / "done" / "book.pdf").exists())
+                self.assertFalse(stale.exists())
+
+
 class TestJsonLog(WatchedFolder):
     """`LOG_FORMAT=json`: the same record, for a reader that is not a person.
 

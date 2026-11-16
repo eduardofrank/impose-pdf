@@ -558,12 +558,45 @@ impose_claimed() {
     # disk, a folder somebody chmodded -- would stop the watcher dead and
     # quietly. Leave it in `work/` instead, say so, and carry on; the next
     # start sweeps it up.
-    if ! mv "$work/$name" "$root/$bucket/$name"; then
-        printf '%s: imposed with status %s, but cannot be filed into %s/ -- left in work/\n' \
-            "$name" "$status" "$bucket" >&2
-        return 1
+    #
+    # Filed with `ln` and not `mv`, for the reason the claim is: `mv` replaces
+    # whatever already has the name and says nothing. Measured before this:
+    # `book.pdf` sent, its press file collected, and a corrected `book.pdf`
+    # sent after it -- two lines saying `done (0)`, one file in `done/`, and
+    # the artwork that was actually printed gone. So a name that is taken is
+    # left alone and this file goes in beside it, with the moment its run
+    # started in its name.
+    filed=$name
+    tries=1
+    while ! ln "$work/$name" "$root/$bucket/$filed" 2>/dev/null; do
+        if { [ ! -e "$root/$bucket/$filed" ] && [ ! -L "$root/$bucket/$filed" ]; } ||
+            [ "$tries" -gt 99 ]; then
+            printf '%s: imposed with status %s, but cannot be filed into %s/ -- left in work/\n' \
+                "$name" "$status" "$bucket" >&2
+            return 1
+        fi
+        suffix=$(printf '%s' "$stamp" | tr -d ':-')
+        [ "$tries" -gt 1 ] && suffix="$suffix-$tries"
+        case $name in
+        *.*) filed="${name%.*}.$suffix.${name##*.}" ;;
+        *) filed="$name.$suffix" ;;
+        esac
+        tries=$((tries + 1))
+    done
+    rm -f "$work/$name" || true
+    if [ "$filed" != "$name" ]; then
+        printf '%s: %s/ already holds a file of that name, so this one is filed as %s\n' \
+            "$name" "$bucket" "$filed" >&2
     fi
-    [ -n "$message" ] && printf '%s\n' "$message" >"$root/$bucket/$name.txt"
+
+    # What impose said, beside the file -- and nothing beside it when impose
+    # said nothing, which is `-q` in the policy. A sentence left there by an
+    # earlier file of the same name would otherwise read as this one's.
+    if [ -n "$message" ]; then
+        printf '%s\n' "$message" >"$root/$bucket/$filed.txt"
+    else
+        rm -f "$root/$bucket/$filed.txt"
+    fi
     log_line "$name" "$bucket" "$status" "$stamp" "$duration" "$message"
     return 0
 }

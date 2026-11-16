@@ -267,6 +267,10 @@ What each thing you find means:
   leaves with `1` and is restarted. `systemctl restart impose-folder@NAME`;
   the sweep takes everything already sitting there, which is exactly what
   the sweep is for.
+- **`done/book.20261116T095411Z.pdf` beside `done/book.pdf`.** A resend: the
+  name was already filed, so the new file went in beside it rather than over
+  it, stamped with when its run started. The plain name is the earlier one.
+  The same in `rejected/` and `failed/`.
 - **A resend of a name already in `out/`.** Exit `4`, by design. Move the old
   press file aside, or put `--overwrite` in that folder's `OPTIONS` if the
   folder is one where the latest file always wins.

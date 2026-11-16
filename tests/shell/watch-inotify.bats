@@ -51,12 +51,16 @@ setup_file() {
 
     # One fixture for the whole file, from the builders every other test here
     # uses: eight print-ready A6 pages with a TrimBox, bleed and a slug area.
+    # And a second, of four, for the test that needs two files nobody could
+    # mistake for each other under one name.
     export ARTWORK="$BATS_FILE_TMPDIR/artwork.pdf"
+    export CORRECTED="$BATS_FILE_TMPDIR/corrected.pdf"
     ( cd "$repo" && "$PYTHON" -c '
 import sys
 from tests.support import make_pdf
 make_pdf(8).save(sys.argv[1])
-' "$ARTWORK" )
+make_pdf(4).save(sys.argv[2])
+' "$ARTWORK" "$CORRECTED" )
 
     # inotify is a Linux interface, so on anything else the event source is
     # the stand-in beside this file. Said out loud, because which one ran is
@@ -286,6 +290,35 @@ filed() {
     grep -Fq 'is already there' "$root/failed/book.pdf.txt"
     # And the press file is the one that was there, untouched.
     cmp -s "$ARTWORK" "$root/out/book.pdf"
+}
+
+@test "a resend under a name already filed goes beside it, not over it" {
+    policy
+    start_watcher
+    drop book.pdf
+    [ "$(filed book.pdf)" = done ]
+
+    # The press file is collected, which is what frees the name in out/, and
+    # the corrected artwork arrives under the name the first one had. This is
+    # the ordinary resend, and it used to leave one file in done/.
+    rm "$root/out/book.pdf"
+    drop book.pdf "$CORRECTED"
+    waited=0
+    while [ "$(grep -Fxc 'book.pdf: done (0)' "$log")" -lt 2 ]; do
+        [ "$waited" -lt 600 ] || return 1
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+
+    # The artwork that was printed is still the file under its own name, and
+    # the correction is beside it with its own sentence.
+    cmp -s "$ARTWORK" "$root/done/book.pdf"
+    grep -Fq '8 pages' "$root/done/book.pdf.txt"
+    set -- "$root"/done/book.*Z.pdf
+    [ "$#" -eq 1 ]
+    cmp -s "$CORRECTED" "$1"
+    grep -Fq '4 pages' "$1.txt"
+    grep -Fq "book.pdf: done/ already holds a file of that name" "$err"
 }
 
 @test "a watcher stopped the way systemd stops it exits 143 and lets go" {
