@@ -750,6 +750,19 @@ sweep() {
             continue
         }
         printf '%s: left over from an earlier run; imposing it now\n' "$name" >&2
+        # The one leftover with a second story. impose moves a press file
+        # into place whole and the watcher files the artwork afterwards, so
+        # a run killed between the two leaves a finished press file and an
+        # unfiled claim. Imposing it again is refused at exit 4, correctly,
+        # and the artwork lands in `failed/` beside a sentence about a file
+        # being in the way -- for a job that in fact succeeded. Nothing here
+        # can tell that from a real conflict, so it says what to look at.
+        if [ -e "$out/$name" ]; then
+            printf '%s: %s already holds a press file of that name. If the earlier run was stopped\n' \
+                "$name" "$out" >&2
+            printf 'after writing it, that press file is whole and this will be failed (4): check it,\n' >&2
+            printf 'and move the artwork from failed/ to done/ yourself.\n' >&2
+        fi
         impose_claimed "$name" || true
     done
     for path in "$in"/*; do

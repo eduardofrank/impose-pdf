@@ -1065,6 +1065,48 @@ class TestALimitOnOneRun(WatchedFolder):
                 self.assertIn("there is no GNU timeout on the PATH", finished.stderr)
 
 
+class TestStoppedBetweenWritingAndFiling(WatchedFolder):
+    """A run killed after its press file was written and before it was filed.
+
+    impose moves the press file into place whole, and the watcher files the
+    artwork afterwards. Between the two there is a finished press file in
+    `out/` and a claim in `work/`, and a kill there is what the next start
+    finds. It imposes the claim again, impose refuses to replace the press
+    file -- exit 4, correctly -- and the artwork is filed as failed for a job
+    that succeeded. The watcher cannot tell that from a real conflict, so it
+    says what to look at.
+    """
+
+    def test_the_leftover_is_failed_and_the_reason_is_said_first(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"midway-{watcher.stem}", OPTIONS="--up 2x2")
+                (root / "work").mkdir()
+                (root / "out").mkdir()
+                make_pdf(2).save(root / "work" / "book.pdf")
+                (root / "out" / "book.pdf").write_bytes(b"the press file, whole")
+                finished = self.start(watcher, root)
+
+                self.assertIn("book.pdf: failed (4)", finished.stdout)
+                self.assertIn(
+                    f"book.pdf: {root / 'out'} already holds a press file of that name",
+                    finished.stderr,
+                )
+                self.assertEqual(
+                    (root / "out" / "book.pdf").read_bytes(), b"the press file, whole"
+                )
+
+    def test_an_ordinary_leftover_gets_no_such_sentence(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"plain-{watcher.stem}", OPTIONS="--up 2x2")
+                (root / "work").mkdir()
+                make_pdf(2).save(root / "work" / "book.pdf")
+                finished = self.start(watcher, root)
+                self.assertIn("book.pdf: done (0)", finished.stdout)
+                self.assertNotIn("already holds a press file", finished.stderr)
+
+
 class TestJsonLog(WatchedFolder):
     """`LOG_FORMAT=json`: the same record, for a reader that is not a person.
 

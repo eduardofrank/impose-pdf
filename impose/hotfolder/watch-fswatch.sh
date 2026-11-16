@@ -641,6 +641,14 @@ sweep() {
             continue
         }
         printf '%s: left over from an earlier run; imposing it now\n' "$name" >&2
+        # A run killed after writing its press file and before filing the
+        # artwork: see watch-inotify.sh.
+        if [ -e "$out/$name" ]; then
+            printf '%s: %s already holds a press file of that name. If the earlier run was stopped\n' \
+                "$name" "$out" >&2
+            printf 'after writing it, that press file is whole and this will be failed (4): check it,\n' >&2
+            printf 'and move the artwork from failed/ to done/ yourself.\n' >&2
+        fi
         impose_claimed "$name" || true
     done
     for path in "$in"/*; do

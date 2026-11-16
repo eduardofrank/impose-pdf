@@ -2491,13 +2491,13 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-972 tests today, no system libraries, about twelve seconds. Twenty-one of them
-run the reference watchers in `impose/hotfolder/` and are more than half of
-that time, so they want a shell and `impose` on the PATH, and say so by skipping
-where either is missing; the rest are the library. The suite asserts geometry
-and structure rather than pixels: an imposition is right or wrong by where the
-trims land on the sheet, and expectations are literals from ISO 216 and ISO
-217 rather than restatements of what the code computes.
+974 tests today, no system libraries, about thirteen seconds. Twenty-four of
+them run the reference watchers in `impose/hotfolder/` and are more than half
+of that time, so they want a shell and `impose` on the PATH, and say so by
+skipping where either is missing; the rest are the library. The suite asserts
+geometry and structure rather than pixels: an imposition is right or wrong by
+where the trims land on the sheet, and expectations are literals from ISO 216
+and ISO 217 rather than restatements of what the code computes.
 
 The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those

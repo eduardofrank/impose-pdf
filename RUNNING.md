@@ -290,6 +290,13 @@ What each thing you find means:
   name was already filed, so the new file went in beside it rather than over
   it, stamped with when its run started. The plain name is the earlier one.
   The same in `rejected/` and `failed/`.
+- **A file in `failed/` at `4`, first thing after a restart.** Look at the
+  journal line above it. If the watcher said `out/` already held a press file
+  of that name, the earlier run was probably stopped after writing the press
+  file and before filing the artwork — a reboot, a `systemctl stop`, a kill.
+  impose moves a press file into place whole or not at all, so the one in
+  `out/` is complete. Check it is the job you expect, then
+  `mv failed/book.pdf done/` and remove the `.txt`.
 - **A resend of a name already in `out/`.** Exit `4`, by design. Move the old
   press file aside, or put `--overwrite` in that folder's `OPTIONS` if the
   folder is one where the latest file always wins.
