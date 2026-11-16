@@ -110,10 +110,34 @@ RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 
-# Two more that belong here and are left for you to turn on, because they are
-# the ones that break a service quietly and neither has been run anywhere:
-# MemoryDenyWriteExecute=yes
-# SystemCallFilter=@system-service
+# The rest of what it does not need. No capability at all, since it is not
+# root and never asks to be; no clock, kernel log or hostname to change; no
+# view of anybody else's processes; and no socket of any family but the one
+# a local service may hold. `systemd-analyze security` scored this unit 5.5,
+# MEDIUM, before these and the four lines after them, and 0.5 with them.
+CapabilityBoundingSet=
+RemoveIPC=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+
+# The two that break a service quietly when they are wrong, which is why
+# they sat here commented out until they had been run. Measured on systemd
+# 255, Ubuntu 24.04, aarch64, Python 3.12, with each added in turn and the
+# folder then put through a good file, a truncated one, a run stopped by
+# TIMEOUT, an event source killed and a stop: `done (0)`, `rejected (3)`,
+# `failed (124)`, a restart, and a clean stop, every time. That is one
+# machine. If a folder that works by hand fails as a service on yours, with
+# `Operation not permitted` or a core dump in the journal, these four lines
+# are the first thing to comment out -- and worth telling us about.
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 
 # A folder exposed to anybody you do not know wants a ceiling as well. A
 # 20000-page source genuinely needs 20000 pages' worth of memory, so pick

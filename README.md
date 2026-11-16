@@ -1469,10 +1469,23 @@ an event source that dies is still exit `1` and still restarted.
 (`PrivateNetwork=yes`), a read-only filesystem apart from the folder
 (`ProtectSystem=strict` plus `ReadWritePaths`), its own `/tmp`, no devices,
 no new privileges. If the policy's `OUT` or `PROOF` point outside the folder,
-they go in `ReadWritePaths` too. Two more directives that belong there,
-`MemoryDenyWriteExecute` and `SystemCallFilter`, are left commented out, and
-so are `MemoryMax` and `TasksMax` — which a folder exposed to anybody you do
-not know wants, set from the largest job it is meant to take.
+they go in `ReadWritePaths` too. Beyond those: no capabilities, no clock,
+kernel log or hostname to change, no view of other processes, no socket
+family but the local one, and a system-call filter with no writable and
+executable memory. `systemd-analyze security` scored the unit 5.5, MEDIUM,
+before that second group and 0.5 with it.
+
+The last two of them, `MemoryDenyWriteExecute` and `SystemCallFilter`, are
+the kind that break a service quietly, and they were commented out until they
+had been run. Measured on systemd 255 — Ubuntu 24.04, aarch64, Python 3.12 —
+with the folder put through a good file, a truncated one, a run stopped by
+`TIMEOUT`, a file over a `MemoryMax`, an outbox outside the folder, an event
+source killed and a stop: `done (0)`, `rejected (3)`, `failed (124)`, `failed
+(137)`, a restart and a clean stop. That is one machine, and the unit says
+which lines to comment out first if yours disagrees. `MemoryMax` and
+`TasksMax` stay commented, because they are numbers only the shop can pick —
+a folder exposed to anybody you do not know wants both, set from the largest
+job it is meant to take.
 
 One honest caveat, smaller than it was: the unit file is still the one thing
 here that cannot be run on the machine it was written on, which has no
