@@ -95,6 +95,14 @@ impose: a4-nup.json has 'trim_from', which is not a field of a job.
 `OPTIONS` reaches impose split on whitespace, so an option whose value has a
 space in it wants the ticket instead.
 
+**`TIMEOUT`, in every folder somebody else fills.** Whole seconds one file may
+take before its run is stopped and the file goes to `failed/` at `124`. It is
+in the policy because the right number is a fact about the folder: the
+largest job it is meant to take, with room. Unset is no limit, and a folder
+with no limit is stopped by the first file that never finishes. It needs GNU
+`timeout`, and a folder that asks for a limit nothing can enforce refuses to
+start.
+
 **`LOG_FORMAT`, where the log is read by something rather than somebody.**
 The default is a sentence a file — `book.pdf: done (0)` — and it is the right
 thing for a folder somebody watches. A folder whose journal feeds a dashboard,
@@ -214,7 +222,7 @@ without being asked: the file now at that name may be the one already on the
 press. Write to another name, or ask for it to be overwritten.                 # 4
 ```
 
-Four more statuses a folder produces, none of which is impose deciding
+Five more statuses a folder produces, none of which is impose deciding
 anything:
 
 - **`2` never reaches a file.** It is the watcher refusing to start, and the
@@ -234,6 +242,11 @@ anything:
   bucket holding a copy of everything the folder was ever sent.
 - **`143` and `130` are a stop**, SIGTERM and Ctrl-C, `128 +` the signal.
   They go to `failed/`, which is right: nothing was wrong with the file.
+- **`124` is the folder's own `TIMEOUT`.** The run took longer than the
+  policy allows and was stopped. Either the limit is too small for that
+  job — a 20000-page book is twenty seconds — or the file is one impose
+  does not finish, which is worth sending to whoever maintains it. Raise
+  the limit and `mv failed/book.pdf in/`, or don't.
 
 A warning is not a status. A book too thick to staple, a colour bar left off,
 a MediaBox taken as the finished size — all of those go to the journal and the
@@ -395,7 +408,7 @@ size. Use a name such as A4 or SRA3, or WIDTHxHEIGHT such as 320mmx450mm.
 
 $ impose-watch /srv/impose/a6-saddle            # SHEET=SRA3
 impose-watch: /srv/impose/a6-saddle/policy.conf: SHEET is not a key of a policy.
-Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT.
+Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT, TIMEOUT.
 
 $ impose-watch /srv/impose/a6-saddle            # SCHEMA and JOB both
 impose-watch: /srv/impose/a6-saddle/policy.conf says both SCHEMA (saddle) and

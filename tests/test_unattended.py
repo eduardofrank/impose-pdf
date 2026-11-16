@@ -562,6 +562,22 @@ class WatchedFolder(unittest.TestCase):
             path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
 
+    #: What the scripts call before they reach the check, and nothing else:
+    #: a PATH built from these has no event source on it whatever the machine
+    #: has installed, which `PATH=...:/usr/bin` could not promise on Linux.
+    TOOLS = ("mkdir", "find", "cat", "date", "rm", "ln", "mv", "awk", "sleep")
+
+    def bare_path(self):
+        """A directory holding impose and the tools, and no event source."""
+        bare = self.root / "bare"
+        bare.mkdir()
+        (bare / "impose").symlink_to(self.bin / "impose")
+        for tool in self.TOOLS:
+            found = shutil.which(tool)
+            if found:
+                (bare / tool).symlink_to(found)
+        return bare
+
     def folder(self, name, **policy):
         """A watched folder, with *policy* over the top of the house one.
 
@@ -700,22 +716,6 @@ class TestTheEventSource(WatchedFolder):
     `SuccessfulExit=false` are both told that 0 needs no restart, so 0 is the
     one status a watcher must never leave with.
     """
-
-    #: What the scripts call before they reach the check, and nothing else:
-    #: a PATH built from these has no event source on it whatever the machine
-    #: has installed, which `PATH=...:/usr/bin` could not promise on Linux.
-    TOOLS = ("mkdir", "find", "cat", "date", "rm", "ln", "mv", "awk", "sleep")
-
-    def bare_path(self):
-        """A directory holding impose and the tools, and no event source."""
-        bare = self.root / "bare"
-        bare.mkdir()
-        (bare / "impose").symlink_to(self.bin / "impose")
-        for tool in self.TOOLS:
-            found = shutil.which(tool)
-            if found:
-                (bare / tool).symlink_to(found)
-        return bare
 
     def test_a_machine_without_one_is_refused_before_anything_is_claimed(self):
         bare = self.bare_path()
@@ -980,6 +980,89 @@ class TestWhatTheInboxTakes(WatchedFolder):
                 root = self.folder(f"empty-{watcher.stem}")
                 finished = self.start(watcher, root)
                 self.assertNotIn("left in in/", finished.stderr)
+
+
+class TestALimitOnOneRun(WatchedFolder):
+    """`TIMEOUT`: how long one file may take before its run is stopped.
+
+    A folder works one file at a time, so a run that never ends is the whole
+    folder stopped behind a service that looks idle. The one known cause, a
+    pipe under a PDF's name, is refused; this is the bound on the next one.
+    """
+
+    SLOW = (
+        "#!/bin/sh\n"
+        "# The policy is tried against a file that is not there: answer that\n"
+        "# as impose does, and take for ever over anything else.\n"
+        'case "$*" in *.impose-policy-check.pdf*) exit 3 ;; esac\n'
+        "exec sleep 60\n"
+    )
+
+    def needs_gnu_timeout(self):
+        """Skip where there is nothing to enforce a limit with."""
+        if not (shutil.which("timeout") or shutil.which("gtimeout")):
+            self.skipTest("no GNU timeout on this machine to enforce one with")
+
+    def claimed(self, watcher, tag, **policy):
+        """A folder holding one two-page file, already claimed."""
+        root = self.folder(f"{tag}-{watcher.stem}", OPTIONS="--up 2x2", **policy)
+        (root / "work").mkdir()
+        make_pdf(2).save(root / "work" / "book.pdf")
+        return root
+
+    def test_a_run_past_it_is_stopped_and_filed_as_failed(self):
+        self.needs_gnu_timeout()
+        (self.bin / "impose").unlink()
+        (self.bin / "impose").write_text(self.SLOW, encoding="utf-8")
+        (self.bin / "impose").chmod(0o755)
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.claimed(watcher, "slow", TIMEOUT=1)
+                finished = self.start(watcher, root)
+                # 124 is timeout saying it stopped the run, which is neither
+                # the file nor the job: `failed/`, where somebody looks.
+                self.assertIn("book.pdf: failed (124)", finished.stdout)
+                self.assertTrue((root / "failed" / "book.pdf").exists())
+                self.assertEqual(list((root / "work").iterdir()), [])
+
+    def test_a_run_inside_it_is_none_the_wiser(self):
+        self.needs_gnu_timeout()
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.claimed(watcher, "quick", TIMEOUT=60)
+                finished = self.start(watcher, root)
+                self.assertIn("book.pdf: done (0)", finished.stdout)
+
+    def test_a_limit_that_is_not_seconds_is_refused(self):
+        for value in ("5m", "0", "-3", "1.5", "soon"):
+            for watcher in self.watchers:
+                with self.subTest(watcher.name, value=value):
+                    root = self.folder(f"n{value}-{watcher.stem}", TIMEOUT=value)
+                    finished = self.start(watcher, root)
+                    self.assertEqual(finished.returncode, 2, finished.stderr)
+                    self.assertIn(
+                        f"TIMEOUT={value} is not a whole number of seconds",
+                        finished.stderr,
+                    )
+
+    def test_a_limit_nothing_can_enforce_is_refused_at_startup(self):
+        # Refused, rather than run without it: a folder whose policy says ten
+        # minutes and whose runs are unbounded is a policy somebody believes
+        # is in force.
+        bare = self.bare_path()
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"unenforced-{watcher.stem}", TIMEOUT=600)
+                finished = subprocess.run(
+                    [str(watcher), str(root)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                    env={**os.environ, "PATH": str(bare)},
+                )
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn("there is no GNU timeout on the PATH", finished.stderr)
 
 
 class TestJsonLog(WatchedFolder):

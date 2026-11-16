@@ -97,6 +97,12 @@ if [ ! -f "$policy" ]; then
 # file, which bucket, impose's exit status, how long impose took, and what it
 # said -- for when something other than a person is reading.
 # LOG_FORMAT=json
+
+# How long one file may take, in whole seconds, before its run is stopped and
+# the file goes to failed/ at status 124. Unset is no limit. Pick it from the
+# largest job this folder is meant to take, not from a typical one: 20000
+# pages is about twenty seconds. Needs GNU timeout, which is coreutils.
+# TIMEOUT=600
 FORM
     printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \
         "$0" "$policy" >&2
@@ -118,6 +124,7 @@ OPTIONS=
 OUT=
 PROOF=
 LOG_FORMAT=
+TIMEOUT=
 cr=$(printf '\r')
 while IFS= read -r line || [ -n "$line" ]; do
     # A policy edited on Windows over a share arrives with carriage returns,
@@ -139,13 +146,14 @@ while IFS= read -r line || [ -n "$line" ]; do
     OUT) OUT=$value ;;
     PROOF) PROOF=$value ;;
     LOG_FORMAT) LOG_FORMAT=$value ;;
+    TIMEOUT) TIMEOUT=$value ;;
     *)
         # Named rather than ignored, for the same reason a job file refuses a
         # field it does not know: a misspelled key that is skipped is a
         # policy somebody believes is in force.
         printf '%s: %s: %s is not a key of a policy.\n' \
             "$0" "$policy" "${line%%=*}" >&2
-        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT.\n' >&2
+        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT, TIMEOUT.\n' >&2
         exit 2
         ;;
     esac
@@ -176,6 +184,44 @@ json) log_json=yes ;;
     printf 'Say text, the default, which is one line a file for a person; or\n' >&2
     printf 'json, which is one object a file for whatever reads the journal.\n' >&2
     exit 2
+    ;;
+esac
+
+# A limit on one run, for the hang nobody has found yet. A folder works one
+# file at a time, so a run that never ends is the folder stopped, behind a
+# service that looks idle: measured with a pipe under a PDF's name, before
+# that was refused. Whatever the next cause is, this is what bounds it.
+#
+# GNU timeout rather than a watchdog written here. The shell version is a
+# background `sleep` per file, and either it is waited for, which costs every
+# file a second, or it is left behind, which is a process a file against a
+# `TasksMax` that counts them. `--foreground` keeps impose in this script's
+# process group, so that the signal which stops a watcher still reaches it;
+# without it timeout makes a group of its own and a stop leaves the run going.
+# The probe is the flag, because a `timeout` that is not GNU's has no such
+# option, and finding that out on the first file is finding it out too late.
+limiter=
+case $TIMEOUT in
+'') ;;
+*[!0-9]* | 0*)
+    printf '%s: %s: TIMEOUT=%s is not a whole number of seconds.\n' \
+        "$0" "$policy" "$TIMEOUT" >&2
+    exit 2
+    ;;
+*)
+    for candidate in timeout gtimeout; do
+        if "$candidate" --foreground 5 true 2>/dev/null; then
+            limiter=$candidate
+            break
+        fi
+    done
+    if [ -z "$limiter" ]; then
+        printf '%s: %s sets TIMEOUT, and there is no GNU timeout on the PATH this\n' \
+            "$0" "$policy" >&2
+        printf 'runs with to enforce it. Install coreutils -- gtimeout, from Homebrew,\n' >&2
+        printf 'is the same thing -- or take the line out.\n' >&2
+        exit 2
+    fi
     ;;
 esac
 
@@ -243,6 +289,16 @@ if ! trouble=$(mkdir -p "$out" ${proofs:+"$proofs"} 2>&1); then
     exit 2
 fi
 
+# The run, under the limit if the policy set one. 124 is timeout's own status
+# for a run it stopped; `-k` is for one that ignored being asked.
+limited() {
+    if [ -n "$limiter" ]; then
+        "$limiter" --foreground -k 10 "$TIMEOUT" "$@"
+    else
+        "$@"
+    fi
+}
+
 # The invocation, assembled from the policy. OPTIONS is split on whitespace
 # by `set --`, which inside a function sets that function's own positional
 # parameters; globbing is off across the split so that an option value cannot
@@ -261,9 +317,9 @@ impose_it() {
         set -- "$@" --proof "$proof_file"
     fi
     if [ -n "$job" ]; then
-        impose run "$job" "$claimed" -o "$press_file" "$@"
+        limited impose run "$job" "$claimed" -o "$press_file" "$@"
     else
-        impose "$SCHEMA" "$claimed" -o "$press_file" "$@"
+        limited impose "$SCHEMA" "$claimed" -o "$press_file" "$@"
     fi
 }
 

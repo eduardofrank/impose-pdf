@@ -90,6 +90,12 @@ if [ ! -f "$policy" ]; then
 # which bucket, impose's exit status, how long impose took, and what it said
 # -- for when something other than a person is reading.
 # LOG_FORMAT=json
+
+# How long one file may take, in whole seconds, before its run is stopped and
+# the file goes to failed/ at status 124. Unset is no limit. Pick it from the
+# largest job this folder is meant to take, not from a typical one: 20000
+# pages is about twenty seconds. Needs GNU timeout, which is coreutils.
+# TIMEOUT=600
 FORM
     printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \
         "$0" "$policy" >&2
@@ -111,6 +117,7 @@ OPTIONS=
 OUT=
 PROOF=
 LOG_FORMAT=
+TIMEOUT=
 cr=$(printf '\r')
 while IFS= read -r line || [ -n "$line" ]; do
     # A share edited from Windows leaves carriage returns behind.
@@ -131,10 +138,11 @@ while IFS= read -r line || [ -n "$line" ]; do
     OUT) OUT=$value ;;
     PROOF) PROOF=$value ;;
     LOG_FORMAT) LOG_FORMAT=$value ;;
+    TIMEOUT) TIMEOUT=$value ;;
     *)
         printf '%s: %s: %s is not a key of a policy.\n' \
             "$0" "$policy" "${line%%=*}" >&2
-        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT.\n' >&2
+        printf 'Known: SCHEMA, JOB, OPTIONS, OUT, PROOF, LOG_FORMAT, TIMEOUT.\n' >&2
         exit 2
         ;;
     esac
@@ -164,6 +172,34 @@ json) log_json=yes ;;
     printf 'Say text, the default, which is one line a file for a person; or\n' >&2
     printf 'json, which is one object a file for whatever reads the log.\n' >&2
     exit 2
+    ;;
+esac
+
+# A limit on one run, enforced by GNU timeout: see watch-inotify.sh for why
+# that and not a watchdog written here. On macOS it is `gtimeout`, from
+# Homebrew's coreutils.
+limiter=
+case $TIMEOUT in
+'') ;;
+*[!0-9]* | 0*)
+    printf '%s: %s: TIMEOUT=%s is not a whole number of seconds.\n' \
+        "$0" "$policy" "$TIMEOUT" >&2
+    exit 2
+    ;;
+*)
+    for candidate in timeout gtimeout; do
+        if "$candidate" --foreground 5 true 2>/dev/null; then
+            limiter=$candidate
+            break
+        fi
+    done
+    if [ -z "$limiter" ]; then
+        printf '%s: %s sets TIMEOUT, and there is no GNU timeout on the PATH this\n' \
+            "$0" "$policy" >&2
+        printf 'runs with to enforce it. Install coreutils -- gtimeout, from Homebrew,\n' >&2
+        printf 'is the same thing -- or take the line out.\n' >&2
+        exit 2
+    fi
     ;;
 esac
 
@@ -226,6 +262,16 @@ if ! trouble=$(mkdir -p "$out" ${proofs:+"$proofs"} 2>&1); then
 fi
 
 
+# The run, under the limit if the policy set one. 124 is timeout's own status
+# for a run it stopped; `-k` is for one that ignored being asked.
+limited() {
+    if [ -n "$limiter" ]; then
+        "$limiter" --foreground -k 10 "$TIMEOUT" "$@"
+    else
+        "$@"
+    fi
+}
+
 # The invocation, assembled from the policy. OPTIONS is split on whitespace
 # by `set --`, which inside a function sets that function's own positional
 # parameters, with globbing off across the split.
@@ -241,9 +287,9 @@ impose_it() {
         set -- "$@" --proof "$proof_file"
     fi
     if [ -n "$job" ]; then
-        impose run "$job" "$claimed" -o "$press_file" "$@"
+        limited impose run "$job" "$claimed" -o "$press_file" "$@"
     else
-        impose "$SCHEMA" "$claimed" -o "$press_file" "$@"
+        limited impose "$SCHEMA" "$claimed" -o "$press_file" "$@"
     fi
 }
 

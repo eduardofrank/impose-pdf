@@ -119,7 +119,7 @@ same as there being nothing.
 ## A folder anybody can drop into
 
 FTP, WebDAV, a share a customer mounts: an inbox whose submitters you do not
-know is a different folder from one your own prepress fills, and four things
+know is a different folder from one your own prepress fills, and five things
 have to change. Everything in the section above still applies — this is what
 it does not cover.
 
@@ -190,6 +190,14 @@ caveat: that run was killed while the pages were being copied and left no
 temporary, but `SIGKILL` cannot be caught, so a kill during the write *can*
 leave a `.book.pdf.impose-1234.tmp` in the output directory. It is a dotfile,
 so a `*.pdf` watcher downstream will not pick it up, and nothing sweeps it.
+
+**A time limit, which is the one of these that is not systemd's.** `TIMEOUT`
+in `policy.conf`, in seconds. `MemoryMax` bounds what one file can take and
+says nothing about how long it takes it for; a folder works one file at a
+time, so a file impose never finishes is the folder closed to everybody
+else. Measured with a 60000-page file and `TIMEOUT=2`: stopped, `failed
+(124)`, nothing left in `out/`. Pick it the way the memory ceiling is picked,
+from the largest job the folder is meant to take.
 
 **A task ceiling, which is a fork bomb's ceiling and nothing else.** Measured
 on a folder while it imposed a file: three tasks idle — the watcher's shell,

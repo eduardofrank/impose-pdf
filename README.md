@@ -942,6 +942,23 @@ line parses, and the name comes back out of it exactly as it went in.
 A `LOG_FORMAT` naming a format the script does not write is refused at
 startup, with the other policy refusals, rather than logged in the other one.
 
+**A limit on one run, if the folder wants one.** The seventh key is
+`TIMEOUT`, in whole seconds. A folder works one file at a time, so a run
+that never ends is the whole folder stopped behind a service that looks
+idle; the one cause of that found so far is refused outright, and this is
+the bound on the next one. A run that passes it is stopped — impose is
+asked first, so it takes its half-written file with it — and the artwork
+goes to `failed/` at `124`, with `impose: stopped on SIGTERM.` beside it.
+Measured on a 60000-page file with `TIMEOUT=2`: `huge.pdf: failed (124)`,
+nothing in `out/`, and the folder on to the next file.
+
+Unset is no limit, which is the default because the right number is the
+largest job the folder is meant to take and only the shop knows it: 20000
+pages is about twenty seconds here. It is GNU `timeout` that enforces it —
+`gtimeout`, from Homebrew's coreutils, on macOS — and a policy that sets a
+limit on a machine with nothing to enforce one is refused at startup, not
+run without it.
+
 Starting a folder that has no `policy.conf` writes a commented one and stops:
 
 ```console
@@ -2306,6 +2323,10 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | One folder, one service — a systemd template and a launchd plist per watched folder |
 | ✅ | One outbox, one folder — the directory a folder writes into claimed at startup |
 | ✅ | `LOG_FORMAT=json` — one object a file, for a folder whose log is read by a program |
+| ✅ | A watcher that cannot stop quietly — an event source that ends is exit 1, and one that is missing is a refusal |
+| ✅ | A filed name is kept — a resend goes beside the artwork it would have replaced |
+| ✅ | Only an ordinary file is taken — any spelling of `.pdf`, and never a link or a pipe under that name |
+| ✅ | `TIMEOUT` — a limit on one run, so one file cannot stop a folder |
 | ✅ | `impose-hotfolder` — the watchers and both service templates shipped with the package |
 
 ## Several copies to a sheet
@@ -2463,7 +2484,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-968 tests today, no system libraries, about twelve seconds. Nineteen of them
+972 tests today, no system libraries, about twelve seconds. Twenty-one of them
 run the reference watchers in `impose/hotfolder/` and are more than half of
 that time, so they want a shell and `impose` on the PATH, and say so by skipping
 where either is missing; the rest are the library. The suite asserts geometry
