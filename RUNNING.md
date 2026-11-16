@@ -326,6 +326,119 @@ prefix off the front. Both of those jq programs were run against the lines a
 folder writes; the `journalctl` in front of them is the part this laptop
 cannot try.
 
+## Keeping it running
+
+Four things a folder needs that are not the folder, and that nothing in the
+package does for you. Each recipe below was run on systemd 255 unless it says
+otherwise.
+
+**Something has to empty the buckets.** `done/` and `rejected/` keep every
+file the folder was ever sent, by design, and nothing here removes one. On
+Linux that is a line each for `systemd-tmpfiles`, which already runs daily:
+
+```
+# /etc/tmpfiles.d/impose.conf
+e /srv/impose/*/done     - - - 30d
+e /srv/impose/*/rejected - - - 30d
+```
+
+`e` cleans what is inside a directory and leaves the directory, and the glob
+covers every folder. Measured with the age set to five seconds: the files
+older than that gone with their `.txt`, the one filed since still there, the
+service untouched. The age is counted from when the watcher filed the file,
+not from the date the artwork arrived with: a file dated 2020 and filed a
+moment ago survived a one-hour rule, measured, because filing changes its
+status time and tmpfiles goes by the newest time a file has.
+
+Not `failed/`. A file there is waiting for a person, and a bucket that
+empties itself after thirty days is one nobody had to look at. Not `out/`
+either, unless nothing collects from it — if a RIP does, the RIP empties it.
+On macOS the same thing is `find ~/impose/*/done -type f -mtime +30 -delete`
+from a LaunchAgent on a calendar interval; that one has not been run here.
+
+**Something has to say so when a folder needs a person.** There are two
+events worth being told about, and systemd has a hook for each. A unit that
+fails — a policy that will not start, an event source that died — is
+`OnFailure=`; a file arriving in `failed/` is a path unit.
+
+```ini
+# /etc/systemd/system/impose-notify@.service
+[Unit]
+Description=Tell somebody about %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/impose-notify %i
+```
+
+```ini
+# /etc/systemd/system/impose-failed@.path        enable one per folder
+[Path]
+PathChanged=/srv/impose/%i/failed
+Unit=impose-notify@failed-%i.service
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```ini
+# /etc/systemd/system/impose-folder@.service.d/notify.conf
+[Unit]
+OnFailure=impose-notify@unit-%i.service
+```
+
+`impose-notify` is yours to write, because how a shop is told is the shop's:
+mail, a chat hook, a light on a wall. It is handed `failed-a4-nup` or
+`unit-a4-nup`. Two things measured that are worth knowing before writing it.
+`PathChanged` and not `DirectoryNotEmpty`: the second fires again every time
+the notifier finishes for as long as the bucket has anything in it, five
+times in a few seconds for one file and then the path unit gives up with a
+start limit. And `PathChanged` fires when a file leaves the bucket as well as
+when one arrives, so have the script look and say nothing about an empty one
+— with that, two failures were two notifications and clearing the bucket was
+none. `OnFailure` fires on every failure, including the one a restart is
+about to fix: an event source killed under the unit notified once and the
+folder was running again five seconds later.
+
+For a count rather than an alarm, a folder with `LOG_FORMAT=json` answers it
+from the journal: the commands are under [the morning check](#the-morning-check).
+
+**The log has to be rotated where there is no journal.** journald does its
+own. The launchd agent writes to a file, `/usr/local/var/log/impose/NAME.log`,
+which grows a line a file for ever. One line in `/etc/newsyslog.d/impose.conf`
+is the usual answer on macOS —
+
+```
+/usr/local/var/log/impose/*.log    644  7  1000  *  GJ
+```
+
+— seven compressed generations, rotated at a megabyte. That line is from
+the manual page and has not been run here: `newsyslog` will not even do a dry
+run without root.
+
+**Upgrading impose is two things, because the watcher is a copy.**
+`pip install -U` replaces the package in its environment. It does not replace
+`/usr/local/libexec/impose-watch` or the unit in `/etc/systemd/system`, which
+are copies somebody made and may have edited, and a fix to a watcher is not
+installed until the copy is.
+
+```bash
+/opt/impose/.venv/bin/pip install -U /path/to/impose       # or however it was installed
+cmp "$(impose-hotfolder --path watch-inotify.sh)" /usr/local/libexec/impose-watch
+diff "$(impose-hotfolder --path 'impose-folder@.service')" /etc/systemd/system/impose-folder@.service
+```
+
+Silence from both is nothing to do. A difference is either the new version's
+change or your own edit, and `diff` is how to tell which before installing
+over it. Then `systemctl daemon-reload` if the unit changed, and
+`systemctl restart 'impose-folder@*'`.
+
+Restarting in the middle of a job loses nothing. Measured with a 20000-page
+file part way through: the restart stopped impose, which took its half-written
+press file with it; the artwork was still in `work/`; and the new watcher's
+first line was `big.pdf: left over from an earlier run; imposing it now`,
+followed by `done (0)`.
+
 ## Adding a folder
 
 Seven steps. Every transcript below was measured on a real folder, bar the
