@@ -58,7 +58,7 @@ def read_pages(pdf: pikepdf.Pdf, bleed_cap, *, trim_from: str = "trimbox"):
     found = []
     assumed = []
     for number, page in enumerate(pdf.pages, start=1):
-        boxes = read_boxes(page, trim_from=trim_from)
+        boxes = read_boxes(page, trim_from=trim_from, page_number=number)
         require_trim(boxes, page_number=number, pdfx=version)
         if boxes.rotation:
             raise ImposeError(

@@ -31,7 +31,7 @@ from collections.abc import Sequence
 import pikepdf
 from pikepdf import Array, Dictionary
 
-from . import ImposeError
+from . import ImposeError, SourceError
 from .geometry import Insets, Rect, Size, is_declared_size
 from .units import format_mm
 
@@ -143,9 +143,27 @@ def rotate_insets(insets: Insets, rotation: int) -> Insets:
     return Insets(**{edge: getattr(insets, source) for edge, source in mapping.items()})
 
 
-def _rect(array) -> Rect:
-    """A pikepdf box array as a normalized Rect."""
-    x0, y0, x1, y1 = (float(value) for value in array)
+def _rect(page: pikepdf.Page, box: str, *, where: str) -> Rect:
+    """One of *page*'s boxes as a normalized Rect.
+
+    A box is four numbers, and a file can say anything in their place: a
+    name, a string, three numbers, a reference to an object that is not
+    there. Found by damaging a valid file a byte at a time -- 21 of 676
+    mutations ended here in a ``TypeError`` and a stack trace, which a
+    watched folder then filed beside the artwork as what impose had to say
+    about it. It is the file that is wrong, so it is a
+    :class:`~impose.SourceError`, and it says which box.
+    """
+    try:
+        values = [float(value) for value in getattr(page, box.lower())]
+        if len(values) != 4:
+            raise ValueError(len(values))
+    except (TypeError, ValueError, AttributeError, KeyError, pikepdf.PdfError) as error:
+        raise SourceError(
+            f"{where}'s {box} is not four numbers, so the file does not say "
+            f"where that page's edges are."
+        ) from error
+    x0, y0, x1, y1 = values
     return Rect(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
 
@@ -171,7 +189,9 @@ def _rotation(page: pikepdf.Page) -> int:
     return degrees % 360
 
 
-def read_boxes(page: pikepdf.Page, *, trim_from: str = "trimbox") -> PageBoxes:
+def read_boxes(
+    page: pikepdf.Page, *, trim_from: str = "trimbox", page_number: int | None = None
+) -> PageBoxes:
     """Read the boxes of *page*, applying the specification's defaults.
 
     CropBox defaults to MediaBox; BleedBox and TrimBox default to CropBox. Each
@@ -183,21 +203,27 @@ def read_boxes(page: pikepdf.Page, *, trim_from: str = "trimbox") -> PageBoxes:
     is a view somebody set and nobody asked for that one -- and records on the
     page that the size was assumed. A page that does carry a TrimBox is read
     off it either way: the opt-in answers a question that was never asked.
+
+    *page_number* is only for the sentence when a box cannot be read, so
+    that a document wrong on page 9 says so.
     """
     if trim_from not in TRIM_FROM_CHOICES:
         raise ImposeError(
             f"Unknown trim_from {trim_from!r}; use "
             f"{' or '.join(TRIM_FROM_CHOICES)}."
         )
-    media = _rect(page.mediabox)
-    crop = _intersect(_rect(page.cropbox), media, what="CropBox")
+    where = f"Page {page_number}" if page_number is not None else "A page"
+    media = _rect(page, "MediaBox", where=where)
+    crop = _intersect(_rect(page, "CropBox", where=where), media, what="CropBox")
     has_trim = "/TrimBox" in page.obj
     has_bleed = "/BleedBox" in page.obj
     has_crop = "/CropBox" in page.obj
-    trim = _intersect(_rect(page.trimbox), media, what="TrimBox") if has_trim else crop
-    bleed = (
-        _intersect(_rect(page.bleedbox), media, what="BleedBox") if has_bleed else crop
-    )
+    trim = crop
+    if has_trim:
+        trim = _intersect(_rect(page, "TrimBox", where=where), media, what="TrimBox")
+    bleed = crop
+    if has_bleed:
+        bleed = _intersect(_rect(page, "BleedBox", where=where), media, what="BleedBox")
     assumed_from = ""
     if not has_trim and trim_from == "mediabox":
         trim = media

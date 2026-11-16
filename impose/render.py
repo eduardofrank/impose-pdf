@@ -19,7 +19,7 @@ from __future__ import annotations
 import pikepdf
 from pikepdf import Array, Dictionary, Name
 
-from . import __version__
+from . import SourceError, __version__
 from .destination import writing
 from .font import describe as describe_font
 from .font import load as load_font
@@ -391,10 +391,20 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         cached = self._forms.get(key)
         if cached is not None:
             return cached
-        foreign = pikepdf.Page(source.pages[index])
-        form = foreign.as_form_xobject()
-        form.BBox = Array(list(foreign.mediabox))
-        copied = self.pdf.copy_foreign(form)
+        # Copying a page is the first time its content is read, and so the
+        # first time a stream that cannot be decoded says so. QPDF's own
+        # exception came straight out of here as a stack trace -- 17 of 676
+        # mutations of a valid file -- and it is the file that is wrong.
+        try:
+            foreign = pikepdf.Page(source.pages[index])
+            form = foreign.as_form_xobject()
+            form.BBox = Array(list(foreign.mediabox))
+            copied = self.pdf.copy_foreign(form)
+        except pikepdf.PdfError as error:
+            raise SourceError(
+                f"Page {index + 1} cannot be copied onto a sheet, because its "
+                f"content cannot be read: {error}"
+            ) from error
         self._forms[key] = copied
         return copied
 

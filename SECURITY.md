@@ -86,6 +86,16 @@ a file that cannot be used, `1` for a job that cannot be imposed; see the
 exit-code table in the README. Spot-checked on empty, truncated, null-stuffed
 and garbage files: all exit `3` or `1`, none print a stack trace.
 
+That was a spot check, and a search then found what it had missed. A valid
+six-page file damaged 676 ways — cut short, a piece taken out, bytes changed
+in place — left as a stack trace 38 times, from two places: a page box whose
+entries were not numbers, and a content stream that would not decode when its
+page was copied onto a sheet. Both are exit `3` and a sentence naming the
+page now, and the search is kept in `tests/test_malformed.py` with a fixed
+seed, so the next such place is a failing test. What holds is that sentence
+and no more than it: 6000 further mutations found nothing, which is not the
+same as there being nothing.
+
 ## Not vulnerabilities
 
 - **Resource use proportional to the input.** A 20000-page source takes

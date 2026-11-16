@@ -183,11 +183,11 @@ def source_boxes(
     if not pdf.pages:
         raise SourceError("The file has no pages. There is nothing to impose.")
     version = pdfx_version(pdf)
-    first = read_boxes(pdf.pages[0], trim_from=trim_from)
+    first = read_boxes(pdf.pages[0], trim_from=trim_from, page_number=1)
     require_trim(first, page_number=1, pdfx=version)
     assumed = []
     for number, page in enumerate(pdf.pages, start=1):
-        boxes = read_boxes(page, trim_from=trim_from)
+        boxes = read_boxes(page, trim_from=trim_from, page_number=number)
         require_trim(boxes, page_number=number, pdfx=version)
         if wanted is not None:
             require_size(boxes, wanted, page_number=number)
