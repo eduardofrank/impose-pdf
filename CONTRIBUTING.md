@@ -160,10 +160,9 @@ the thing under test.
 needs.** `unittest discover` still wants nothing but the install. `bats
 tests/shell` wants bats (`brew install bats-core`, or `apt install bats`) and
 an `impose` it can run, and it skips the whole file rather than failing when
-there is no impose to find. It is also slow by this project's standards — five
-and a half to twelve and a half seconds for seven tests, measured over nineteen
-runs, because waiting for an event source is wall-clock time and nothing makes
-it shorter. The spread is wider than the suite: `prove_watching` re-announces a
+there is no impose to find. It is also slow by this project's standards —
+eleven to fourteen seconds for eight tests, measured over six runs, because
+waiting for an event source is wall-clock time and nothing makes it shorter. The spread is wider than the suite: `prove_watching` re-announces a
 file in the tests that start before their event source does, and how many times
 it has to depends on what else the machine is doing.
 

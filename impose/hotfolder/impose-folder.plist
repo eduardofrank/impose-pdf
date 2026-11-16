@@ -53,7 +53,8 @@ never told is the worst of the failures here.
 	<!-- Start it again if it stops with anything but 0. launchd has no way
 	     to say "except exit 2", which is the watcher refusing to start: a
 	     policy.conf that is missing or wrong, another watcher holding the
-	     folder, a filesystem that cannot hard-link. So a folder in that
+	     folder, a filesystem that cannot hard-link, no fswatch on the PATH
+	     above. So a folder in that
 	     state restarts every ThrottleInterval seconds and writes its one
 	     sentence to the log each time, which is loud rather than silent --
 	     read the log, fix the policy. -->

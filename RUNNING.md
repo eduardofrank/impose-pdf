@@ -214,13 +214,19 @@ without being asked: the file now at that name may be the one already on the
 press. Write to another name, or ask for it to be overwritten.                 # 4
 ```
 
-Three more statuses a folder produces, none of which is impose deciding
+Four more statuses a folder produces, none of which is impose deciding
 anything:
 
 - **`2` never reaches a file.** It is the watcher refusing to start, and the
   only status a refusal uses, which is why the unit carries
   `RestartPreventExitStatus=2`: a policy that is wrong now is wrong in five
   seconds. Read the sentence at the top of `journalctl -u impose-folder@NAME`.
+  No `inotifywait` on the service's `PATH` is one of these.
+- **`1` on the unit, with no file named, is the event source ending.**
+  `inotifywait` crashed, was killed, or lost its watch with the mount under
+  it. The watcher says so and leaves, and the unit starts it again in five
+  seconds; the sweep takes whatever arrived in between. Once is a restart.
+  Every few minutes is something wrong with the mount.
 - **`127` is `impose` not being on the service's `PATH`.** This is the
   commonest way a folder fails, because systemd and launchd each hand a job a
   `PATH` of their own, and the folder works perfectly from your terminal.
@@ -255,10 +261,12 @@ What each thing you find means:
 - **A file in `failed/`.** The environment. Clear whatever it names, then
   `mv failed/book.pdf in/` — and `rm failed/book.pdf.txt` with it, or
   yesterday's reason sits in the bucket after the file has gone.
-- **Files in `in/` and the service up.** The event source has gone away and
-  the loop is reading nothing. `systemctl restart impose-folder@NAME`; the
-  sweep takes everything already sitting there, which is exactly what the
-  sweep is for.
+- **Files in `in/` and the service up.** The event source is running and
+  hearing nothing, which is a share remounted under it more often than
+  anything else. An event source that *ends* is not this case — the watcher
+  leaves with `1` and is restarted. `systemctl restart impose-folder@NAME`;
+  the sweep takes everything already sitting there, which is exactly what
+  the sweep is for.
 - **A resend of a name already in `out/`.** Exit `4`, by design. Move the old
   press file aside, or put `--overwrite` in that folder's `OPTIONS` if the
   folder is one where the latest file always wins.

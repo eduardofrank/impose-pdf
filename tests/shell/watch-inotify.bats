@@ -301,6 +301,31 @@ filed() {
     [ ! -e "$root/out/.impose-writer.lock" ]
 }
 
+@test "an event source that dies takes the watcher with it, and not at 0" {
+    policy
+    start_watcher
+
+    # The event source and nothing else: the first half of the pipeline, a
+    # child of the script. This is inotifywait crashing, or losing its watch
+    # with the mount, and it is not a stop -- nobody signalled the group.
+    source_pid=$(pgrep -P "$watcher" -f inotifywait)
+    kill -KILL "$source_pid"
+    watcher_status=0
+    wait "$watcher" || watcher_status=$?
+    watcher=
+
+    # 1, where it used to be 0. `Restart=on-failure` restarts on this and
+    # does not on 0, and a folder that stopped watching and reported success
+    # is one nobody goes to look at.
+    [ "$watcher_status" -eq 1 ]
+    grep -Fq "the event source ended, so nothing is watching $root." "$err"
+
+    # Both claims released, because the restart that status asks for has to
+    # be able to take them.
+    [ ! -e "$root/.watcher.lock" ]
+    [ ! -e "$root/out/.impose-writer.lock" ]
+}
+
 @test "a folder that asks for json gets one object a file" {
     printf '%s\n' 'SCHEMA=nup' 'OPTIONS=--up 2x2' 'LOG_FORMAT=json' \
         >"$root/policy.conf"

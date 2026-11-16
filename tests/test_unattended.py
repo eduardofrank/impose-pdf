@@ -535,7 +535,15 @@ class WatchedFolder(unittest.TestCase):
     on one that has neither. What that reaches is startup and the sweep. The
     live event loop is `tests/shell/watch-inotify.bats`, which needs bats and
     is not part of this suite.
+
+    An event source that ends is a failure, and the watcher says so: exit 1
+    and one sentence, which is therefore how every run here that got past
+    its checks finishes. It used to be 0 and silence, which a service
+    manager reads as a folder with nothing left to do.
     """
+
+    #: What a watcher says when its event source goes away under it.
+    ENDED = "the event source ended, so nothing is watching"
 
     def setUp(self):
         self.watchers = _runnable_watchers()
@@ -657,7 +665,7 @@ class TestOneOutboxOneFolder(WatchedFolder):
                 self.hold(shared, dead, "/srv/impose/whoever")
                 root = self.folder(f"heir-{watcher.stem}", OUT=shared)
                 finished = self.start(watcher, root)
-                self.assertEqual(finished.returncode, 0, finished.stderr)
+                self.assertEqual(finished.returncode, 1, finished.stderr)
                 self.assertIn(f"clearing a claim on {shared}", finished.stderr)
                 self.assertIn(f"left by pid {dead}", finished.stderr)
 
@@ -669,12 +677,87 @@ class TestOneOutboxOneFolder(WatchedFolder):
             with self.subTest(watcher.name):
                 root = self.folder(f"own-{watcher.stem}")
                 finished = self.start(watcher, root)
-                self.assertEqual(finished.returncode, 0, finished.stderr)
-                self.assertEqual(finished.stderr, "")
+                # One line on stderr and it is the stub's doing: the checks
+                # themselves had nothing to say.
+                self.assertEqual(finished.returncode, 1, finished.stderr)
+                self.assertEqual(
+                    finished.stderr,
+                    f"{watcher}: {self.ENDED} {root}.\n",
+                )
                 self.assertEqual(
                     sorted(path.name for path in (root / "out").iterdir()), []
                 )
                 self.assertFalse((root / ".watcher.lock").exists())
+
+
+class TestTheEventSource(WatchedFolder):
+    """A folder with nothing to tell it a file arrived is not a running folder.
+
+    Both ways of having no event source used to end the same way: exit 0 and
+    nothing said. Measured under systemd 255 with `inotifywait` killed
+    beneath a running unit -- "Deactivated successfully", `NRestarts=0`, and
+    the next file left in the inbox. `Restart=on-failure` and launchd's
+    `SuccessfulExit=false` are both told that 0 needs no restart, so 0 is the
+    one status a watcher must never leave with.
+    """
+
+    #: What the scripts call before they reach the check, and nothing else:
+    #: a PATH built from these has no event source on it whatever the machine
+    #: has installed, which `PATH=...:/usr/bin` could not promise on Linux.
+    TOOLS = ("mkdir", "find", "cat", "date", "rm", "ln", "mv", "awk", "sleep")
+
+    def bare_path(self):
+        """A directory holding impose and the tools, and no event source."""
+        bare = self.root / "bare"
+        bare.mkdir()
+        (bare / "impose").symlink_to(self.bin / "impose")
+        for tool in self.TOOLS:
+            found = shutil.which(tool)
+            if found:
+                (bare / tool).symlink_to(found)
+        return bare
+
+    def test_a_machine_without_one_is_refused_before_anything_is_claimed(self):
+        bare = self.bare_path()
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"bare-{watcher.stem}")
+                finished = subprocess.run(
+                    [str(watcher), str(root)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                    env={**os.environ, "PATH": str(bare)},
+                )
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn("on the PATH this runs with", finished.stderr)
+                # Refused before the lock and before the outbox claim, so
+                # there is nothing for the next start to clear.
+                self.assertFalse((root / ".watcher.lock").exists())
+                self.assertFalse((root / "out" / ".impose-writer.lock").exists())
+
+    def test_one_that_ends_is_a_failure_and_a_sentence(self):
+        # The stub is an event source that starts and stops at once, which is
+        # what a crash looks like from the reader's end of the pipe.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"ended-{watcher.stem}")
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 1, finished.stderr)
+                self.assertIn(f"{self.ENDED} {root}.", finished.stderr)
+                # It still lets go on the way out, or the restart this status
+                # asks for would meet its own lock.
+                self.assertFalse((root / ".watcher.lock").exists())
+
+    def test_no_folder_given_is_a_refusal_to_start(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                finished = subprocess.run(
+                    [str(watcher)], capture_output=True, text=True, check=False
+                )
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                self.assertIn("usage:", finished.stderr)
 
 
 class TestJsonLog(WatchedFolder):
@@ -710,7 +793,8 @@ class TestJsonLog(WatchedFolder):
             else:
                 (work / name).write_bytes(data)
         finished = self.start(watcher, root)
-        self.assertEqual(finished.returncode, 0, finished.stderr)
+        self.assertEqual(finished.returncode, 1, finished.stderr)
+        self.assertIn(self.ENDED, finished.stderr)
         return root, finished
 
     def test_one_object_a_file_saying_what_happened_to_it(self):

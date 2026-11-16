@@ -1189,8 +1189,11 @@ log.
 **They refuse to start, rather than half work, and exit `2` when they do.**
 Everything below is checked before a single file is touched, and `2` is the
 only status a refusal to start uses — so a service manager can be told that a
-`2` will still be a `2` in five seconds' time, where anything else is the
-event source ending and worth starting again.
+`2` will still be a `2` in five seconds' time. The event source ending under
+a folder that was running is `1`, with a sentence, and that one is worth
+starting again. A watcher never leaves with `0`: it has no way to be
+finished, and `0` is the status both service managers are told needs no
+restart.
 
 The first two are the policy. A `policy.conf` that is missing is written and
 stopped on, as above; one that anybody can write is refused before it is read
@@ -1243,6 +1246,20 @@ A file is claimed by hard-linking its name from in/ into work/,
 so linking has to work. Some SMB mounts and exFAT cannot link at
 all. Put the folder on a filesystem that can, or replace the
 claim with your own.
+```
+
+The last is the machine rather than the folder: no `inotifywait`, or no
+`fswatch`, on the `PATH` the service runs with. A pipeline whose first
+command is missing still runs its second, so the script used to sweep the
+inbox once, read end of file and leave at `0` — a folder that was never
+watched and said nothing. It is looked for before anything is claimed now,
+and so is the folder argument itself, which used to be the shell's to
+refuse: `1` from bash and `2` from dash, measured, for the same mistake.
+
+```console
+$ impose/hotfolder/watch-fswatch.sh ./a4-nup
+impose/hotfolder/watch-fswatch.sh: there is no fswatch on the PATH this runs with, and it is
+what says a file has arrived. brew install fswatch.
 ```
 
 A file that is imposed but cannot then be filed — a full disk, a bucket
@@ -1349,7 +1366,11 @@ are worth knowing about.
 with `RestartPreventExitStatus=2`, because `2` is the watcher refusing to
 start — a policy that is missing or wrong, another watcher on the folder, a
 filesystem that cannot hard-link — and none of those are different in five
-seconds. Anything else is the event source ending, which a restart fixes.
+seconds. The event source ending is `1`, which a restart fixes. Measured on
+systemd 255 with `inotifywait` killed under a running unit: `status=1/FAILURE`,
+the sentence in the journal, a restart five seconds later, and the next file
+`done (0)`. Before the script said so it left at `0` — "Deactivated
+successfully", no restart, and the next file sitting in the inbox.
 
 **The `PATH` is in the unit because a service does not have yours.** This is
 the commonest way a watched folder fails: it works by hand and files
@@ -1400,9 +1421,11 @@ Loaded against a test folder holding one A4 office export, the agent came up
 with the plist's `PATH`, swept the inbox, wrote the press file into `out/`
 and the proof into `proof/`, filed the source into `done/` beside its
 sentence, and logged `minutes.pdf: done (0)` to the path the plist names.
-Then it exited `0` — there is no `fswatch` on this machine, so there was no
-event source to keep it alive — and `KeepAlive`/`SuccessfulExit` correctly
-did not restart it.
+That run then exited `0`, because there is no `fswatch` on this machine and
+the script of the day swept once and left — which `KeepAlive`/`SuccessfulExit`
+read as nothing to restart, and which is the hole the startup check above
+closes. The same script on the same machine now refuses with `2` and the
+sentence, before it sweeps anything.
 
 launchd has no `RestartPreventExitStatus`, so a folder whose policy is wrong
 restarts every `ThrottleInterval` seconds and writes its sentence to the log
@@ -2384,8 +2407,8 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-950 tests today, no system libraries, under seven seconds. Seven of them run
-the reference watchers in `impose/hotfolder/` and are nearly half of that
+953 tests today, no system libraries, about seven seconds. Ten of them run
+the reference watchers in `impose/hotfolder/` and are about half of that
 time, so they want a shell and `impose` on the PATH, and say so by skipping
 where either is missing; the rest are the library. The suite asserts geometry
 and structure rather than pixels: an imposition is right or wrong by where the
@@ -2396,11 +2419,11 @@ The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
 two watchers never had, and it has to be as silent as pylint: they are what a
 shop copies as the starting point for a hot folder, so a defect in one of them
-is a defect in somebody's production folder. `bats tests/shell` is seven tests
+is a defect in somebody's production folder. `bats tests/shell` is eight tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Five to twelve seconds,
-measured over nineteen runs, and it skips itself when there is no `impose` to
+rather than the startup checks the Python tests cover. Eleven to fourteen seconds,
+measured over six runs, and it skips itself when there is no `impose` to
 run.
 
 A third check on the same material runs in CI only, in the job those two

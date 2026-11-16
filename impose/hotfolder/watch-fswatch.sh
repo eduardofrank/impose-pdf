@@ -23,11 +23,19 @@
 # launchd -- `impose-folder.plist`, beside it, is an agent for one folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
-# not set up, and starting it again changes nothing until that is fixed.
+# not set up, and starting it again changes nothing until that is fixed. Exit
+# 1 is the event source ending under a folder that was running. It never
+# leaves with 0, which launchd is told means there is nothing to restart.
 
 set -eu
 
-root=${1:?usage: watch-fswatch.sh FOLDER}
+# Asked rather than left to `${1:?}`, whose status is the shell's and is 1
+# under bash: see watch-inotify.sh.
+if [ -z "${1:-}" ]; then
+    printf 'usage: %s FOLDER\n' "$0" >&2
+    exit 2
+fi
+root=$1
 in="$root/in"
 work="$root/work"
 
@@ -250,6 +258,16 @@ trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null "" 2>&1) || statu
 if [ "$status" != 3 ]; then
     printf '%s: %s does not describe a run this impose can make (exit %s):\n%s\n' \
         "$0" "$policy" "$status" "$trouble" >&2
+    exit 2
+fi
+
+# The event source, looked for before anything is claimed: see
+# watch-inotify.sh. Without it the pipeline at the bottom sweeps once and
+# stops, and the folder is never watched.
+if ! command -v fswatch >/dev/null 2>&1; then
+    printf '%s: there is no fswatch on the PATH this runs with, and it is\n' \
+        "$0" >&2
+    printf 'what says a file has arrived. brew install fswatch.\n' >&2
     exit 2
 fi
 
@@ -540,3 +558,15 @@ fswatch -0 --event Created --event MovedTo --event Updated "$in" | {
         handle "$(basename "$path")" || true
     done
 }
+
+# Reached only when the event source has gone away, and said with a status
+# that is not 0: see watch-inotify.sh, where falling off this end was
+# measured as a folder that stopped and reported success.
+if owned; then
+    printf '%s: the event source ended, so nothing is watching %s.\n' \
+        "$0" "$root" >&2
+else
+    printf '%s: %s is held by another watcher now, so this one is leaving.\n' \
+        "$0" "$root" >&2
+fi
+exit 1

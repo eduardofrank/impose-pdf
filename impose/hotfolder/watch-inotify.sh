@@ -27,12 +27,20 @@
 # folder.
 #
 # Exit 2 is this script refusing to start, and nothing else is: the folder is
-# not set up, and starting it again changes nothing until that is fixed. Any
-# other exit is the event source ending, which is worth starting again.
+# not set up, and starting it again changes nothing until that is fixed. Exit
+# 1 is the event source ending under a folder that was running, which is
+# worth starting again. It never leaves with 0: a watcher has no way to be
+# finished, so 0 would be a folder that stopped and called it success.
 
 set -eu
 
-root=${1:?usage: watch-inotify.sh FOLDER}
+# Asked rather than left to `${1:?}`, whose status is the shell's own: 1 from
+# bash and 2 from dash, measured, and 2 is the one this script promises.
+if [ -z "${1:-}" ]; then
+    printf 'usage: %s FOLDER\n' "$0" >&2
+    exit 2
+fi
+root=$1
 in="$root/in"
 work="$root/work"
 
@@ -270,6 +278,18 @@ trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null "" 2>&1) || statu
 if [ "$status" != 3 ]; then
     printf '%s: %s does not describe a run this impose can make (exit %s):\n%s\n' \
         "$0" "$policy" "$status" "$trouble" >&2
+    exit 2
+fi
+
+# The event source, looked for before anything is claimed. A pipeline whose
+# first command is not there still runs its second: the shell says `not
+# found`, the reader sweeps, reads end of file and stops, and the folder is
+# never watched at all. That is a machine nobody finished setting up, so it
+# is a refusal to start like the rest of them.
+if ! command -v inotifywait >/dev/null 2>&1; then
+    printf '%s: there is no inotifywait on the PATH this runs with, and it is\n' \
+        "$0" >&2
+    printf 'what says a file has arrived. Install inotify-tools.\n' >&2
     exit 2
 fi
 
@@ -616,3 +636,22 @@ inotifywait -m -q -e close_write -e moved_to --format '%f' "$in" | {
         handle "$name" || true
     done
 }
+
+# Reached only when the pipeline has ended, and the only way it ends is the
+# event source going away: killed, crashed, or its watch torn down with the
+# mount under it. A stop signal does not get here -- its trap leaves first,
+# with the signal's own status.
+#
+# This has to be said, and with a status that is not 0. Without it the script
+# fell off its own end: measured under systemd 255 with inotifywait killed,
+# "Deactivated successfully", no restart, and the next file left sitting in
+# the inbox with nothing wrong anywhere a person would look. A status of 0 is
+# the one `Restart=on-failure` is told not to restart on.
+if owned; then
+    printf '%s: the event source ended, so nothing is watching %s.\n' \
+        "$0" "$root" >&2
+else
+    printf '%s: %s is held by another watcher now, so this one is leaving.\n' \
+        "$0" "$root" >&2
+fi
+exit 1
