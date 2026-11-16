@@ -79,6 +79,16 @@ TimeoutStopSec=30
 # more red line among them.
 SuccessExitStatus=143
 
+# One file that runs out of memory is that file's problem. The default,
+# OOMPolicy=stop, makes it the folder's: when the kernel kills any process of
+# a unit, systemd stops all of them. Measured on systemd 255 under a
+# MemoryMax the file was bigger than: impose killed, then the watcher
+# terminated with Result=oom-kill and started again five seconds later --
+# and the artwork reached failed/ only because the script filed it before
+# the SIGTERM arrived. With this line the watcher is left alone: `failed
+# (137)` for that file, and the next one imposed.
+OOMPolicy=continue
+
 # The press file is written 0644 so that whatever picks it up can read it.
 UMask=0022
 

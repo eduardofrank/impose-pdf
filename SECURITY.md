@@ -185,11 +185,25 @@ which is the point — the ceiling is not for the jobs you expect. What happens
 when it is reached, measured at 160 MiB with swap off and a 20000-page source:
 `SIGKILL`, exit `137`, no press file. `137` is not `0`, `1` or `3`, so the
 reference watchers file the artwork in `failed/`, the bucket that means fix
-the environment and send it again, which is the right answer. One honest
-caveat: that run was killed while the pages were being copied and left no
-temporary, but `SIGKILL` cannot be caught, so a kill during the write *can*
-leave a `.book.pdf.impose-1234.tmp` in the output directory. It is a dotfile,
-so a `*.pdf` watcher downstream will not pick it up, and nothing sweeps it.
+the environment and send it again, which is the right answer.
+
+That was measured on the script, and under systemd there is a second thing
+that happens. A unit's default is `OOMPolicy=stop`: when the kernel kills any
+one of its processes, systemd stops the rest. Measured on systemd 255 with
+`MemoryMax=96M` and the same source — impose killed, then the watcher itself
+terminated, `Result=oom-kill`, and started again five seconds later; the
+artwork reached `failed/` only because the script filed it before the signal
+arrived. One oversized file was a restart of the folder, and a file caught on
+the wrong side of that race would be swept up and tried again at the next
+start. The template now says `OOMPolicy=continue`, and the same run leaves
+the watcher alone: `big.pdf: failed (137)`, then `next.pdf: done (0)`, with
+no restart. If you wrote your own unit from an earlier copy, add the line.
+
+One honest caveat: that run was killed while the pages were being copied and
+left no temporary, but `SIGKILL` cannot be caught, so a kill during the write
+*can* leave a `.book.pdf.impose-1234.tmp` in the output directory. It is a
+dotfile, so a `*.pdf` watcher downstream will not pick it up, and nothing
+sweeps it.
 
 **A time limit, which is the one of these that is not systemd's.** `TIMEOUT`
 in `policy.conf`, in seconds. `MemoryMax` bounds what one file can take and
