@@ -25,15 +25,38 @@
 # can say anything about; `bats tests/shell` is in the gate in CONTRIBUTING.md
 # and in CI, which is where it gets noticed.
 #
-# Only the inotify watcher. watch-fswatch.sh differs in one place, and it is
-# `settled()`, which waits for a file's size to hold still for three polls a
-# second apart: a live test of it costs three seconds a file before impose
-# starts, and fswatch is not on a Linux CI runner anyway. Its startup is
-# covered in tests/test_watched_folder.py alongside this one's.
+# The inotify watcher unless told otherwise, and `IMPOSE_WATCHER=fswatch bats
+# tests/shell` for the other one, which wants a real fswatch and so a Mac: CI
+# runs it there. The file keeps the name it had when it was only the first.
+#
+# watch-fswatch.sh differs in one place, and it is `settled()`, which waits
+# for a file's size to hold still for three polls a second apart. So a live
+# test of it costs four seconds a file before impose starts: about two
+# minutes for this file on a macOS runner, against twenty seconds for the
+# other. Worth it. The first time this ran against fswatch, eleven of the
+# twelve tests failed, on a defect no stubbed event source could have shown.
 
 setup_file() {
     repo=$(cd "$BATS_TEST_DIRNAME/../.." && pwd)
-    export WATCHER="$repo/impose/hotfolder/watch-inotify.sh"
+    # Which of the two scripts, and what its event source is called. The
+    # fswatch one waits four seconds for a file to stop growing before it
+    # touches it, so the one retry in `prove_watching` has to be slower
+    # than that, or it takes the file away again mid-wait for ever.
+    case ${IMPOSE_WATCHER:-inotify} in
+    inotify)
+        export WATCHER="$repo/impose/hotfolder/watch-inotify.sh"
+        export SOURCE=inotifywait RETRY_TICKS=10 WARM_TICKS=300
+        ;;
+    fswatch)
+        export WATCHER="$repo/impose/hotfolder/watch-fswatch.sh"
+        export SOURCE=fswatch RETRY_TICKS=100 WARM_TICKS=900
+        command -v fswatch >/dev/null 2>&1 || skip "no fswatch on this machine"
+        ;;
+    *)
+        echo "IMPOSE_WATCHER is inotify or fswatch, not $IMPOSE_WATCHER" >&2
+        return 1
+        ;;
+    esac
 
     # The project's own venv first, because that is the install the rest of
     # the gate runs against; a system-wide impose otherwise.
@@ -65,9 +88,9 @@ make_pdf(4).save(sys.argv[2])
     # inotify is a Linux interface, so on anything else the event source is
     # the stand-in beside this file. Said out loud, because which one ran is
     # the first thing to know about a failure here.
-    if command -v inotifywait >/dev/null 2>&1; then
+    if command -v "$SOURCE" >/dev/null 2>&1; then
         export STAND_IN=
-        echo "# event source: $(command -v inotifywait)" >&3
+        echo "# event source: $(command -v "$SOURCE")" >&3
     else
         export STAND_IN="$BATS_TEST_DIRNAME/inotifywait-stand-in.sh"
         echo "# event source: the stand-in, as this machine has no inotify" >&3
@@ -159,7 +182,7 @@ prove_watching() {
     local name=warm-up.pdf waited=0
     drop "$name"
     while [ ! -e "$root/done/$name" ]; do
-        if [ "$waited" -ge 300 ]; then
+        if [ "$waited" -ge "$WARM_TICKS" ]; then
             echo "the event source never reported anything. stderr:" >&2
             cat "$err" >&2
             return 1
@@ -167,7 +190,8 @@ prove_watching() {
         # Guarded, because the watcher may claim the file between the test
         # seeing it and moving it -- and a bare `mv` failing there would fail
         # the test for the one reason that means everything is working.
-        if [ "$((waited % 10))" -eq 9 ] && [ -e "$root/in/$name" ]; then
+        if [ "$((waited % RETRY_TICKS))" -eq "$((RETRY_TICKS - 1))" ] &&
+            [ -e "$root/in/$name" ]; then
             if mv "$root/in/$name" "$BATS_TEST_TMPDIR/again" 2>/dev/null; then
                 sleep 0.3
                 mv "$BATS_TEST_TMPDIR/again" "$root/in/$name"
@@ -396,7 +420,11 @@ filed() {
     # The event source and nothing else: the first half of the pipeline, a
     # child of the script. This is inotifywait crashing, or losing its watch
     # with the mount, and it is not a stop -- nobody signalled the group.
-    source_pid=$(pgrep -P "$watcher" -f inotifywait)
+    # By name where it is a program, and by path where it is the stand-in,
+    # which runs as a shell. Not `-f` alone: the fswatch script has
+    # `fswatch` in its own name, and so does the loop it forks.
+    source_pid=$(pgrep -P "$watcher" -x "$SOURCE" ||
+        pgrep -P "$watcher" -f "bin/$SOURCE")
     kill -KILL "$source_pid"
     watcher_status=0
     wait "$watcher" || watcher_status=$?

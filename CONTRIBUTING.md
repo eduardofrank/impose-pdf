@@ -29,19 +29,20 @@ bats tests/shell
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
-two more: `lint`, and `watched folder` for the four checks that are about
-what a shop copies into production — shellcheck on the watchers, a wheel built
-and installed into a virtual environment with no checkout behind it, so that
-the watcher and the unit the rest of the job uses are the ones that shipped,
-`systemd-analyze verify` on `impose/hotfolder/impose-folder@.service`, and bats
-on a temporary folder with the real `inotifywait` under it. Only the unit
-check is CI-only; there is no systemd on a macOS laptop to run it with. It
-fails on any line of the report naming the unit, rather than on the exit
-status, because systemd reports a misspelled directive and then ignores it —
-`Unknown key 'Restat'`, exit 0 — which is precisely the mistake worth
-catching in a file nobody here can boot. The lines not naming it belong to
-the host: verify reads the runner's own units on the way, and some of those
-warn.
+three more: `lint`; `watched folder (macOS)`, which runs the live suite against
+`watch-fswatch.sh` with a real `fswatch`, because nothing else can; and
+`watched folder` for the four checks that are about what a shop copies into
+production — shellcheck on the watchers, a wheel built and installed into a
+virtual environment with no checkout behind it, so that the watcher and the
+unit the rest of the job uses are the ones that shipped, `systemd-analyze
+verify` on `impose/hotfolder/impose-folder@.service`, and bats on a temporary
+folder with the real `inotifywait` under it. Only the unit check is CI-only;
+there is no systemd on a macOS laptop to run it with. It fails on any line of
+the report naming the unit, rather than on the exit status, because systemd
+reports a misspelled directive and then ignores it — `Unknown key 'Restat'`,
+exit 0 — which is precisely the mistake worth catching in a file nobody here
+can boot. The lines not naming it belong to the host: verify reads the runner's
+own units on the way, and some of those warn.
 
 **pylint has to be silent, not merely 10.00/10.** The score rounds, so
 10.00/10 is quite possible with a message still showing — pylint exits

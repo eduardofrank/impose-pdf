@@ -139,3 +139,43 @@ jobs:
       # to it while it runs, and the folder read back. On this job the event
       # source is the real /usr/bin/inotifywait.
       - run: bats --timing tests/shell
+
+  # The other watcher, on the only kind of machine that can run it. Until
+  # this job, the loop at the bottom of watch-fswatch.sh had never read an
+  # event anywhere: it was written on a Mac with no fswatch, the Linux job
+  # above has no FSEvents, and the Python suite stubs the event source out.
+  folder-macos:
+    name: watched folder (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          brew install bats-core fswatch coreutils
+
+      # What fswatch says about the two ways a file arrives, written into
+      # the log rather than assumed: the script asks for three event names,
+      # and whether a rename into the folder is one of them is a fact about
+      # FSEvents that nobody here had measured.
+      - name: What an arrival looks like to fswatch
+        run: |
+          mkdir "$RUNNER_TEMP/seen"
+          fswatch -x "$RUNNER_TEMP/seen" > "$RUNNER_TEMP/events" &
+          sleep 3
+          printf 'copied\n' > "$RUNNER_TEMP/seen/copied.pdf"
+          printf 'renamed\n' > "$RUNNER_TEMP/staged"
+          mv "$RUNNER_TEMP/staged" "$RUNNER_TEMP/seen/renamed.pdf"
+          sleep 4
+          kill %1
+          cat "$RUNNER_TEMP/events"
+
+      # Both scripts' startup and sweep on a real BSD userland, with
+      # gtimeout there for the two tests that want it.
+      - run: python -m unittest tests.test_watched_folder --verbose
+
+      - run: IMPOSE_WATCHER=fswatch bats --timing tests/shell

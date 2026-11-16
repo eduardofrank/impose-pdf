@@ -24,7 +24,8 @@ throughout for exactly that reading. [RUNNING.md](../../RUNNING.md) is the
 procedure they belong to, and the watched-folder section of
 [README.md](../../README.md) is why each refusal is a refusal.
 
-Both scripts are in the gate: `shellcheck impose/hotfolder/*.sh`, and
-`bats tests/shell` starts `watch-inotify.sh` on a temporary folder. The unit
-is read by `systemd-analyze verify` in CI, which is the only place in this
+Both scripts are in the gate: `shellcheck impose/hotfolder/*.sh`, and `bats
+tests/shell` starts `watch-inotify.sh` on a temporary folder — and
+`watch-fswatch.sh`, with `IMPOSE_WATCHER=fswatch`, which CI does on macOS. The
+unit is read by `systemd-analyze verify` in CI, which is the only place in this
 project that has a systemd to read it with.

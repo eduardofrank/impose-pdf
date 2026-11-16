@@ -675,7 +675,21 @@ sweep() {
 # in the pipe instead of falling down the gap between listing the folder and
 # starting to watch it. An event for a file the sweep already took finds the
 # name gone and costs nothing.
-fswatch -0 --event Created --event MovedTo --event Updated "$in" | {
+#
+# Four event names, and `Renamed` is the one that matters most. FSEvents has
+# no "moved to": a file renamed into the folder is reported as `Renamed` and
+# nothing else, measured with `fswatch -x` on macOS --
+#
+#     seen/copied.pdf Created IsFile Updated
+#     seen/renamed.pdf IsFile Renamed
+#
+# -- and a rename is how a finished upload arrives from anything careful: a
+# temporary name while it is written, then its own. This asked for `MovedTo`,
+# which is inotify's word, and so never heard of one; every such file waited
+# for the next restart to sweep it up. `MovedTo` stays for a monitor that
+# does say it. A rename out of the folder is `Renamed` too, and costs a look
+# at a name that is no longer there.
+fswatch -0 --event Created --event MovedTo --event Renamed --event Updated "$in" | {
     sweep
     # `IFS=`, or `read` trims the path even with `-d`: see watch-inotify.sh.
     while IFS= read -r -d "" path; do

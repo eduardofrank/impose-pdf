@@ -1520,6 +1520,18 @@ read as nothing to restart, and which is the hole the startup check above
 closes. The same script on the same machine now refuses with `2` and the
 sentence, before it sweeps anything.
 
+What that run could not show is the part a folder spends its life in, and it
+hid a defect. With no `fswatch` here, the loop at the bottom of the script
+had never read an event from one — and the first time it did, on a macOS
+runner, eleven of twelve live tests failed. The script asked `fswatch` for
+`Created`, `MovedTo` and `Updated`, and FSEvents has no "moved to": a file
+renamed into the folder is `Renamed` and nothing else. A rename is how a
+finished upload arrives from anything careful, so on macOS every such file
+waited for the next restart to sweep it up. It asks for `Renamed` now, and
+CI runs the whole live suite against this script on macOS on every push:
+`IMPOSE_WATCHER=fswatch bats tests/shell`, twelve tests, with the real
+`fswatch`.
+
 launchd has no `RestartPreventExitStatus`, so a folder whose policy is wrong
 restarts every `ThrottleInterval` seconds and writes its sentence to the log
 each time. Loud rather than silent, which is the best available there. And if
@@ -2347,6 +2359,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | A filed name is kept — a resend goes beside the artwork it would have replaced |
 | ✅ | Only an ordinary file is taken — any spelling of `.pdf`, and never a link or a pipe under that name |
 | ✅ | `TIMEOUT` — a limit on one run, so one file cannot stop a folder |
+| ✅ | The macOS watcher run for real — the live suite against `fswatch` in CI, and a rename into the folder heard |
 | ✅ | `impose-hotfolder` — the watchers and both service templates shipped with the package |
 
 ## Several copies to a sheet
