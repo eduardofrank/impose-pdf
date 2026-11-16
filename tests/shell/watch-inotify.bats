@@ -353,6 +353,29 @@ filed() {
     [ ! -e "$root/rejected/._book.pdf" ]
 }
 
+@test "a pipe or a link under a PDF's name does not stop the folder" {
+    policy
+    start_watcher
+
+    # A pipe, arriving by rename like any upload. Nothing ever writes to it,
+    # so anything that opens it to read waits for good -- which is what
+    # impose did, with every later file queued behind it.
+    mkfifo "$BATS_TEST_TMPDIR/pipe.pdf"
+    mv "$BATS_TEST_TMPDIR/pipe.pdf" "$root/in/pipe.pdf"
+    # And a link to a file that was never sent to this folder.
+    ln -s "$ARTWORK" "$BATS_TEST_TMPDIR/link.pdf"
+    mv "$BATS_TEST_TMPDIR/link.pdf" "$root/in/link.pdf"
+
+    # The file behind them is the test: it is filed, so nothing is stuck.
+    drop book.pdf
+    [ "$(filed book.pdf)" = done ]
+
+    [ -p "$root/in/pipe.pdf" ]
+    [ -L "$root/in/link.pdf" ]
+    [ ! -e "$root/done/link.pdf" ]
+    [ ! -e "$root/out/link.pdf" ]
+}
+
 @test "a watcher stopped the way systemd stops it exits 143 and lets go" {
     policy
     start_watcher

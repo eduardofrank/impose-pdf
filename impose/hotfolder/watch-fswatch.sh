@@ -529,6 +529,18 @@ impose_claimed() {
     return 0
 }
 
+# Whether a path is an ordinary file, and what becomes of a claimed one that
+# is not: see watch-inotify.sh for what a link and a pipe each did here.
+ordinary() {
+    [ -f "$1" ] && [ ! -L "$1" ]
+}
+
+discard() {
+    rm -f "$work/$1"
+    printf '%s: not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.\n' \
+        "$1" >&2
+}
+
 # Wait for the file to settle, claim the name, impose it. The settle wait sits
 # in here rather than in the event loop so the sweep gets it too: a file
 # already in the inbox when this starts may still be arriving.
@@ -541,7 +553,7 @@ handle() {
     *.[Pp][Dd][Ff]) ;;
     *) return 0 ;;
     esac
-    [ -f "$in/$name" ] || return 0
+    ordinary "$in/$name" || return 0
     settled "$in/$name" || return 0
 
     # `ln`, not `mv -n`: linking fails when the name is already claimed, which
@@ -549,8 +561,16 @@ handle() {
     # exits 0, so a duplicate event, or the ordinary resend of a filename
     # still being worked on, would sail past the check and impose a file this
     # run already holds. Whoever loses the link leaves the file alone.
-    ln "$in/$name" "$work/$name" 2>/dev/null || return 0
+    #
+    # `-P`, because this `ln` follows a symbolic link unless told not to, and
+    # a link swapped in after the look above would otherwise be claimed as the
+    # file it points at. Then looked at again where nobody else can write.
+    ln -P "$in/$name" "$work/$name" 2>/dev/null || return 0
     rm -f "$in/$name"
+    ordinary "$work/$name" || {
+        discard "$name"
+        return 0
+    }
     impose_claimed "$name"
 }
 
@@ -568,8 +588,12 @@ sweep() {
     # rather than putting it back, which would risk landing on a resend that
     # arrived in the meantime.
     for path in "$work"/*; do
-        [ -f "$path" ] || continue
+        [ -e "$path" ] || [ -L "$path" ] || continue
         name=${path##*/}
+        ordinary "$path" || {
+            discard "$name"
+            continue
+        }
         printf '%s: left over from an earlier run; imposing it now\n' "$name" >&2
         impose_claimed "$name" || true
     done
@@ -578,7 +602,7 @@ sweep() {
         [ -e "$path" ] || [ -L "$path" ] || continue
         case ${path##*/} in
         *.[Pp][Dd][Ff])
-            if [ -f "$path" ]; then
+            if ordinary "$path"; then
                 handle "${path##*/}" || true
                 continue
             fi
@@ -587,7 +611,7 @@ sweep() {
         # Said once a start rather than once an event: an upload passing
         # through under its temporary name is not worth a line, and something
         # that is still here at the next start is.
-        printf '%s: left in in/, which takes a file whose name ends in .pdf and nothing else\n' \
+        printf '%s: left in in/, which takes an ordinary file whose name ends in .pdf and nothing else\n' \
             "${path##*/}" >&2
     done
 }

@@ -927,6 +927,52 @@ class TestWhatTheInboxTakes(WatchedFolder):
                 self.assertNotIn(".DS_Store", finished.stderr)
                 self.assertNotIn("._book.pdf", finished.stderr)
 
+    def test_a_link_or_a_pipe_under_a_pdf_s_name_is_not_a_file(self):
+        # Measured on the watcher as it was: a symbolic link in the inbox was
+        # imposed as the file it points at -- `done (0)`, for a file that was
+        # never sent here and is read with the service's permissions -- and a
+        # pipe was opened and waited on for good, with every later file
+        # behind it. Neither is opened now, and what a link points at is not
+        # touched.
+        outside = self.root / "somebody-else.pdf"
+        make_pdf(2).save(outside)
+        before = outside.read_bytes()
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"odd-{watcher.stem}", OPTIONS="--up 2x2")
+                inbox = root / "in"
+                inbox.mkdir()
+                (inbox / "link.pdf").symlink_to(outside)
+                os.mkfifo(inbox / "pipe.pdf")
+                finished = self.start(watcher, root)
+
+                self.assertTrue((inbox / "link.pdf").is_symlink())
+                self.assertTrue((inbox / "pipe.pdf").is_fifo())
+                for bucket in ("done", "rejected", "failed", "out"):
+                    self.assertEqual(list((root / bucket).iterdir()), [], bucket)
+                for name in ("link.pdf", "pipe.pdf"):
+                    self.assertIn(f"{name}: left in in/", finished.stderr)
+                self.assertEqual(outside.read_bytes(), before)
+
+    def test_one_that_reached_work_is_removed_and_never_opened(self):
+        # The look and the claim are two steps, so what is in `work/` is
+        # looked at again. A link there is taken away; its target is not.
+        outside = self.root / "target.pdf"
+        make_pdf(2).save(outside)
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"swapped-{watcher.stem}", OPTIONS="--up 2x2")
+                (root / "work").mkdir()
+                (root / "work" / "link.pdf").symlink_to(outside)
+                os.mkfifo(root / "work" / "pipe.pdf")
+                finished = self.start(watcher, root)
+
+                self.assertEqual(list((root / "work").iterdir()), [])
+                self.assertEqual(list((root / "done").iterdir()), [])
+                self.assertTrue(outside.exists())
+                self.assertIn("link.pdf: not an ordinary file", finished.stderr)
+                self.assertIn("pipe.pdf: not an ordinary file", finished.stderr)
+
     def test_an_empty_inbox_has_nothing_to_say(self):
         # The pattern itself must not be reported as a file called `*`.
         for watcher in self.watchers:

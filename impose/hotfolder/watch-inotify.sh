@@ -601,6 +601,29 @@ impose_claimed() {
     return 0
 }
 
+# Whether a path is an ordinary file: not a directory, not a pipe or a device,
+# and not a link to anything. `-f` alone follows a link, which is how a
+# symbolic link dropped into the inbox was imposed as though the file it
+# points at had been sent -- measured, `done (0)`, for a file that was never
+# in this folder. An SFTP client can make one, and what it points at is then
+# read with this service's permissions. A pipe is the other half: nothing
+# reads a page out of one, impose waits on it for good, and every file behind
+# it waits too (measured: eight seconds, nothing logged, the next file still
+# in the inbox).
+ordinary() {
+    [ -f "$1" ] && [ ! -L "$1" ]
+}
+
+# Take something that is not an ordinary file back out of `work/`. It got
+# there by changing between being looked at and being claimed, which no
+# upload does by accident, or it was put there by hand. Removing it removes
+# the link or the pipe and never what a link points at.
+discard() {
+    rm -f "$work/$1"
+    printf '%s: not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.\n' \
+        "$1" >&2
+}
+
 # Claim one name out of the inbox, then impose it.
 handle() {
     name=$1
@@ -635,8 +658,19 @@ handle() {
     # inode, and so did the rename this replaces -- which is why `impose`
     # refusing a reconstructed page count is the net under this and not a
     # belt-and-braces extra.
+    #
+    # Looked at before and after. Before, so that a link or a pipe is left
+    # where it is like anything else that is not artwork. After, because the
+    # look and the link are two steps and the inbox is open to whoever sends
+    # work: what is in `work/` is what was claimed, and nobody else can write
+    # there.
+    ordinary "$in/$name" || return 0
     ln "$in/$name" "$work/$name" 2>/dev/null || return 0
     rm -f "$in/$name"
+    ordinary "$work/$name" || {
+        discard "$name"
+        return 0
+    }
     impose_claimed "$name"
 }
 
@@ -653,8 +687,12 @@ sweep() {
     # rather than putting it back, which would risk landing on a resend that
     # arrived in the meantime.
     for path in "$work"/*; do
-        [ -f "$path" ] || continue
+        [ -e "$path" ] || [ -L "$path" ] || continue
         name=${path##*/}
+        ordinary "$path" || {
+            discard "$name"
+            continue
+        }
         printf '%s: left over from an earlier run; imposing it now\n' "$name" >&2
         impose_claimed "$name" || true
     done
@@ -663,7 +701,7 @@ sweep() {
         [ -e "$path" ] || [ -L "$path" ] || continue
         case ${path##*/} in
         *.[Pp][Dd][Ff])
-            if [ -f "$path" ]; then
+            if ordinary "$path"; then
                 handle "${path##*/}" || true
                 continue
             fi
@@ -672,7 +710,7 @@ sweep() {
         # Said once a start rather than once an event: an upload passing
         # through under its temporary name is not worth a line, and something
         # that is still here at the next start is.
-        printf '%s: left in in/, which takes a file whose name ends in .pdf and nothing else\n' \
+        printf '%s: left in in/, which takes an ordinary file whose name ends in .pdf and nothing else\n' \
             "${path##*/}" >&2
     done
 }

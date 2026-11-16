@@ -239,6 +239,15 @@ describes is one impose can make, not that a folder is safely exposed. The
 User -p MemoryMax -p TasksMax impose-folder@a4-nup` are what say whether a
 folder got what this section asks for.
 
+**Only an ordinary file is taken, and this one the watchers do for you.** A
+submitter who can make a symbolic link — SFTP can — used to be able to have
+the folder impose whatever the link pointed at: any PDF the service user can
+read, in any folder on the machine, written into this folder's `out/`. A
+per-folder user narrows what that reaches; it does not close it. The
+reference watchers now refuse a link or a pipe under a PDF's name, before
+the claim and again after it. If you write your own watcher, write that
+check, and write it on what you claimed rather than on what you saw.
+
 ## A soft spot worth naming
 
 `impose.font.load()` takes an optional path, and parsing a TrueType file is
