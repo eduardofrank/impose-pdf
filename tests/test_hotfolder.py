@@ -2,7 +2,7 @@
 
 """The `impose-hotfolder` command, and what it hands over.
 
-The files it carries are tested elsewhere -- `tests/test_unattended.py` starts
+The files it carries are tested elsewhere -- `tests/test_watched_folder.py` starts
 the watchers, `tests/shell/watch-inotify.bats` runs one against a live event
 source, and CI reads the unit with `systemd-analyze verify`. What is tested
 here is that an install *has* them, and that a copy made from one is a file

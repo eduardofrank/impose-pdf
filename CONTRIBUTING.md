@@ -136,7 +136,7 @@ Name a test after the claim it makes, as a sentence:
 
 The watchers are tested in two places, and the split is deliberate.
 
-`tests/test_unattended.py` runs them from Python with an event source that
+`tests/test_watched_folder.py` runs them from Python with an event source that
 exits immediately. That reaches every startup refusal and the sweep, costs
 nothing, and skips by itself on a machine with no `/bin/bash` or no `impose`.
 What it cannot reach is the loop at the bottom of the script, because a source

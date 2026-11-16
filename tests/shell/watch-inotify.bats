@@ -7,7 +7,7 @@
 # morning -- a file that arrives lands in `done/`, `rejected/` or `failed/`
 # by what impose did with it, and the status that put it there is in the log.
 #
-# This is deliberately not the same test as tests/test_unattended.py, which
+# This is deliberately not the same test as tests/test_watched_folder.py, which
 # runs the watchers with an event source that exits at once: that reaches
 # every startup refusal and the sweep, and nothing else, because the loop at
 # the bottom of the script never reads an event. Here the event source is
@@ -29,7 +29,7 @@
 # `settled()`, which waits for a file's size to hold still for three polls a
 # second apart: a live test of it costs three seconds a file before impose
 # starts, and fswatch is not on a Linux CI runner anyway. Its startup is
-# covered in tests/test_unattended.py alongside this one's.
+# covered in tests/test_watched_folder.py alongside this one's.
 
 setup_file() {
     repo=$(cd "$BATS_TEST_DIRNAME/../.." && pwd)
