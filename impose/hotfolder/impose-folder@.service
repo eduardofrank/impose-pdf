@@ -69,6 +69,16 @@ RestartPreventExitStatus=2
 # that allows for.
 TimeoutStopSec=30
 
+# A stop is a success. The watcher answers SIGTERM by leaving with 143, the
+# number a shell reports for that signal, and systemd reads 143 as an exit
+# code like any other: a failure, where a process the signal had killed
+# outright would have been a clean stop. Measured on systemd 255 without
+# this line: `systemctl stop`, and the unit is `failed` with
+# Result=exit-code, every time -- so `systemctl status 'impose-folder@*'` is
+# red for a folder somebody stopped on purpose, and a real failure is one
+# more red line among them.
+SuccessExitStatus=143
+
 # The press file is written 0644 so that whatever picks it up can read it.
 UMask=0022
 

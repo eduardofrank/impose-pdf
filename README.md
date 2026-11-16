@@ -1458,6 +1458,13 @@ to reach the event source, the loop reading it, and the `impose` that may be
 part way through a sheet. `TimeoutStopSec=30` is the time impose is given to
 unwind and take its own temporary with it.
 
+And a stop is a success, which the unit has to say. The watcher leaves with
+`143` and systemd reads that as an exit code like any other — measured on
+systemd 255 without `SuccessExitStatus=143`: every `systemctl stop` left the
+unit `failed`, so `systemctl status 'impose-folder@*'` was red for folders
+somebody had stopped on purpose. With it: `inactive`, `Result=success`, and
+an event source that dies is still exit `1` and still restarted.
+
 **It is shut in, because impose does not need anything.** No network at all
 (`PrivateNetwork=yes`), a read-only filesystem apart from the folder
 (`ProtectSystem=strict` plus `ReadWritePaths`), its own `/tmp`, no devices,
