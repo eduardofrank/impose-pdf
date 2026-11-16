@@ -21,7 +21,7 @@ import pathlib
 import sys
 from collections.abc import Sequence
 
-from . import DestinationError, ImposeError, SourceError, __version__
+from . import ImposeError, SourceError, __version__
 from .boxes import TRIM_FROM_CHOICES
 from .cover import impose_cover
 from .destination import check_distinct, reserve
@@ -50,6 +50,7 @@ from .schemas.saddle import MAX_NESTED_SHEETS as SADDLE_NESTING_LIMIT
 from .signals import stopping_cleanly
 from .slug import DEFAULT_SIZE as SLUG_SIZE
 from .source import DAMAGED_CHOICES
+from .status import answered
 from .ticket import add_command, dump, recorded
 from .ticket import run as run_job
 from .ticket import schema_options
@@ -1092,12 +1093,8 @@ def _dry_run(args: argparse.Namespace, out) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line. Returns the process exit status.
 
-    Every failure becomes a status and a sentence. The statuses are three
-    different people's problems: 3 is a file to send back, 1 is a job to
-    describe differently, 4 is a shelf somebody has to clear -- which is the
-    one worth retrying once it is cleared. They are taken from the exception
-    class and never from the message, because the messages here get reworded
-    and something driving this unattended has to keep routing the same way.
+    Every failure becomes a status and a sentence, and which status is
+    :mod:`impose.status`'s business.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1105,33 +1102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 2
     with stopping_cleanly():
-        try:
-            return _dispatch(args, sys.stdout)
-        # The order is the class hierarchy: the first two are an ImposeError,
-        # so the general case has to come last or it would answer for all
-        # three.
-        except SourceError as error:
-            return _failed(error, 3)
-        except DestinationError as error:
-            return _failed(error, 4)
-        # ValueError as well as ImposeError: a schema rejects an impossible
-        # request with one, and whichever it is, the person at the terminal
-        # asked for something that cannot be done and should be told so in a
-        # sentence.
-        except (ImposeError, ValueError) as error:
-            return _failed(error, 1)
-        # Everything that opens a source goes through impose.source, which
-        # turns its own OSError into a SourceError, so what reaches here is
-        # the other end: a directory that is not there, a volume that is
-        # full, a permission on a folder somebody has to fix.
-        except OSError as error:
-            return _failed(error, 4)
-
-
-def _failed(error: Exception, status: int) -> int:
-    """Report *error* as one line, and be the status it exits with."""
-    print(f"impose: {error}", file=sys.stderr)
-    return status
+        return answered(lambda: _dispatch(args, sys.stdout))
 
 
 def _dispatch(  # pylint: disable=too-many-return-statements

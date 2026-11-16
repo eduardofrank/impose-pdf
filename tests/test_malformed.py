@@ -27,7 +27,9 @@ from tests.support import make_pdf
 from tests.test_cli import run
 
 #: What a file being at fault is allowed to come back as: imposed, the job, or
-#: the source. Never 4, which is the destination, and never an exception.
+#: the source. Never 4, which is the destination, and never 70, which is what
+#: the command line makes of an exception nobody expected -- so a new place a
+#: file can break impose is still a failing test here, and not a status.
 ANSWERS = {0, 1, 3}
 
 
@@ -146,9 +148,8 @@ class TestDamagedAByteAtATime(Malformed):
             self.source.write_bytes(self.damage(seed, rng))
             self.output.unlink(missing_ok=True)
             with self.subTest(mutation=number):
-                # An exception leaving main() is this test erroring, which is
-                # the point: `run` catches argparse's SystemExit and nothing
-                # else.
+                # main() answers for an exception it did not expect with 70
+                # and the stack, and neither is among the answers.
                 status, err = self.impose()
                 self.assertIn(status, ANSWERS, err)
                 self.assertNotIn("Traceback", err)

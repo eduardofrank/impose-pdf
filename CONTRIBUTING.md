@@ -204,17 +204,28 @@ measure, and it is faster to do it first.
 - `ImposeError` — the job cannot be imposed as described. Exit `1`.
 - `SourceError` — the file handed in cannot be trusted. Exit `3`.
 - `DestinationError` — where it would be written refuses. Exit `4`.
+- anything else — a bug. Exit `70`, a sentence saying so, and the stack.
 
 Both of the latter subclass `ImposeError`, so an existing `except ImposeError`
 keeps working. **Status is routed on exception class and never on message
 text**, because the messages get reworded whenever a better sentence turns up
 and something driving this unattended has to keep routing the same way.
 
-Every failure is one sentence on stderr beginning `impose: `, never a traceback.
-Write the sentence for the person who has to fix it: name the measurement, and
-say what to do. Do not add a broad `except Exception` to make an unforeseen bug
-into a confident sentence — a traceback for a real bug is correct, and the
-watcher's `failed/` bucket exists for it.
+Every failure is one sentence on stderr beginning `impose: `. Write the
+sentence for the person who has to fix it: name the measurement, and say what
+to do. Do not add a broad `except Exception` to make an unforeseen bug into a
+confident sentence — a traceback for a real bug is correct, and the watcher's
+`failed/` bucket exists for it.
+
+There is exactly one, the last clause of `answered` in `impose/status.py`,
+and it is there to make that last clause true. An exception left to Python exits `1`,
+which is the status for a job described wrongly, so a bug went to `rejected/`
+as the customer's to fix. The handler gives it `70` and says only what is
+known — that the fault is impose's — and prints the stack after the sentence
+whole. It explains nothing and hides nothing, and a second one anywhere else
+would be doing one or the other. When the fuzz in `tests/test_malformed.py`
+finds a `70`, the fix is a `SourceError` raised where the file is read, with a
+sentence about the file.
 
 ## Judgements are per-run; policies can be stored
 
@@ -256,8 +267,8 @@ higher cap.
 
 When pylint's line or complexity caps bite, **split rather than raise the cap**.
 `tests/test_cli.py` became `tests/test_cli.py` plus `tests/test_unattended.py`
-for this reason, and `impose/signals.py` came out of `impose/cli.py` for the
-same one. The two raised caps in `pyproject.toml` each carry a paragraph saying
+for this reason, and `impose/signals.py` and `impose/status.py` came out of
+`impose/cli.py` for the same one. The two raised caps in `pyproject.toml` each carry a paragraph saying
 why; if you need a third, that paragraph is the hard part.
 
 A `# pylint: disable` needs a reason beside it, and it should be the narrowest

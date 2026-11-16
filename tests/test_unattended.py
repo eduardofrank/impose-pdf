@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import pikepdf
 
@@ -331,7 +332,8 @@ class TestExitCodes(unittest.TestCase):
     """The number a watcher routes on.
 
     0 done, 1 the job cannot be imposed as described, 2 the arguments do not
-    parse, 3 the source cannot be used, 4 the destination refuses. The split
+    parse, 3 the source cannot be used, 4 the destination refuses, 70 impose
+    itself went wrong. The split
     that matters operationally is 3 and 1 against 4: the first two are a file
     or a job somebody has to fix and must not be retried, the last is a shelf
     that will be there again in a minute.
@@ -388,6 +390,51 @@ class TestExitCodes(unittest.TestCase):
                     self.assertEqual(status, 4)
                     self.assertNotIn("Traceback", err)
                     self.assertTrue(err.startswith("impose: "))
+
+    def test_a_fault_in_impose_is_seventy_and_says_whose_it_is(self):
+        """Not 1: a watcher files a 1 as the customer's to fix."""
+        with workspace(pages=8) as source:
+            with mock.patch(
+                "impose.cli._dispatch", side_effect=TypeError("unhashable: 'Size'")
+            ):
+                status, _, err = run(
+                    "nup", str(source), "-o", str(source.with_name("o.pdf"))
+                )
+        self.assertEqual(status, 70)
+        first, _, rest = err.partition("\n")
+        self.assertTrue(first.startswith("impose: this is a fault in impose"), err)
+        self.assertIn("TypeError: unhashable: 'Size'", first)
+        # The stack comes after the sentence and is not left out: it is the
+        # only part of the report anybody can act on.
+        self.assertTrue(rest.startswith("Traceback (most recent call last)"), err)
+
+    def test_a_fault_while_writing_leaves_nothing_where_the_press_file_was_going(
+        self,
+    ):
+        def half_written(_pdf, target, **_):
+            pathlib.Path(target).write_bytes(b"%PDF-1.7 and then it went wrong")
+            raise KeyError("/Resources")
+
+        with workspace(pages=8) as source:
+            before = sorted(path.name for path in source.parent.iterdir())
+            with mock.patch.object(pikepdf.Pdf, "save", half_written):
+                status, _, err = run(
+                    "nup", str(source), "-o", str(source.with_name("o.pdf"))
+                )
+            self.assertEqual(status, 70, err)
+            self.assertEqual(
+                sorted(path.name for path in source.parent.iterdir()), before
+            )
+
+    def test_being_stopped_is_not_a_fault(self):
+        """SystemExit is somebody's decision, and keeps its own status."""
+        with workspace(pages=8) as source:
+            with mock.patch("impose.cli._dispatch", side_effect=SystemExit(143)):
+                status, _, err = run(
+                    "nup", str(source), "-o", str(source.with_name("o.pdf"))
+                )
+        self.assertEqual(status, 143)
+        self.assertNotIn("fault", err)
 
     def test_a_zero_page_document_is_three_and_not_an_indexerror(self):
         with tempfile.TemporaryDirectory() as folder:

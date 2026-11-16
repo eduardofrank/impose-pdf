@@ -181,7 +181,7 @@ does.
 ## What the exit codes mean in practice
 
 The status is the whole of what the watcher knows, and it is what decides the
-bucket. There are five, and the split is about who fixes it:
+bucket. There are six, and the split is about who fixes it:
 
 | exit | bucket | whose problem | what you do |
 |---|---|---|---|
@@ -190,9 +190,13 @@ bucket. There are five, and the split is about who fixes it:
 | `2` | — | the policy | the watcher refuses to start; see below |
 | `3` | `rejected/` | the file: missing, unreadable, still copying, no pages | ask for the file again |
 | `4` | `failed/` | a shelf somebody has to clear | clear it, move the file back to `in/` |
+| `70` | `failed/` | impose: a bug in it | send the `.txt` to whoever maintains impose |
 
-Only `4` is worth running again unchanged. Measured, all five, on the same
-folder:
+Only `4` is worth running again unchanged. A `70` is the one whose `.txt` is
+long: a sentence saying the fault is impose's, then a Python stack trace,
+which is the part a maintainer needs. The file is not at fault as far as
+anybody knows, and it will do the same thing if it is run again. The first
+five measured on the same folder:
 
 ```console
 $ impose nup minutes.pdf -o out/minutes.pdf --up 1x2 --trim-from mediabox --expect-size A4

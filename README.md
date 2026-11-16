@@ -525,6 +525,7 @@ least waste.
 | `2` | the arguments do not parse |
 | `3` | the source cannot be used: missing, unreadable, still being copied, no pages |
 | `4` | the destination refuses: a file already there, a directory that is not, the output naming the input |
+| `70` | impose itself went wrong: an exception nothing in it expected |
 
 The split is about who fixes it. A `3` is a file to send back or wait for and a
 `1` is a job to describe differently, so neither is worth running again
@@ -534,9 +535,22 @@ is what the numbers are for — they come from the kind of failure and never fro
 the message, because the messages here get reworded whenever a better sentence
 turns up.
 
-Every one of them is a sentence on stderr beginning `impose: `, never a
-traceback. If you ever see a traceback it is a bug in impose, and the stack is
-the useful part of the report.
+Every one of them is a sentence on stderr beginning `impose: `. `70` is the
+only one with a traceback after its sentence, because it is the only one that
+is a bug in impose, and the stack is the useful part of the report:
+
+```
+impose: this is a fault in impose, and not in the file or in the way the job is described: TypeError: unhashable type: 'Size'. Running it again unchanged will do the same. What follows is the part to send to whoever maintains impose.
+Traceback (most recent call last):
+  ...
+```
+
+It has a number of its own for what the number is not. Python's own answer to
+an exception nobody caught is `1`, which here means a job described wrongly,
+and a watched folder files a `1` as something to send back to the customer.
+`70` is `EX_SOFTWARE` from BSD's `sysexits.h`. None is known: the two places
+a damaged file used to reach are a `3` now, and this is what the next one
+will be until it is found.
 
 A run stopped from outside is not one of these, because impose did not decide
 it: being killed is `128 +` the signal, exactly as a shell reports it, so
@@ -1232,7 +1246,8 @@ statuses are worth having:
 | everything else | `failed/` | the environment — worth running again once it is fixed |
 
 `failed/` is where 4 goes — a press file already there, a folder that is not
-— and `143` and `130` with it. A `2`, which is a policy impose cannot read as
+— and `143` and `130` with it, and `70`, which is impose's own fault and so
+not something to send back to whoever sent the file. A `2`, which is a policy impose cannot read as
 a command, no longer reaches a file: it is what the startup check below turns
 away. Each file arrives beside a `book.pdf.txt` holding what impose said about
 it, because whoever opens `rejected/` wants to know why without going to a
@@ -2345,6 +2360,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
 | ✅ | `source` — a page count QPDF had to rebuild is refused, not imposed short |
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
+| ✅ | A bug in impose is exit 70 and says so — never a `1`, which a folder sends back to the customer |
 | ✅ | Where the finished size comes from — a page with no TrimBox is refused, and `--trim-from mediabox` is the opt-in |
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
@@ -2517,7 +2533,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-974 tests today, no system libraries, about thirteen seconds. Twenty-four of
+977 tests today, no system libraries, about thirteen seconds. Twenty-four of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts

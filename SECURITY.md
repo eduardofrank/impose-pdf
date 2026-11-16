@@ -81,7 +81,7 @@ already open.
 `/OutputIntent` keys are copied as objects. No name, string or stream out of a
 source file is used to build a filename or a command.
 
-**A malformed PDF is a status and a sentence, never a traceback.** Exit `3` for
+**A malformed PDF is a status and a sentence, never a bare traceback.** Exit `3` for
 a file that cannot be used, `1` for a job that cannot be imposed; see the
 exit-code table in the README. Spot-checked on empty, truncated, null-stuffed
 and garbage files: all exit `3` or `1`, none print a stack trace.
@@ -94,7 +94,9 @@ page was copied onto a sheet. Both are exit `3` and a sentence naming the
 page now, and the search is kept in `tests/test_malformed.py` with a fixed
 seed, so the next such place is a failing test. What holds is that sentence
 and no more than it: 6000 further mutations found nothing, which is not the
-same as there being nothing.
+same as there being nothing. The next one, when it turns up, is exit `70`:
+a sentence saying the fault is impose's, with the stack after it, filed in
+`failed/` and not sent back to the customer as a `1` would be.
 
 ## Not vulnerabilities
 
