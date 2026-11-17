@@ -108,7 +108,8 @@ a sentence saying the fault is impose's, with the stack after it, filed in
   figures to pick one from.
 - **A refusal.** Being turned away is the design, including the known false
   positive where a complete file with a stale `startxref` is refused as damaged.
-  `--damaged recover` is the opt-in.
+  `--damaged recover` is the opt-in. A page with no MediaBox has none: QPDF
+  would give it US Letter, and that size is not in the file to recover.
 - **The hot-folder files in `impose/hotfolder/`, and anything in `tools/`.**
   Worked examples to adapt, not supported code. The watchers ship with the
   package so that an install has them, and they are linted — shellcheck in the

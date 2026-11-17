@@ -16,6 +16,15 @@ geometry is read, and the operator is told what was rebuilt. Lesser damage
 is reported and imposed: a stream whose length QPDF had to recover is one
 page's content to look at, not a reason to turn away artwork a shop may
 have no better copy of.
+
+A page with no size is refused as well, and nothing overrides that. Every
+page must carry a MediaBox, and when one is missing or is not four numbers
+QPDF puts US Letter in its place as the file is opened -- so by the time a
+page is looked at it is a well-formed Letter page, and the file never said
+so. Measured: a page whose TrimBox said A3 was clipped to the invented
+Letter page and imposed at 213 x 276 mm, exit 0. ``recover`` is not offered
+for it because there is nothing to recover: a rebuilt cross-reference table
+is read out of the file, and this size is not in the file anywhere.
 """
 
 from __future__ import annotations
@@ -79,12 +88,18 @@ def open_source(
         raise SourceError(f"Cannot open {source}: {error}") from error
     # Once only: QPDF hands the list over and forgets it, so a second call
     # reports a clean file and the damage goes unmentioned.
-    warnings = tuple(_PREFIX.sub("", str(line)) for line in pdf.get_warnings())
+    raw = tuple(str(line) for line in pdf.get_warnings())
+    warnings = tuple(_PREFIX.sub("", line) for line in raw)
     rebuilt = tuple(line for line in warnings if _is_reconstruction(line))
     if rebuilt and damaged == "refuse":
         pages = len(pdf.pages)
         pdf.close()
         raise SourceError(_refusal(_name(source), what, pages))
+    unsized = [line for line in raw if _is_invented_size(line)]
+    if unsized:
+        numbers = _unsized_pages(pdf, unsized)
+        pdf.close()
+        raise SourceError(_no_size(_name(source), what, numbers))
     return pdf, tuple(_notes(warnings, rebuilt, pages=len(pdf.pages)))
 
 
@@ -98,6 +113,56 @@ def _is_reconstruction(warning: str) -> bool:
     """
     folded = warning.casefold()
     return "reconstruct" in folded and "cross-reference" in folded
+
+
+def _is_invented_size(warning: str) -> bool:
+    """Whether *warning* says QPDF gave a page a MediaBox it did not have.
+
+    Two words again, for the same reason as :func:`_is_reconstruction`, and
+    pinned by a test the same way.
+    """
+    folded = warning.casefold()
+    return "mediabox" in folded and "undefined" in folded
+
+
+#: Where QPDF says a page had no MediaBox: the page's own object.
+_OBJECT = re.compile(r"\bobject (\d+) (\d+)\b")
+
+
+def _unsized_pages(pdf: pikepdf.Pdf, warnings: list[str]) -> list[int]:
+    """The page numbers *warnings* are about, as far as they can be told.
+
+    QPDF names the page by its object, not its number, so this looks the
+    object up in the document's own order. A warning that names no page is
+    left out rather than guessed at: the refusal stands without the number.
+    """
+    order = {page.objgen: number for number, page in enumerate(pdf.pages, 1)}
+    numbers = set()
+    for warning in warnings:
+        found = _OBJECT.search(warning)
+        if found is not None:
+            key = (int(found.group(1)), int(found.group(2)))
+            if key in order:
+                numbers.add(order[key])
+    return sorted(numbers)
+
+
+def _no_size(named: str, what: str, numbers: list[int]) -> str:
+    """Why a file with a page of no stated size is not imposed."""
+    if not numbers:
+        which, verb = "a page", "has"
+    elif len(numbers) == 1:
+        which, verb = f"page {numbers[0]}", "has"
+    else:
+        shown = ", ".join(str(number) for number in numbers[:-1])
+        which, verb = f"pages {shown} and {numbers[-1]}", "have"
+    return (
+        f"The {what} {named}does not say what size {which} {verb}: the "
+        f"MediaBox every page must carry is missing, or is not four numbers. "
+        f"Reading it, QPDF put US Letter in its place, and imposing that "
+        f"would print a size nobody chose. Ask for the file to be exported "
+        f"again."
+    )
 
 
 def _refusal(named: str, what: str, pages: int) -> str:

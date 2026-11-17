@@ -523,7 +523,7 @@ least waste.
 | `0` | done |
 | `1` | the job cannot be imposed as described: unknown press, form will not fit, a size that does not match |
 | `2` | the arguments do not parse |
-| `3` | the source cannot be used: missing, unreadable, still being copied, no pages |
+| `3` | the source cannot be used: missing, unreadable, still being copied, no pages, a page of no stated size |
 | `4` | the destination refuses: a file already there, a directory that is not, the output naming the input |
 | `70` | impose itself went wrong: an exception nothing in it expected |
 
@@ -1023,6 +1023,26 @@ count, so check it against what was sent before this goes to press.
 saddle-stitch: 15 pages onto 4 sheet(s) at 2 up (2 × 1 upright), page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 wrote ../out/arriving.pdf
 ```
+
+**A page that does not say its size is refused, and `recover` does not change
+that.** Every page must carry a MediaBox. When one is missing, or is not four
+numbers, QPDF puts US Letter in its place as the file is opened, and from then
+on the page looks like an ordinary Letter page. Measured before this was
+refused: a page whose TrimBox said A3 was clipped to the invented Letter page
+and imposed at 213 × 276 mm, exit `0`, with one line saying the file was "not
+clean". Now:
+
+```console
+$ impose nup poster.pdf -o ../out/poster.pdf --up 1x1
+impose: The file poster.pdf does not say what size pages 1, 2, 3 and 4 have: the MediaBox every page must carry is missing, or is not four numbers. Reading it, QPDF put US Letter in its place, and imposing that would print a size nobody chose. Ask for the file to be exported again.
+```
+
+Exit `3`. `--damaged recover` accepts a cross-reference table rebuilt out of
+what is in the file; this size is not in the file anywhere, so there is
+nothing for it to accept. A MediaBox stated once on the page tree and
+inherited by every page is legal, common, and imposed as usual. Four numbers
+with no area between them, `[0 0 0 0]`, are refused the same way, as
+`Page 2's MediaBox has no area`.
 
 **The two options a folder of office exports is, and why the second is what
 makes the first safe.** Such a folder wants `--trim-from mediabox`, because
@@ -2359,6 +2379,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `strip` — a licensed control wedge embedded whole, at its own size |
 | ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
 | ✅ | `source` — a page count QPDF had to rebuild is refused, not imposed short |
+| ✅ | A page with no stated size is refused, never imposed as the US Letter QPDF puts in its place |
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
 | ✅ | A bug in impose is exit 70 and says so — never a `1`, which a folder sends back to the customer |
 | ✅ | Where the finished size comes from — a page with no TrimBox is refused, and `--trim-from mediabox` is the opt-in |
@@ -2533,7 +2554,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-977 tests today, no system libraries, about thirteen seconds. Twenty-four of
+984 tests today, no system libraries, about thirteen seconds. Twenty-four of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts

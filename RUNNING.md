@@ -188,7 +188,7 @@ bucket. There are six, and the split is about who fixes it:
 | `0` | `done/` | nobody's | nothing |
 | `1` | `rejected/` | the way the job is described, or artwork for another job | read the `.txt`, send the file back |
 | `2` | — | the policy | the watcher refuses to start; see below |
-| `3` | `rejected/` | the file: missing, unreadable, still copying, no pages | ask for the file again |
+| `3` | `rejected/` | the file: missing, unreadable, still copying, no pages, a page with no size | ask for the file again |
 | `4` | `failed/` | a shelf somebody has to clear | clear it, move the file back to `in/` |
 | `70` | `failed/` | impose: a bug in it | send the `.txt` to whoever maintains impose |
 

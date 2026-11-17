@@ -214,6 +214,15 @@ def read_boxes(
         )
     where = f"Page {page_number}" if page_number is not None else "A page"
     media = _rect(page, "MediaBox", where=where)
+    # Four numbers can still be no page: [0 0 0 0], or a line. Every other
+    # box is clipped to this one, so the refusal would otherwise arrive as
+    # the CropBox not overlapping it, exit 1 -- the job's status, for a
+    # fault in the file.
+    if media.x1 <= media.x0 or media.y1 <= media.y0:
+        raise SourceError(
+            f"{where}'s MediaBox has no area, so the file does not say what "
+            f"size that page is."
+        )
     crop = _intersect(_rect(page, "CropBox", where=where), media, what="CropBox")
     has_trim = "/TrimBox" in page.obj
     has_bleed = "/BleedBox" in page.obj

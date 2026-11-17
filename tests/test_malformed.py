@@ -85,6 +85,92 @@ class TestABoxThatIsNotFourNumbers(Malformed):
         self.assertIn("Page 3's TrimBox is not four numbers", err)
 
 
+class TestAPageWithNoSize(Malformed):
+    """Every page must carry a MediaBox. QPDF gives one that has none US Letter.
+
+    It does it as the file is opened, so nothing after that can tell the page
+    was not always Letter. Measured before this was refused: a page whose
+    TrimBox said A3 was clipped to the invented page and imposed at
+    213 x 276 mm, exit 0.
+    """
+
+    def build(self, harm, *, pages=4):
+        with make_pdf(pages) as pdf:
+            harm(pdf)
+            pdf.save(self.source)
+
+    def assert_refused(self, *extra, page="page 3 has"):
+        status, err = self.impose(*extra)
+        self.assertEqual(status, 3, err)
+        self.assertIn(f"does not say what size {page}", err)
+        self.assertIn("US Letter", err)
+        self.assertNotIn("Traceback", err)
+        self.assertFalse(self.output.exists())
+
+    def test_a_name_in_the_box_is_a_page_of_no_size(self):
+        self.build(
+            lambda pdf: pdf.pages[2].obj.__setitem__(
+                "/MediaBox", pikepdf.Array([0, 0, pikepdf.Name("/wide"), 400])
+            )
+        )
+        self.assert_refused()
+
+    def test_a_missing_box_is_the_same(self):
+        self.build(lambda pdf: pdf.pages[2].obj.__delitem__("/MediaBox"))
+        self.assert_refused()
+
+    def test_every_page_that_has_none_is_named(self):
+        def harm(pdf):
+            for number in (0, 3):
+                del pdf.pages[number].obj["/MediaBox"]
+
+        self.build(harm)
+        self.assert_refused(page="pages 1 and 4 have")
+
+    def test_a_trimbox_larger_than_letter_is_not_cut_down_to_it(self):
+        """The case that was imposed wrong at exit 0."""
+        a3 = pikepdf.Array([8.5, 8.5, 850.4, 1199.1])
+
+        def harm(pdf):
+            for page in pdf.pages:
+                page.obj["/MediaBox"] = pikepdf.Array([0, 0, pikepdf.Name("/w"), 1])
+                page.obj["/TrimBox"] = a3
+                for box in ("/CropBox", "/BleedBox"):
+                    if box in page.obj:
+                        del page.obj[box]
+
+        self.build(harm)
+        self.assert_refused(page="pages 1, 2, 3 and 4 have")
+
+    def test_asking_to_recover_does_not_change_it(self):
+        """There is nothing to recover: the size is not in the file."""
+        self.build(lambda pdf: pdf.pages[2].obj.__delitem__("/MediaBox"))
+        self.assert_refused("--damaged", "recover")
+
+    def test_a_box_inherited_from_the_page_tree_is_a_box(self):
+        """Legal, and common: the size is stated once, for every page."""
+
+        def harm(pdf):
+            pdf.Root.Pages.MediaBox = pdf.pages[0].obj.MediaBox
+            for page in pdf.pages:
+                del page.obj["/MediaBox"]
+
+        self.build(harm)
+        status, err = self.impose()
+        self.assertEqual(status, 0, err)
+        self.assertTrue(self.output.exists())
+
+    def test_four_numbers_with_no_area_between_them_are_no_size_either(self):
+        self.build(
+            lambda pdf: pdf.pages[1].obj.__setitem__(
+                "/MediaBox", pikepdf.Array([0, 0, 0, 0])
+            )
+        )
+        status, err = self.impose()
+        self.assertEqual(status, 3, err)
+        self.assertIn("Page 2's MediaBox has no area", err)
+
+
 class TestContentThatCannotBeRead(Malformed):
     """A page whose content stream does not decode.
 
