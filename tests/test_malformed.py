@@ -171,6 +171,37 @@ class TestAPageWithNoSize(Malformed):
         self.assertIn("Page 2's MediaBox has no area", err)
 
 
+class TestAPageTreeThatLostAPage(Malformed):
+    """Something in the page tree that is not a page, where a page should be.
+
+    QPDF skips it, and the document reads short. Found by the search below,
+    run 3000 times: 42 damaged copies of a six-page file were imposed as five
+    pages at exit 0. The page count could not be trusted, which is the
+    cross-reference refusal's case, so it is refused the same way and
+    recovered the same way.
+    """
+
+    def setUp(self):
+        super().setUp()
+        with make_pdf(3) as pdf:
+            kids = list(pdf.Root.Pages.Kids)
+            pdf.Root.Pages.Kids = pikepdf.Array([7, *kids[1:]])
+            pdf.save(self.source)
+
+    def test_it_is_refused_rather_than_imposed_short(self):
+        status, err = self.impose()
+        self.assertEqual(status, 3, err)
+        self.assertIn("page tree holds something that is not a page", err)
+        self.assertIn("reads as 2 pages", err)
+        self.assertFalse(self.output.exists())
+
+    def test_asking_to_recover_imposes_what_is_there_and_says_so(self):
+        status, err = self.impose("--damaged", "recover")
+        self.assertEqual(status, 0, err)
+        self.assertIn("2 pages were read", err)
+        self.assertIn("A page may be missing", err)
+
+
 class TestContentThatCannotBeRead(Malformed):
     """A page whose content stream does not decode.
 

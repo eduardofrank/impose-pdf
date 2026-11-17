@@ -12,7 +12,11 @@ reads as fifteen, or seven, or one, depending on when it was looked at --
 and the grid chosen for a sheet changes with it.
 
 So a page count that had to be reconstructed is refused here, before any
-geometry is read, and the operator is told what was rebuilt. Lesser damage
+geometry is read, and the operator is told what was rebuilt. A page tree
+with something in it that is not a page is refused on the same grounds:
+QPDF skips it and the document reads a page short. Measured, 42 of 3000
+damaged copies of a six-page file were imposed as five pages at exit 0,
+every one of them with that warning and only that one about the pages. Lesser damage
 is reported and imposed: a stream whose length QPDF had to recover is one
 page's content to look at, not a reason to turn away artwork a shop may
 have no better copy of.
@@ -91,16 +95,19 @@ def open_source(
     raw = tuple(str(line) for line in pdf.get_warnings())
     warnings = tuple(_PREFIX.sub("", line) for line in raw)
     rebuilt = tuple(line for line in warnings if _is_reconstruction(line))
-    if rebuilt and damaged == "refuse":
+    pruned = tuple(line for line in warnings if _is_pruned(line))
+    if (rebuilt or pruned) and damaged == "refuse":
         pages = len(pdf.pages)
         pdf.close()
-        raise SourceError(_refusal(_name(source), what, pages))
+        if rebuilt:
+            raise SourceError(_refusal(_name(source), what, pages))
+        raise SourceError(_pruned(_name(source), what, pages))
     unsized = [line for line in raw if _is_invented_size(line)]
     if unsized:
         numbers = _unsized_pages(pdf, unsized)
         pdf.close()
         raise SourceError(_no_size(_name(source), what, numbers))
-    return pdf, tuple(_notes(warnings, rebuilt, pages=len(pdf.pages)))
+    return pdf, tuple(_notes(warnings, rebuilt, pruned, pages=len(pdf.pages)))
 
 
 def _is_reconstruction(warning: str) -> bool:
@@ -113,6 +120,27 @@ def _is_reconstruction(warning: str) -> bool:
     """
     folded = warning.casefold()
     return "reconstruct" in folded and "cross-reference" in folded
+
+
+def _is_pruned(warning: str) -> bool:
+    """Whether *warning* says QPDF skipped something in the page tree.
+
+    What it skipped was where a page should have been, so the count is one
+    short or more. Matched and pinned like :func:`_is_reconstruction`.
+    """
+    folded = warning.casefold()
+    return "pages tree" in folded and "non-dictionary" in folded
+
+
+def _pruned(named: str, what: str, pages: int) -> str:
+    """Why a file whose page tree lost an entry is not imposed."""
+    return (
+        f"The {what} {named}is damaged: its page tree holds something that "
+        f"is not a page, where a page should be, and reading it skips that "
+        f"entry. It reads as {pages} {'page' if pages == 1 else 'pages'}, "
+        f"which may be fewer than were sent. Ask for the file again, or ask "
+        f"to impose what can be read."
+    )
 
 
 def _is_invented_size(warning: str) -> bool:
@@ -179,7 +207,11 @@ def _refusal(named: str, what: str, pages: int) -> str:
 
 
 def _notes(
-    warnings: tuple[str, ...], rebuilt: tuple[str, ...], *, pages: int
+    warnings: tuple[str, ...],
+    rebuilt: tuple[str, ...],
+    pruned: tuple[str, ...],
+    *,
+    pages: int,
 ) -> list[str]:
     """What to say about damage that was read past rather than refused."""
     if rebuilt:
@@ -193,6 +225,13 @@ def _notes(
             f"had to be reconstructed, as this run asked. That table is what "
             f"states the page count, so check it against what was sent "
             f"before this goes to press."
+        ]
+    if pruned:
+        was = "page was" if pages == 1 else "pages were"
+        return [
+            f"{pages} {was} read out of a file whose page tree held something "
+            f"that is not a page, as this run asked. A page may be missing: "
+            f"check the count against what was sent before this goes to press."
         ]
     lesser = sorted(set(warnings))
     if not lesser:

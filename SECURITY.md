@@ -229,7 +229,8 @@ impose does.
 **A policy with no `--damaged recover` in it.** That option tells impose to go
 ahead with a file whose cross-reference table had to be rebuilt to read at
 all — and that table is what states the page count, so a file that is still
-arriving reads short. `refuse` is the default and is what an exposed folder
+arriving reads short. It does the same for a page tree that had an entry
+skipped, which also reads short. `refuse` is the default and is what an exposed folder
 keeps.
 
 Measured, the same file both ways: a 16-page book truncated to 3002 bytes, as

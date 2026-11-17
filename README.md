@@ -347,7 +347,7 @@ series.
 | `--page {imageable,sheet}` | `imageable` | what the output page is |
 | `--trim-from {trimbox,mediabox}` | `trimbox` | where a finished size comes from on a page with no TrimBox. `mediabox` imposes it from the MediaBox and says what size that was. This run only; not recorded in a job |
 | `--expect-size SIZE` | off | the finished size every page is supposed to be, as `A4` or `105mmx148mm`. Another size is refused, naming both. What makes `--trim-from mediabox` safe as a folder's standing policy. Recorded in a job |
-| `--damaged {refuse,recover}` | `refuse` | what to do with a file whose cross-reference table had to be reconstructed — which is what a file still being copied needs. `recover` imposes what can be read and says how much that was. This run only |
+| `--damaged {refuse,recover}` | `refuse` | what to do with a file whose page count cannot be trusted: a cross-reference table that had to be reconstructed — which is what a file still being copied needs — or a page tree with something in it that is not a page. `recover` imposes what can be read and says how much that was. This run only |
 | `--overwrite` | off | replace the press file, proof or job file if one is already at that name. Without it an existing file is refused. This run only |
 | `--bleed LENGTH` | `2mm` | most bleed to place; caps what the artwork brought |
 | `--gutter LENGTH` | `4mm` cut, none folded | space between pages, for the knife (`--gutters` also accepted) |
@@ -1023,6 +1023,15 @@ count, so check it against what was sent before this goes to press.
 saddle-stitch: 15 pages onto 4 sheet(s) at 2 up (2 × 1 upright), page 310 × 450 mm on indigo-5000; finished page 105 × 148 mm
 wrote ../out/arriving.pdf
 ```
+
+**A page tree that lost a page is refused the same way, and recovered the same
+way.** A damaged file can hold something in its page tree that is not a page,
+where a page should be. QPDF skips the entry and the file reads short.
+Measured on 3000 damaged copies of a six-page file: 42 were imposed as five
+pages, at exit `0`, each with one line saying the file was "not clean". They
+are exit `3` now — `its page tree holds something that is not a page … It
+reads as 5 pages, which may be fewer than were sent` — and `--damaged
+recover` imposes what is there and says a page may be missing.
 
 **A page that does not say its size is refused, and `recover` does not change
 that.** Every page must carry a MediaBox. When one is missing, or is not four
@@ -2554,7 +2563,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-984 tests today, no system libraries, about thirteen seconds. Twenty-four of
+986 tests today, no system libraries, about thirteen seconds. Twenty-four of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts
