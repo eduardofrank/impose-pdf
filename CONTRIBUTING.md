@@ -259,6 +259,12 @@ failure it prevents and, where one was measured, what it cost. Comments earn
 their place the same way — a comment restating the next line will be removed, a
 comment recording why a tolerance is 0.25 mm and not 0.01 pt will not.
 
+The workflow's token can read the repository and nothing more, and its
+actions are pinned to a commit with the release named beside it.
+`.github/dependabot.yml` opens a pull request each month when an action has
+moved on; a change to the workflow keeps both, and a new action is added at
+a commit too, not at a tag.
+
 The dev tools are deliberately unpinned, so CI may be running a newer pylint
 than you are, and a new release can count one more local variable in a
 function that was passing. `pip install -U pylint` before you trust a clean

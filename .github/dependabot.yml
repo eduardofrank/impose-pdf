@@ -1,0 +1,16 @@
+# The actions in .github/workflows are pinned to commits, which nobody
+# reads; this is what proposes the next release of each, as a pull request
+# CI runs on before anything changes.
+#
+# Not pip. The one dependency is a floor, pikepdf>=9, which a newer release
+# never invalidates, and the dev tools are unpinned on purpose -- see
+# CONTRIBUTING.md -- so there is nothing for a pip update to move.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
