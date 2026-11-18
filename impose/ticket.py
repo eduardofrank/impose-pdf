@@ -253,10 +253,12 @@ def dump(path: str | pathlib.Path, job: dict) -> None:
         if key == "version" or job[key] is None:
             continue
         body[key] = _plain(job[key])
+    text = (json.dumps(body, indent=2) + "\n").encode("utf-8")
     with writing(path) as target:
-        pathlib.Path(target).write_text(
-            json.dumps(body, indent=2) + "\n", encoding="utf-8"
-        )
+        if hasattr(target, "write"):
+            target.write(text)
+        else:
+            pathlib.Path(target).write_bytes(text)
 
 
 def run(  # pylint: disable=too-many-arguments

@@ -302,7 +302,8 @@ it — the damaged-file refusal exists because of what QPDF's recovery does to a
 page count, and that class of thing is ours to get right.
 
 Keeping pikepdf current is the single most useful thing a deployment does. The
-floor is `pikepdf>=9`; there is no upper pin, so `pip install -U pikepdf` is
+floor is `pikepdf>=10`, and CI runs the suite at exactly 10.0.0; there is no
+upper pin, so `pip install -U pikepdf` is
 always available to you.
 
 ## Running a watched folder with some care

@@ -154,7 +154,7 @@ class TestEmbedding(unittest.TestCase):
         buffer.seek(0)
         with pikepdf.open(buffer) as reopened:
             fonts = reopened.pages[0].obj["/Resources"]["/Font"]
-            embedded = next(iter(fonts.values()))
+            _, embedded = next(iter(fonts.items()))
             self.assertEqual(
                 len(embedded["/FontDescriptor"]["/FontFile2"].read_bytes()),
                 len(self.font.data),

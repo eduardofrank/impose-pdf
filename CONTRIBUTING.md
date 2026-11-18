@@ -29,7 +29,9 @@ bats tests/shell
 ```
 
 CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
-three more: `lint`; `watched folder (macOS)`, which runs the live suite against
+four more: `pikepdf floor`, which runs the suite on the oldest Python with the
+oldest pikepdf `pyproject.toml` allows, so that the floor is a version that
+has been run rather than one that was written down; `lint`; `watched folder (macOS)`, which runs the live suite against
 `watch-fswatch.sh` with a real `fswatch`, because nothing else can; and
 `watched folder` for the four checks that are about what a shop copies into
 production — shellcheck on the watchers, a wheel built and installed into a

@@ -2211,7 +2211,7 @@ unrelated imaging project. The import package and the command are both
 
 ### What that pulls in
 
-One runtime dependency, `pikepdf>=9`, and that it is only one is deliberate:
+One runtime dependency, `pikepdf>=10`, and that it is only one is deliberate:
 [Licence](#licence) says why it is this library and not another. A fresh
 virtual environment ends up holding five packages besides pip itself, and no
 more:

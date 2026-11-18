@@ -28,7 +28,7 @@ dependencies = [
     # MPL-2.0 over QPDF (Apache-2.0). Deliberately the only dependency, and
     # deliberately not PyMuPDF, which is AGPL-or-commercial and would make the
     # MIT licence here misleading to anyone redistributing.
-    "pikepdf>=9",
+    "pikepdf>=10",
 ]
 
 [project.scripts]

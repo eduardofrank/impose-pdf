@@ -246,14 +246,14 @@ class TestControlStrip(unittest.TestCase):
 def _separations(page) -> list[str]:
     found = []
     spaces = page.obj.get("/Resources", {}).get("/ColorSpace", {})
-    for value in spaces.values():
+    for _, value in spaces.items():
         if str(value[0]) == "/Separation":
             found.append(str(value[1]))
     return found
 
 
 def _wedge_form(page, width: float):
-    for value in page.obj["/Resources"]["/XObject"].values():
+    for _, value in page.obj["/Resources"]["/XObject"].items():
         box = value.get("/BBox")
         if box is not None and abs(float(box[2]) - float(box[0]) - width) < 0.1:
             return value

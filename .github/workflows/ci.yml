@@ -51,6 +51,31 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -t . --verbose
 
+  # The oldest pikepdf pyproject.toml allows, on the oldest Python. A floor
+  # nobody runs drifts: `pikepdf>=9` was written down and never run, and at
+  # 9.0.0 19 tests failed, among them --damaged recover recovering nothing.
+  # The rest of CI installs the newest release, so this is the only job that
+  # would notice the code coming to need something newer than it says.
+  floor:
+    name: pikepdf floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.10"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pikepdf==10.0.0"
+          python -m pip install -e .
+          python -c "import pikepdf; assert pikepdf.__version__ == '10.0.0', pikepdf.__version__"
+      - name: Run tests
+        run: python -m unittest discover -s tests -t . --verbose
+
   lint:
     name: lint
     runs-on: ubuntu-latest

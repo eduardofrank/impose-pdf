@@ -190,13 +190,13 @@ def _xobjects(pdf):
                 return
             forms[identity] = xobj
             nested = xobj.get("/Resources", {}).get("/XObject", {})
-            for child in nested.values():
+            for _, child in nested.items():
                 visit(child)
         elif subtype == "/Image":
             images[identity] = xobj
 
     for page in pdf.pages:
-        for xobj in page.obj.get("/Resources", {}).get("/XObject", {}).values():
+        for _, xobj in page.obj.get("/Resources", {}).get("/XObject", {}).items():
             visit(xobj)
     return forms, images
 

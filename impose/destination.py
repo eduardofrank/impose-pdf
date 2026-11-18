@@ -69,8 +69,18 @@ def writing(destination):
     they write into at startup rather than trusting a policy not to name
     somebody else's.
     """
-    if is_pass_through(destination):
+    if hasattr(destination, "write"):
         yield destination
+        return
+    if is_pass_through(destination):
+        # Opened here and handed over as a stream, rather than handed over
+        # as a path: pikepdf 10.0 saves to a path through a temporary of its
+        # own beside it, and a temporary cannot be made in /dev. Measured on
+        # 10.0.0, `-o /dev/null` was exit 4, "Operation not permitted" on
+        # /dev/.pikepdf.null...; later releases look before they do that,
+        # and a stream needs neither of them to.
+        with open(destination, "wb") as stream:
+            yield stream
         return
     final = pathlib.Path(destination)
     temporary = final.parent / f".{final.name}.impose-{os.getpid()}.tmp"
