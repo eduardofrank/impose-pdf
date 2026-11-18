@@ -622,6 +622,38 @@ class TestAPolicyAndTheRunsOwnJudgements(unittest.TestCase):
             self.assertTrue(output.exists())
 
 
+class TestAMarkColourIsOneOfTheTwo(unittest.TestCase):
+    """The renderer asks only whether a mark is black, so a colour it does not
+    know drew registration marks: "blak" put marks on every plate of a job
+    that asked for K only, at exit 0. Found by mypy, reading the Literal."""
+
+    @staticmethod
+    def run_job(marks):
+        with workspace(pages=8) as source:
+            job = source.with_name("job.json")
+            job.write_text(
+                json.dumps({"version": 1, "schema": "nup", "marks": marks}),
+                encoding="utf-8",
+            )
+            output = source.with_name("o.pdf")
+            status, _, err = run("run", str(job), str(source), "-o", str(output))
+            return status, err, output.exists()
+
+    def test_a_misspelt_colour_is_refused(self):
+        for marks in ("blak", {"colour": "magenta"}):
+            with self.subTest(marks=marks):
+                status, err, written = self.run_job(marks)
+                self.assertEqual(status, 1, err)
+                self.assertIn("Unknown mark colour", err)
+                self.assertFalse(written)
+
+    def test_the_two_colours_and_none_still_run(self):
+        for marks in ("black", "registration", "none", {"colour": "black"}):
+            with self.subTest(marks=marks):
+                status, err, _ = self.run_job(marks)
+                self.assertEqual(status, 0, err)
+
+
 class TestACoverJob(unittest.TestCase):
     """The one schema `run` reaches by another path.
 

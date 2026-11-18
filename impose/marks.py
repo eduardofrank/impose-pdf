@@ -23,8 +23,9 @@ sheet. K-only is the better choice there, so the colour is selectable.
 from __future__ import annotations
 
 import dataclasses
-from typing import Literal
+from typing import Literal, get_args
 
+from . import ImposeError
 from .geometry import Rect, approx
 from .plan import Plan
 from .units import MM
@@ -39,6 +40,10 @@ _KAPPA = 0.5522847498307936
 #: appears on every plate. ``black`` is K only, for mono work and for digital
 #: presses where heavy coverage in the trim zone is a liability.
 MarkColour = Literal["registration", "black"]
+
+#: The same, for checking a value at run time: a ``Literal`` is a promise
+#: to a type checker and nothing at all to the interpreter.
+MARK_COLOURS: tuple[str, ...] = get_args(MarkColour)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -80,6 +85,16 @@ class MarkStyle:
     length: float = 3 * MM
     width: float = 0.25
     colour: MarkColour = "registration"
+
+    def __post_init__(self) -> None:
+        # The renderer asks only whether the colour is "black", so anything
+        # else drew registration marks: "blak" in a job file put marks on
+        # every plate of a job that asked for K only, at exit 0.
+        if self.colour not in MARK_COLOURS:
+            raise ImposeError(
+                f"Unknown mark colour {self.colour!r}; use "
+                f"{' or '.join(MARK_COLOURS)}, or none for no marks."
+            )
 
     @property
     def reach(self) -> float:
