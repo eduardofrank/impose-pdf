@@ -22,6 +22,7 @@ import argparse
 import json
 import pathlib
 import sys
+from typing import cast
 
 from . import ImposeError
 from .cover import impose_cover
@@ -29,7 +30,7 @@ from .destination import writing
 from .geometry import Size
 from .job import SCHEMAS, impose_document
 from .layout import Gutters
-from .marks import MarkStyle
+from .marks import MarkColour, MarkStyle
 from .press import EDGES, Press
 from .press import resolve as resolve_press
 from .units import length, to_mm
@@ -433,7 +434,9 @@ def _marks(value):
     if value == "none":
         return None
     if isinstance(value, str):
-        return MarkStyle(colour=value)
+        # Any string, as far as a type checker can tell; MarkStyle refuses
+        # one that is not a colour, which is the check that counts.
+        return MarkStyle(colour=cast(MarkColour, value))
     if not isinstance(value, dict):
         raise ImposeError(f"marks should name a colour, got {value!r}.")
     default = MarkStyle()

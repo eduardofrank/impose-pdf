@@ -164,7 +164,7 @@ def _unsized_pages(pdf: pikepdf.Pdf, warnings: list[str]) -> list[int]:
     object up in the document's own order. A warning that names no page is
     left out rather than guessed at: the refusal stands without the number.
     """
-    order = {page.objgen: number for number, page in enumerate(pdf.pages, 1)}
+    order = {page.obj.objgen: number for number, page in enumerate(pdf.pages, 1)}
     numbers = set()
     for warning in warnings:
         found = _OBJECT.search(warning)

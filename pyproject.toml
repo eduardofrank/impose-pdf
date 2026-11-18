@@ -38,7 +38,7 @@ impose = "impose.cli:main"
 impose-hotfolder = "impose.hotfolder.cli:main"
 
 [project.optional-dependencies]
-dev = ["black", "isort", "pylint"]
+dev = ["black", "isort", "mypy", "pylint"]
 
 [project.urls]
 homepage = "https://github.com/eduardofrank/impose-pdf"
@@ -49,6 +49,9 @@ repository = "https://github.com/eduardofrank/impose-pdf.git"
 include = ["impose*"]
 
 [tool.setuptools.package-data]
+# PEP 561: the annotations are part of what a library caller is handed, and
+# this empty file is how their type checker knows to read them.
+"impose" = ["py.typed"]
 # The slug line's font has to ship with the wheel: PDF/X requires every font
 # embedded, so a font that is only present in a source checkout would mean
 # imposed sheets that conform from one install and not from another.
@@ -70,6 +73,20 @@ target-version = ["py310"]
 
 [tool.isort]
 profile = "black"
+
+[tool.mypy]
+# The package, at the oldest Python it supports, with the bodies of
+# unannotated functions checked as well -- which is where the one bug the
+# first run found was: a job file's mark colour, typed as one of two strings
+# and never checked to be either. Not --strict: that is 153 findings, nearly
+# all of them missing annotations on functions whose types are plain from
+# the call, and annotating them would be a rewrite of every module for no
+# defect found. The tests are not checked; they narrow with assertIsNotNone,
+# which mypy cannot see through, and 66 of their 118 findings are that.
+files = ["impose"]
+python_version = "3.10"
+check_untyped_defs = true
+warn_unused_ignores = true
 
 [tool.pylint.master]
 load-plugins = ["pylint.extensions.no_self_use"]

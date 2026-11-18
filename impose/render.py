@@ -285,7 +285,7 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         self.style = style or MarkStyle()
         self._colorspace: Name | None = None
         self._state: Name | None = None
-        self._font = None
+        self._font: pikepdf.Object | None = None
         # Every character any slug in this document sets. The font cannot be
         # cut down until they are all known, which is not until the last page
         # has been added -- so the object is reserved now and described at
@@ -296,9 +296,9 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         # the page, because add() is handed its source each time and page 0
         # of two documents is not the same page.
         self._forms: dict[tuple[int, int], pikepdf.Object] = {}
-        self._cut_ocg = None
-        self._cut_space = None
-        self._wedge = None
+        # The Cutting layer and its spot colour space, made on the first cut.
+        self._cut: tuple[pikepdf.Object, pikepdf.Object] | None = None
+        self._wedge: pikepdf.Object | None = None
 
     def carry_over(self, source: pikepdf.Pdf) -> Identity:
         """Copy *source*'s printing condition and PDF/X claim onto the output.
@@ -365,8 +365,8 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
             stream.append(_draw_bindery(bindery, self._slug_font(page)))
         if wedge is not None:
             pdf, media, slot = wedge
-            placed = page.add_resource(self._wedge_form(pdf), Name.XObject)
-            stream.append(_place_wedge(placed, media, slot))
+            strip = page.add_resource(self._wedge_form(pdf), Name.XObject)
+            stream.append(_place_wedge(strip, media, slot))
         if cut and cut_name:
             # Last, so nothing is painted over the path. ISO 19593-1 requires
             # that of a step whose objects may meet the artwork.
@@ -422,8 +422,8 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
 
     def _cut_resources(self, page: pikepdf.Page, spot: str) -> tuple[Name, Name, Name]:
         """Spot colour, overprint, and the Cutting layer, created once."""
-        if self._cut_ocg is None:
-            self._cut_ocg = self.pdf.make_indirect(
+        if self._cut is None:
+            ocg = self.pdf.make_indirect(
                 Dictionary(
                     Type=Name.OCG,
                     Name=spot,
@@ -433,20 +433,22 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
                     ),
                 )
             )
-            self._cut_space = self.pdf.make_indirect(_spot_colorspace(self.pdf, spot))
+            space = self.pdf.make_indirect(_spot_colorspace(self.pdf, spot))
             self.pdf.Root.OCProperties = Dictionary(
-                OCGs=Array([self._cut_ocg]),
+                OCGs=Array([ocg]),
                 D=Dictionary(
                     BaseState=Name("/ON"),
-                    ON=Array([self._cut_ocg]),
-                    Order=Array([self._cut_ocg]),
+                    ON=Array([ocg]),
+                    Order=Array([ocg]),
                 ),
             )
             self._min_version = max(self._min_version, "1.5")
-        colour = page.add_resource(self._cut_space, Name.ColorSpace)
+            self._cut = (ocg, space)
+        layer, colorspace = self._cut
+        colour = page.add_resource(colorspace, Name.ColorSpace)
         state = page.add_resource(_overprint_state(self.pdf), Name.ExtGState)
         prop = page.add_resource(
-            Dictionary(Type=Name("/OCMD"), OCGs=Array([self._cut_ocg])),
+            Dictionary(Type=Name("/OCMD"), OCGs=Array([layer])),
             Name("/Properties"),
         )
         return colour, state, prop

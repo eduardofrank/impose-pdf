@@ -28,12 +28,13 @@ Before each commit, the gate:
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
+./.venv/bin/python -m mypy
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-shellcheck has to be silent too, same as pylint, and the scripts in
+shellcheck and mypy have to be silent too, same as pylint, and the scripts in
 `impose/hotfolder/` ship in the wheel and are the ones a shop copies into
 production. `bats tests/shell` starts a watcher on a temporary folder and
 drops files into it; it needs bats and an installed `impose`, and it takes

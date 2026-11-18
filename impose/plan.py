@@ -243,7 +243,7 @@ class Plan:
                 cells = []
                 for column in range(self.columns):
                     placement = surface.at(column, row)
-                    if placement is None or placement.is_blank:
+                    if placement is None or placement.source is None:
                         cells.append("   .")
                     else:
                         turn = "" if not placement.rotation else "*"

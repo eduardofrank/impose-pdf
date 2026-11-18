@@ -289,7 +289,7 @@ def _measure(data: bytes, path: pathlib.Path) -> Font:
         name=_postscript_name(data, tables, path),
         data=data,
         advance=round(at("hmtx", 0, ">H") * scale),
-        bbox=tuple(  # type: ignore[arg-type]
+        bbox=tuple(
             round(value * scale)
             for value in struct.unpack(">hhhh", data[head + 36 : head + 44])
         ),

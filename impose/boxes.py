@@ -308,7 +308,7 @@ def pdfx_version(pdf: pikepdf.Pdf) -> str | None:
 def has_output_intent(pdf: pikepdf.Pdf) -> bool:
     """Whether the document declares an OutputIntent -- the printing condition."""
     intents = pdf.Root.get("/OutputIntents")
-    return bool(intents) and len(intents) > 0
+    return intents is not None and len(intents) > 0
 
 
 def require_trim(

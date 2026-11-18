@@ -879,7 +879,7 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
     gang_bleeds=None,
 ) -> tuple[Plan, list]:
     """Lay every surface out, turning the pages if that is what fits."""
-    failure: ImposeError | None = None
+    failures: list[ImposeError] = []
     for candidate in _candidates(plan, schema, orientation):
         try:
             layouts = [
@@ -908,10 +908,12 @@ def _fit(  # pylint: disable=too-many-arguments,too-many-locals
                 for surface in candidate
             ]
         except ImposeError as error:
-            failure = error
+            failures.append(error)
             continue
         return candidate, layouts
-    raise failure  # every orientation was tried and none fitted
+    # Every orientation was tried and none fitted; there is always at least
+    # one, and the last is the one the operator asked about last.
+    raise failures[-1]
 
 
 def _form_press(

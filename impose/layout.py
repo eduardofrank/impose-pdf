@@ -518,13 +518,13 @@ def _gang_frames(  # pylint: disable=too-many-locals
     surface: Surface, sizes: tuple[Size, ...], gutters: Gutters
 ) -> tuple[dict[tuple[int, int], Rect], Size]:
     """Where each cell sits, packed left to right and top to bottom."""
-    by_row: dict[int, list[Placement]] = {}
+    by_row: dict[int, list[tuple[int, Placement]]] = {}
     for placement in surface.placements:
         if placement.source is None:
             continue
-        by_row.setdefault(placement.row, []).append(placement)
+        by_row.setdefault(placement.row, []).append((placement.source, placement))
     row_height = {
-        row: max(sizes[item.source].height for item in items)
+        row: max(sizes[source].height for source, _ in items)
         for row, items in by_row.items()
     }
     order = sorted(row_height)
@@ -536,8 +536,8 @@ def _gang_frames(  # pylint: disable=too-many-locals
         height = row_height[row]
         cursor -= height
         x = 0.0
-        for item in sorted(by_row[row], key=lambda placement: placement.column):
-            size = sizes[item.source]
+        for source, item in sorted(by_row[row], key=lambda pair: pair[1].column):
+            size = sizes[source]
             top = cursor + height
             frames[item.cell] = Rect(x, top - size.height, x + size.width, top)
             x += size.width + gutters.horizontal

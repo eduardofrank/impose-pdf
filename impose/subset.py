@@ -241,7 +241,7 @@ def _assemble(tables: dict[str, bytes]) -> bytes:
     return bytes(font)
 
 
-def _checksum(data: bytes) -> int:
+def _checksum(data: bytes | bytearray) -> int:
     """The sum of a table's 32-bit words, as the format defines it."""
     padded = data + b"\0" * (-len(data) % 4)
     return sum(struct.unpack(f">{len(padded) // 4}I", padded)) & 0xFFFFFFFF

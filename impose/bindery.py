@@ -116,7 +116,7 @@ def marks_for(layout: SheetLayout, plan: Plan) -> BinderyMarks:
         for placed in layout.pages
         if placed.source is not None and _section_source(plan, section) == placed.source
     )
-    spine, vertical, gap = _spine_line(layout, plan)
+    spine, vertical, gap = _spine_line(layout, plan.spine)
     return _drawn(page, section, spine, vertical, gap)
 
 
@@ -155,7 +155,7 @@ def lip_cell(plan: Plan, surface) -> tuple[int, int] | None:
     the folder grabs. The other side of that sheet is not the lip.
     """
     on_sheet = [
-        placement
+        (placement.source, placement)
         for candidate in plan.surfaces
         if candidate.sheet == surface.sheet
         for placement in candidate.placements
@@ -163,7 +163,7 @@ def lip_cell(plan: Plan, surface) -> tuple[int, int] | None:
     ]
     if not on_sheet:
         return None
-    lip = min(on_sheet, key=lambda placement: placement.source)
+    _, lip = min(on_sheet, key=lambda pair: pair[0])
     if any(placement.source == lip.source for placement in surface.placements):
         return lip.cell
     return None
@@ -195,11 +195,12 @@ def _section_source(plan: Plan, section: int) -> int | None:
     return min(sources) if sources else None
 
 
-def _spine_line(layout: SheetLayout, plan: Plan) -> tuple[float, bool, float]:
-    """The binding fold, whether it runs up the sheet, and the gap across it."""
-    verticals, horizontals = layout.fold_positions((plan.spine,), ())
-    before = next(page for page in layout.pages if page.column == plan.spine - 1)
-    after = next(page for page in layout.pages if page.column == plan.spine)
+def _spine_line(layout: SheetLayout, column: int) -> tuple[float, bool, float]:
+    """The binding fold after *column*'s neighbour, whether it runs up the
+    sheet, and the gap across it."""
+    verticals, horizontals = layout.fold_positions((column,), ())
+    before = next(page for page in layout.pages if page.column == column - 1)
+    after = next(page for page in layout.pages if page.column == column)
     if verticals:
         one, other = sorted((before.trim, after.trim), key=lambda rect: rect.x0)
         return verticals[0], True, other.x0 - one.x1

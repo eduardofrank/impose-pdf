@@ -18,11 +18,12 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 Use `./.venv/bin/python` for everything. A system `python` will not have
 pikepdf, and the error it gives is not the one you will expect.
 
-Five commands, and they are the whole gate:
+Six commands, and they are the whole gate:
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
+./.venv/bin/python -m mypy
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
@@ -52,6 +53,16 @@ nonzero for any message at all, which is what CI reads, and a message nobody
 acts on is a message nobody reads.
 `check-artwork.py` is deliberately outside pylint: it imports a renderer the
 package will not depend on.
+
+**mypy checks the package, not the tests**, at Python 3.10 and with the
+bodies of unannotated functions read as well; `pyproject.toml` says why not
+`--strict`. The package ships `py.typed`, so its annotations are a promise to
+anybody type-checking code that calls it, and a wrong one is a bug. A
+`# type: ignore` needs its error code and a reason beside it, like a pylint
+disable, and one that stops being needed is itself an error
+(`warn_unused_ignores`). Annotations are not decoration here: the first run
+found a job file's mark colour typed as one of two strings and never checked,
+and `"blak"` printed registration marks at exit 0.
 
 **shellcheck has to be silent as well**, and for a better reason than symmetry:
 the watchers in `impose/hotfolder/` ship in the wheel and are what a shop

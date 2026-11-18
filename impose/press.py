@@ -185,7 +185,7 @@ def check_edge(edge: str) -> Edge:
             f"{edge!r} is not an edge of a sheet. The gripper edge is one "
             f"of: {', '.join(EDGES)}."
         )
-    return edge  # type: ignore[return-value]
+    return edge
 
 
 def resolve(spec: Press | str | dict) -> Press:

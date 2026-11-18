@@ -92,6 +92,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
       - run: python -m pylint impose tests
+      - run: python -m mypy
       - run: python -m black --check --diff .
       - run: python -m isort --check --diff .
 

@@ -2558,6 +2558,7 @@ be turned down for.
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
 ./.venv/bin/python -m pylint impose tests
+./.venv/bin/python -m mypy
 ./.venv/bin/python -m black --check . && ./.venv/bin/python -m isort --check .
 shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
