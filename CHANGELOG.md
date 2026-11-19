@@ -21,10 +21,62 @@ refusals, the options, and the watchers' buckets and log lines.
 
 Nothing yet.
 
-## 0.1.0 — 2026-11-19
+## 0.2.0 — 2026-11-19
 
-The first version given a number and a tag. Everything before it is one
-version, and this is what it does.
+The fixes from an audit of the watched folder and the project. Several change
+what a folder sees: a file 0.1.0 imposed at exit 0 may now be refused at
+exit 3, and there is a new status, 70. Read this section before you upgrade a
+folder.
+
+### Changed: files that are now refused
+
+- A page with no MediaBox, or one that is not four numbers, is refused at
+  exit 3. 0.1.0 imposed the US Letter page QPDF put in its place, at exit 0.
+  No option brings that back.
+- A file whose page tree held something that is not a page is refused at
+  exit 3, as a rebuilt page count already was. 0.1.0 imposed it a page short,
+  at exit 0. `--damaged recover` imposes what can be read, with a note.
+- A mark colour other than `registration` or `black` in a job file is refused
+  at exit 1. 0.1.0 drew registration marks for any other word, `"blak"`
+  included.
+
+### Changed: exit statuses
+
+- `70` is a fault in impose itself, followed by its traceback. 0.1.0 reported
+  an unexpected exception as `1`, which a folder files as the customer's
+  problem. A watcher files a `70` in `failed/`.
+- A malformed file that used to stop impose with a traceback now gets a
+  sentence and exit 3.
+
+### Changed: the watchers
+
+- A watcher whose event source ends, or is missing, exits 1 with a sentence,
+  or refuses to start at exit 2. 0.1.0 exited 0, which a service manager does
+  not restart.
+- `systemctl stop` no longer leaves the unit marked failed.
+- A resend under a name already filed goes beside the earlier file, with the
+  time in its name. 0.1.0 replaced it.
+- Any spelling of `.pdf` is taken, and only an ordinary file: a link or a pipe
+  under a PDF's name is removed, not imposed. What is not artwork is left in
+  `in/` and named once a sweep.
+- `TIMEOUT` in `policy.conf` limits one run, so that one file cannot stop a
+  folder.
+- Under systemd, one file running out of memory no longer stops and restarts
+  the whole watcher.
+- A leftover whose press file is already there is explained, not just failed.
+- On Linux, events the kernel dropped send the watcher back through `in/`.
+- The macOS watcher hears a file renamed into the folder.
+
+### Changed: requirements
+
+- pikepdf 10 or later. 0.1.0 said 9, but failed 19 tests on 9.0.0, and on
+  10.0.0 could not write to a device such as `/dev/stdout`.
+- Type information ships with the package (`py.typed`).
+
+## 0.1.0 — 2026-11-15
+
+The first version given a number. Every install before 0.2.0 reports it, and
+`v0.1.0` tags the commit the audit was run against. This is what it does.
 
 ### Imposing
 
@@ -51,35 +103,26 @@ version, and this is what it does.
 - A page with no TrimBox is refused. `--trim-from mediabox` opts in to using
   the MediaBox. `--expect-size` refuses work that is not the finished size a
   folder is for.
-- If QPDF had to rebuild the page count, or drop something from the page
-  tree, the file is refused rather than imposed short. `--damaged recover`
-  opts in to imposing it anyway.
-- A page with no MediaBox, or one that is not four numbers, is refused. It is
-  never imposed as the US Letter page QPDF puts in its place.
-- A mark colour other than `registration` or `black` is refused, in a job
-  file as on the command line.
+- If QPDF had to rebuild the page count, the file is refused rather than
+  imposed short. `--damaged recover` opts in to imposing it anyway.
 
 ### Running unattended
 
 - Exit statuses a watcher can route on: `0` done, `1` the job, `2` the
-  arguments, `3` the source, `4` the destination, `70` a fault in impose
-  itself, with its traceback.
+  arguments, `3` the source, `4` the destination.
 - The press file appears whole or not at all, and nothing is overwritten
   unless asked. A run stopped by SIGTERM or Ctrl-C leaves no temporary file
   behind.
 - Reference watchers for Linux (inotify) and macOS (fswatch), a systemd
   template and a launchd plist, shipped with the package. `impose-hotfolder`
   hands them out.
-- A watched folder's `policy.conf` sets a schema, options, a `TIMEOUT` and
+- A watched folder's `policy.conf` sets a schema, options and
   `LOG_FORMAT=json`. Each folder has one watcher and one outbox, and both are
   enforced.
 - Files are filed in `done/`, `rejected/` or `failed/` by exit status, with
-  impose's sentence beside each one. A resend goes beside the earlier file,
-  never over it.
-- A restart sweeps up what is left in `in/` and `work/`. On Linux, events the
-  kernel dropped send the watcher back through `in/`.
+  impose's sentence beside each one.
+- A restart sweeps up what is left in `in/` and `work/`.
 
 ### Requirements
 
-- Python 3.10 to 3.14, and pikepdf 10 or later, the only runtime dependency.
-- Type information ships with the package (`py.typed`).
+- Python 3.10 to 3.14, and pikepdf 9 or later, the only runtime dependency.

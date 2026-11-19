@@ -2211,7 +2211,7 @@ Python 3.10 or newer. Nothing to install first and nothing to build:
 pip install impose-pdf
 ```
 
-**0.1.0 is not on PyPI yet.** Until it is, install [from
+**impose is not on PyPI yet.** Until it is, install [from
 source](#from-source) — same result, and it works today.
 
 The distribution is `impose-pdf` because `impose` on PyPI belongs to an

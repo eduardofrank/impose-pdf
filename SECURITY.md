@@ -31,10 +31,12 @@ rather not be named.
 | version | supported |
 |---|---|
 | `main` | yes |
-| 0.1.0 | unreleased — nothing published to PyPI yet |
+| 0.2.0 | yes — the current version; a fix for it lands on `main` and in the next tag |
+| 0.1.0 | no — it imposes a page of no stated size as US Letter; see [CHANGELOG.md](CHANGELOG.md) |
 
-There are no releases, so there is nothing to backport to. Fixes land on `main`.
-Once there is a release this table will say which ones get fixes.
+Versions are git tags, and nothing is published to PyPI. Fixes land on `main`
+and are not backported, so a fix reaches an install by updating it to `main`
+or to the next tag.
 
 ## What impose does, in security terms
 
