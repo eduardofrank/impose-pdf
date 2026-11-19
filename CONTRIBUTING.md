@@ -314,6 +314,15 @@ surprising a future reader would otherwise rediscover. The bodies in
 
 One change per commit. A revert is its own commit.
 
+A change a user would notice also adds a line under **Unreleased** in
+[CHANGELOG.md](CHANGELOG.md), in the same commit. That means anything that
+changes behaviour, an exit status, a refusal, an option, or what a watcher
+files or logs. The commit body says why; the changelog line says what a shop
+will see. A version is cut by moving those lines under a numbered heading,
+setting the same number in `pyproject.toml` and `impose/__init__.py`, and
+tagging that commit `v` plus the number. `tests/test_changelog.py` fails if
+the three disagree. Cutting a version does not publish it anywhere.
+
 ## Pull requests
 
 Branch off `main`, make CI green, and say in the description what you measured.

@@ -2573,7 +2573,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-989 tests today, no system libraries, about thirteen seconds. Twenty-four of
+992 tests today, no system libraries, about thirteen seconds. Twenty-four of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts
