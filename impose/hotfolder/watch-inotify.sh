@@ -765,6 +765,13 @@ sweep() {
         fi
         impose_claimed "$name" || true
     done
+    sweep_inbox
+}
+
+# Every file in the inbox, handled as if its event had just come. Run at each
+# start, and again whenever the kernel says it dropped events, since nothing
+# else would ever name the files those events were about.
+sweep_inbox() {
     for path in "$in"/*; do
         # The pattern itself, when the inbox is empty.
         [ -e "$path" ] || [ -L "$path" ] || continue
@@ -776,7 +783,7 @@ sweep() {
             fi
             ;;
         esac
-        # Said once a start rather than once an event: an upload passing
+        # Said once a sweep rather than once an event: an upload passing
         # through under its temporary name is not worth a line, and something
         # that is still here at the next start is.
         printf '%s: left in in/, which takes an ordinary file whose name ends in .pdf and nothing else\n' \
@@ -795,13 +802,30 @@ sweep() {
 # sweep waits in the pipe instead of falling down the gap between listing the
 # folder and starting to watch it. An event for a file the sweep already took
 # finds the name gone and costs nothing.
-inotifywait -m -q -e close_write -e moved_to --format '%f' "$in" | {
+#
+# `q_overflow` is the kernel saying its queue for this watch filled and
+# events were thrown away. It has to be asked for: measured with inotifywait
+# 3.22.6 and `max_queued_events` set to 8, thirty files written while the
+# reader was stopped came out as eight names and nothing else -- no warning
+# and no status, so twenty-two would have waited in the inbox for a restart.
+# Asked for, it arrives after the last event that fit, as a line with no name
+# on it, which no file can be; the answer is to look through the inbox again.
+# The default queue is 16384 events, so this is a burst far past anything a
+# shop sends, or a reader stuck that long on one file -- rare, and not
+# silent.
+inotifywait -m -q -e close_write -e moved_to -e q_overflow --format '%f' "$in" | {
     sweep
     # `IFS=`, or `read` trims the name: ` cover.pdf`, with the space a
     # careless rename leaves, was looked for as `cover.pdf`, not found,
     # and left in the inbox until the next restart swept it (measured).
     while IFS= read -r name; do
         owned || break
+        if [ -z "$name" ]; then
+            printf '%s: events for %s were dropped by the kernel; looking through it again\n' \
+                "$0" "$in" >&2
+            sweep_inbox
+            continue
+        fi
         handle "$name" || true
     done
 }

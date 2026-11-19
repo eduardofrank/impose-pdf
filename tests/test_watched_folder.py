@@ -280,6 +280,38 @@ class TestTheEventSource(WatchedFolder):
                 # asks for would meet its own lock.
                 self.assertFalse((root / ".watcher.lock").exists())
 
+    def test_events_the_kernel_dropped_send_it_back_to_the_inbox(self):
+        # inotify's queue holds 16384 events, and past that the kernel drops
+        # the rest and says so once, as a line with no name on it. The stub
+        # replays that: it announces one file and waits until it is filed, so
+        # the startup sweep is long over, then drops a second file without a
+        # word and reports the overflow. Nothing but a fresh look at the
+        # inbox ever names that second file.
+        watcher = next(w for w in _WATCHERS if w.name == "watch-inotify.sh")
+        root = self.folder("overflow", OPTIONS="--up 1x1")
+        make_pdf(1).save(self.root / "announced.pdf")
+        make_pdf(1).save(self.root / "lost.pdf")
+        stub = self.bin / "inotifywait"
+        stub.write_text(
+            "#!/bin/sh\n"
+            "for inbox; do :; done\n"
+            f"mv '{self.root}/announced.pdf' \"$inbox/announced.pdf\"\n"
+            "echo announced.pdf\n"
+            "tries=0\n"
+            f"until [ -e '{root}/done/announced.pdf' ]; do\n"
+            "    tries=$((tries + 1)); [ $tries -lt 600 ] || exit 0\n"
+            "    sleep 0.1\n"
+            "done\n"
+            f"mv '{self.root}/lost.pdf' \"$inbox/lost.pdf\"\n"
+            "echo\n",
+            encoding="utf-8",
+        )
+        finished = self.start(watcher, root)
+        self.assertEqual(finished.returncode, 1, finished.stderr)
+        self.assertIn("dropped by the kernel", finished.stderr)
+        self.assertEqual(sorted(p.name for p in (root / "in").iterdir()), [])
+        self.assertTrue((root / "done" / "lost.pdf").exists(), finished.stderr)
+
     def test_no_folder_given_is_a_refusal_to_start(self):
         for watcher in self.watchers:
             with self.subTest(watcher.name):

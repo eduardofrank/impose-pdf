@@ -1173,6 +1173,15 @@ by pid, and a lock whose holder is gone is cleared with a sentence. One folder,
 one watcher — the same rule as one folder, one schema, and enforced rather than
 assumed.
 
+An event can also be lost while the watcher runs. inotify queues 16384 events
+for a watch, and past that the kernel drops the rest. inotifywait reports the
+drop only if asked for `q_overflow`; otherwise it says nothing. Measured with
+the queue set to 8: thirty files written while inotifywait was stopped came out
+as eight names, and the old script left the other twenty-two in `in/` without a
+word. `watch-inotify.sh` asks for the event, says it was dropped, and sweeps
+`in/` again. `watch-fswatch.sh` does not do this yet: FSEvents can drop events
+too, but no drop could be caused here to measure what fswatch prints for one.
+
 **The press file appears whole or not at all.** It is written under a temporary
 name in the output directory and renamed into place, so a RIP hot folder
 watching `out/` cannot pick up a PDF that is still being written. Before this,
@@ -2564,7 +2573,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-988 tests today, no system libraries, about thirteen seconds. Twenty-four of
+989 tests today, no system libraries, about thirteen seconds. Twenty-four of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts
