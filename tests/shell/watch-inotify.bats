@@ -227,13 +227,21 @@ drop() {
     mv "$BATS_TEST_TMPDIR/$name" "$root/in/$name"
 }
 
-# Wait for the watcher to file *name*, and print which bucket it chose. No
-# second chances here: see prove_watching.
+# Wait for the watcher to file *name* and log it, and print which bucket it
+# chose. No second chances here: see prove_watching.
+#
+# The log line is what is waited for, not the file in its bucket. The watcher
+# links the file in first, then writes the sentence beside it, then the log
+# line, so a test that read the log as soon as the file appeared was racing
+# the watcher. It lost on a slow macOS runner, in tests 3 and 11 of a run
+# that changed no watcher code, and a one-second sleep before the log line
+# made it lose in four tests every time. The line is the last thing done for
+# a file, so once it is there the sentence is too.
 filed() {
     local name=$1 waited=0 bucket
     while [ "$waited" -lt 600 ]; do
         for bucket in done rejected failed; do
-            if [ -e "$root/$bucket/$name" ]; then
+            if [ -e "$root/$bucket/$name" ] && grep -Fq -- "$name" "$log"; then
                 printf '%s\n' "$bucket"
                 return 0
             fi
@@ -241,7 +249,7 @@ filed() {
         sleep 0.1
         waited=$((waited + 1))
     done
-    echo "nothing was filed as $name in a minute. stderr:" >&2
+    echo "nothing was filed and logged as $name in a minute. stderr:" >&2
     cat "$err" >&2
     return 1
 }
