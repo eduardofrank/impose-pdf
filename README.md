@@ -706,7 +706,9 @@ impose run novel.json
 
 Lengths are written the same way as on the command line, or as a bare number
 of PDF points — which is what `--record` itself writes, since that is the unit
-it holds them in. `"marks": "none"` draws no cut marks. `"sides"` is read for
+it holds them in. `"marks"` takes the same three words as `--marks`, and
+`"none"` draws no cut marks; any other word is refused at exit 1, where
+0.1.0 drew registration marks for it. `"sides"` is read for
 every schema; on the schemas that count the sheet's sides rather than an
 item's, a recorded job carries the same answer as `"duplex": true` or `false`.
 A quote system or a hot folder writes the same file, and the one above is the
@@ -1176,9 +1178,9 @@ assumed.
 An event can also be lost while the watcher runs. inotify queues 16384 events
 for a watch, and past that the kernel drops the rest. inotifywait reports the
 drop only if asked for `q_overflow`; otherwise it says nothing. Measured with
-the queue set to 8: thirty files written while inotifywait was stopped came out
-as eight names, and the old script left the other twenty-two in `in/` without a
-word. `watch-inotify.sh` asks for the event, says it was dropped, and sweeps
+the queue set to 8, on inotify-tools 3.22.6 and again on 4.23.9: thirty files
+written while inotifywait was stopped came out as eight names, and the old
+script left the other twenty-two in `in/` without a word. `watch-inotify.sh` asks for the event, says it was dropped, and sweeps
 `in/` again. `watch-fswatch.sh` does not do this yet: FSEvents can drop events
 too, but no drop could be caused here to measure what fswatch prints for one.
 
@@ -2212,7 +2214,9 @@ pip install impose-pdf
 ```
 
 **impose is not on PyPI yet.** Until it is, install [from
-source](#from-source) — same result, and it works today.
+source](#from-source) — same result, and it works today. The current version is
+0.2.0; `impose --version` says which one an install is, and
+[CHANGELOG.md](CHANGELOG.md) says what changed between two of them.
 
 The distribution is `impose-pdf` because `impose` on PyPI belongs to an
 unrelated imaging project. The import package and the command are both
@@ -2256,7 +2260,7 @@ watched folder rather than anything impose talks to.
 | `inotify-tools` | `watch-inotify.sh`, the Linux watcher | `apt install inotify-tools` |
 | `fswatch` | `watch-fswatch.sh`, the macOS watcher | `brew install fswatch` |
 | `pypdfium2` | `tools/check-artwork.py`, which renders to measure ink | `pip install pypdfium2` |
-| `black`, `isort`, `pylint` | development | `pip install -e ".[dev]"` |
+| `black`, `isort`, `mypy`, `pylint` | development | `pip install -e ".[dev]"` |
 
 ### From source
 
@@ -2267,8 +2271,13 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ./.venv/bin/python -m unittest discover -s tests -t .
 ```
 
+That is `main`. Each version is a git tag, `v` and the number, so a folder that
+should stay on a known version installs the tag instead — `git checkout v0.2.0`
+before the `pip install`, and read the version's section of the changelog
+before moving a folder to it.
+
 Python 3.10, 3.11, 3.12, 3.13 and 3.14 are all supported, and every push runs
-the suite on all five.
+the suite on all five, and on pikepdf 10.0.0, the oldest it allows.
 
 ## Presses
 
@@ -2398,12 +2407,15 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | A press of your own — sheet, border and gripper edge given, not chosen from a list |
 | ✅ | `source` — a page count QPDF had to rebuild is refused, not imposed short |
 | ✅ | A page with no stated size is refused, never imposed as the US Letter QPDF puts in its place |
+| ✅ | A page tree that lost a page is refused, as a rebuilt page count is |
+| ✅ | A job file's mark colour is checked — one of the three words, or refused |
 | ✅ | `destination` — the press file moved into place whole, and nothing overwritten unasked |
 | ✅ | A bug in impose is exit 70 and says so — never a `1`, which a folder sends back to the customer |
 | ✅ | Where the finished size comes from — a page with no TrimBox is refused, and `--trim-from mediabox` is the opt-in |
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
 | ✅ | A claim that is exclusive — a resend is not worked twice, and a restart sweeps up what the events missed |
+| ✅ | Events the kernel dropped — `q_overflow` heard, and the inbox looked through again (Linux) |
 | ✅ | `signals` — a run stopped from outside takes its half-written file with it |
 | ✅ | A folder's policy — a stored job with no source, imposed on whatever arrives |
 | ✅ | `policy.conf` — what a watched folder is for, written in the folder and parsed, not sourced |
@@ -2416,6 +2428,9 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `TIMEOUT` — a limit on one run, so one file cannot stop a folder |
 | ✅ | The macOS watcher run for real — the live suite against `fswatch` in CI, and a rename into the folder heard |
 | ✅ | `impose-hotfolder` — the watchers and both service templates shipped with the package |
+| ✅ | `py.typed` and mypy — the package type-checked in the gate, and its annotations shipped |
+| ✅ | Versions — a tag per version and a changelog that says what a folder will notice |
+| | FSEvents drops on macOS — what fswatch prints for one is unmeasured, so `watch-fswatch.sh` does not resweep yet |
 
 ## Several copies to a sheet
 
@@ -2573,7 +2588,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-992 tests today, no system libraries, about thirteen seconds. Twenty-four of
+992 tests today, no system libraries, about fourteen seconds. Twenty-six of
 them run the reference watchers in `impose/hotfolder/` and are more than half
 of that time, so they want a shell and `impose` on the PATH, and say so by
 skipping where either is missing; the rest are the library. The suite asserts
@@ -2588,8 +2603,8 @@ shop copies as the starting point for a hot folder, so a defect in one of them
 is a defect in somebody's production folder. `bats tests/shell` is twelve tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Twenty-one to
-twenty-three seconds, measured over five runs, and it skips itself when there
+rather than the startup checks the Python tests cover. Eighteen to
+twenty-one seconds, measured over five runs, and it skips itself when there
 is no `impose` to run.
 
 A third check on the same material runs in CI only, in the job those two

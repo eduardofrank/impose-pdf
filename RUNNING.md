@@ -284,6 +284,11 @@ What each thing you find means:
   there at a restart is named in the journal — `notes.txt: left in in/`.
   A directory is the common one: somebody sent a job as a folder of files.
   Take it out by hand.
+- **`events for …/in were dropped by the kernel; looking through it again`**
+  in the journal (Linux). More arrived at once than inotify could queue, or
+  the folder was stuck on one file while they did. Nothing is lost: the
+  watcher swept `in/` again there and then. Often is a sign the folder is
+  being fed faster than one file at a time can keep up with.
 - **Files in `in/` and the service up.** The event source is running and
   hearing nothing, which is a share remounted under it more often than
   anything else. An event source that *ends* is not this case — the watcher
@@ -419,6 +424,13 @@ is the usual answer on macOS —
 — seven compressed generations, rotated at a megabyte. That line is from
 the manual page and has not been run here: `newsyslog` will not even do a dry
 run without root.
+
+**Read the changelog first.** `impose --version` says what is installed, and
+[CHANGELOG.md](CHANGELOG.md) has a section for every version after it. Before
+1.0 a version may change what a folder sees — 0.2.0 refuses at `3` some files
+0.1.0 imposed at `0`, and adds status `70` — so read each section between the
+two, and install a tag (`git checkout v0.2.0` in the checkout) rather than
+whatever `main` holds that day.
 
 **Upgrading impose is two things, because the watcher is a copy.**
 `pip install -U` replaces the package in its environment. It does not replace

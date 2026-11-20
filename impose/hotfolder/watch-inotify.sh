@@ -805,9 +805,10 @@ sweep_inbox() {
 #
 # `q_overflow` is the kernel saying its queue for this watch filled and
 # events were thrown away. It has to be asked for: measured with inotifywait
-# 3.22.6 and `max_queued_events` set to 8, thirty files written while the
-# reader was stopped came out as eight names and nothing else -- no warning
-# and no status, so twenty-two would have waited in the inbox for a restart.
+# 3.22.6 and 4.23.9 and `max_queued_events` set to 8, thirty files written
+# while the reader was stopped came out as eight names and nothing else -- no
+# warning and no status, so twenty-two would have waited in the inbox for a
+# restart.
 # Asked for, it arrives after the last event that fit, as a line with no name
 # on it, which no file can be; the answer is to look through the inbox again.
 # The default queue is 16384 events, so this is a burst far past anything a

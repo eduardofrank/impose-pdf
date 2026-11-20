@@ -32,8 +32,9 @@ bats tests/shell
 CI runs exactly those, on Python 3.10 through 3.14, in a job per Python and
 four more: `pikepdf floor`, which runs the suite on the oldest Python with the
 oldest pikepdf `pyproject.toml` allows, so that the floor is a version that
-has been run rather than one that was written down; `lint`; `watched folder (macOS)`, which runs the live suite against
-`watch-fswatch.sh` with a real `fswatch`, because nothing else can; and
+has been run rather than one that was written down; `lint`; `watched folder
+(macOS)`, which runs the live suite against `watch-fswatch.sh` with a real
+`fswatch`, because nothing else can; and
 `watched folder` for the four checks that are about what a shop copies into
 production — shellcheck on the watchers, a wheel built and installed into a
 virtual environment with no checkout behind it, so that the watcher and the
@@ -175,7 +176,7 @@ needs.** `unittest discover` still wants nothing but the install. `bats
 tests/shell` wants bats (`brew install bats-core`, or `apt install bats`) and
 an `impose` it can run, and it skips the whole file rather than failing when
 there is no impose to find. It is also slow by this project's standards —
-twenty-one to twenty-three seconds for twelve tests, measured over five runs,
+eighteen to twenty-one seconds for twelve tests, measured over five runs,
 because waiting for an event source is wall-clock time and nothing makes it
 shorter. The spread is wider than the suite: `prove_watching` re-announces a
 file in the tests that start before their event source does, and how many times

@@ -6,7 +6,7 @@ directory, and the two service templates that keep one running.
 | File | What it is |
 | --- | --- |
 | `watch-inotify.sh` | The watcher, on Linux, over `inotify-tools`. The commentary on the folder layout, the lock, the claim and the exit statuses is in this one. |
-| `watch-fswatch.sh` | The same watcher on macOS, over `fswatch`. It differs in one place, `settled()`, because FSEvents has no close event. |
+| `watch-fswatch.sh` | The same watcher on macOS, over `fswatch`. It differs in two places: `settled()`, because FSEvents has no close event, and no second sweep when events are dropped, because what fswatch prints for a drop is unmeasured. |
 | `impose-folder@.service` | A systemd unit, one instance per folder: `systemctl enable --now impose-folder@a4-nup`. |
 | `impose-folder.plist` | A launchd agent, one copy per folder. |
 
