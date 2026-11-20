@@ -213,14 +213,21 @@ jobs:
       # the log rather than assumed: the script asks for three event names,
       # and whether a rename into the folder is one of them is a fact about
       # FSEvents that nobody here had measured.
+      #
+      # Then what the watcher does to a file it takes -- a hard link out to
+      # work/ and a remove -- because the script now rescans the inbox when
+      # FSEvents names the inbox itself, and it should not do that here.
       - name: What an arrival looks like to fswatch
         run: |
-          mkdir "$RUNNER_TEMP/seen"
+          mkdir "$RUNNER_TEMP/seen" "$RUNNER_TEMP/work"
           fswatch -x "$RUNNER_TEMP/seen" > "$RUNNER_TEMP/events" &
           sleep 3
           printf 'copied\n' > "$RUNNER_TEMP/seen/copied.pdf"
           printf 'renamed\n' > "$RUNNER_TEMP/staged"
           mv "$RUNNER_TEMP/staged" "$RUNNER_TEMP/seen/renamed.pdf"
+          sleep 2
+          ln "$RUNNER_TEMP/seen/copied.pdf" "$RUNNER_TEMP/work/copied.pdf"
+          rm "$RUNNER_TEMP/seen/copied.pdf"
           sleep 4
           kill %1
           cat "$RUNNER_TEMP/events"

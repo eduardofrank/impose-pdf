@@ -280,37 +280,62 @@ class TestTheEventSource(WatchedFolder):
                 # asks for would meet its own lock.
                 self.assertFalse((root / ".watcher.lock").exists())
 
-    def test_events_the_kernel_dropped_send_it_back_to_the_inbox(self):
-        # inotify's queue holds 16384 events, and past that the kernel drops
-        # the rest and says so once, as a line with no name on it. The stub
-        # replays that: it announces one file and waits until it is filed, so
-        # the startup sweep is long over, then drops a second file without a
-        # word and reports the overflow. Nothing but a fresh look at the
-        # inbox ever names that second file.
-        watcher = next(w for w in _WATCHERS if w.name == "watch-inotify.sh")
-        root = self.folder("overflow", OPTIONS="--up 1x1")
+    def dropped(self, watcher, stub, announce, notice):
+        """Run *watcher* through a lost event, and give back its run.
+
+        The stub, installed as *stub*, announces one file and waits until it
+        is filed, so the startup sweep is long over. Then it drops a second
+        file into the inbox without a word and sends *notice*, the event
+        source's way of saying events were lost. Nothing but a fresh look at
+        the inbox ever names that second file. *announce* and *notice* are
+        shell words; `$inbox` is the inbox the watcher asked to watch.
+        """
+        root = self.folder(f"dropped-{watcher.stem}", OPTIONS="--up 1x1")
         make_pdf(1).save(self.root / "announced.pdf")
         make_pdf(1).save(self.root / "lost.pdf")
-        stub = self.bin / "inotifywait"
-        stub.write_text(
+        (self.bin / stub).write_text(
             "#!/bin/sh\n"
             "for inbox; do :; done\n"
             f"mv '{self.root}/announced.pdf' \"$inbox/announced.pdf\"\n"
-            "echo announced.pdf\n"
+            f"{announce}\n"
             "tries=0\n"
             f"until [ -e '{root}/done/announced.pdf' ]; do\n"
             "    tries=$((tries + 1)); [ $tries -lt 600 ] || exit 0\n"
             "    sleep 0.1\n"
             "done\n"
             f"mv '{self.root}/lost.pdf' \"$inbox/lost.pdf\"\n"
-            "echo\n",
+            f"{notice}\n",
             encoding="utf-8",
         )
         finished = self.start(watcher, root)
         self.assertEqual(finished.returncode, 1, finished.stderr)
-        self.assertIn("dropped by the kernel", finished.stderr)
         self.assertEqual(sorted(p.name for p in (root / "in").iterdir()), [])
         self.assertTrue((root / "done" / "lost.pdf").exists(), finished.stderr)
+        return finished
+
+    def test_events_the_kernel_dropped_send_it_back_to_the_inbox(self):
+        # inotify's queue holds 16384 events, and past that the kernel drops
+        # the rest and says so once, as a line with no name on it.
+        watcher = next(w for w in _WATCHERS if w.name == "watch-inotify.sh")
+        finished = self.dropped(watcher, "inotifywait", "echo announced.pdf", "echo")
+        self.assertIn("dropped by the kernel", finished.stderr)
+
+    def test_a_rescan_fsevents_asks_for_sends_it_back_to_the_inbox(self):
+        # FSEvents says it lost events by naming a directory to look through
+        # rather than a file, and it names it by its real path: under /var,
+        # which is where a temporary directory is on macOS, that is
+        # /private/var, with a trailing slash. The stub sends that spelling,
+        # since it is the one the watcher has to recognise.
+        watcher = next(w for w in _WATCHERS if w.name == "watch-fswatch.sh")
+        if watcher not in self.watchers:
+            self.skipTest(f"no interpreter for {watcher.name}")
+        finished = self.dropped(
+            watcher,
+            "fswatch",
+            "printf '%s\\0' \"$inbox/announced.pdf\"",
+            'printf \'%s/\\0\' "$(cd "$inbox" && pwd -P)"',
+        )
+        self.assertIn("looked through again", finished.stderr)
 
     def test_no_folder_given_is_a_refusal_to_start(self):
         for watcher in self.watchers:

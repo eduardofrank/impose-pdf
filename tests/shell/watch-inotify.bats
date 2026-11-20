@@ -272,6 +272,14 @@ filed() {
     grep -Fq 'n-up: 8 pages onto 1 sheet(s) at 4 up' "$root/done/book.pdf.txt"
     [ ! -e "$root/in/book.pdf" ]
     [ -z "$(ls -A "$root/work")" ]
+    # And no second look at the inbox. Each watcher sweeps `in/` again when
+    # its event source says events were lost, and an ordinary arrival must
+    # not read as that: on macOS it would be a rescan and a journal line for
+    # every file, if FSEvents named the inbox itself when one came or went.
+    # `run` and a status, not `!`, which bats counts only on a test's last
+    # line.
+    run grep -E 'looked through again|dropped by the kernel' "$err"
+    [ "$status" -eq 1 ]
 }
 
 @test "a PDF already in the inbox at startup is swept up by the next start" {

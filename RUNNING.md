@@ -285,7 +285,8 @@ What each thing you find means:
   A directory is the common one: somebody sent a job as a folder of files.
   Take it out by hand.
 - **`events for …/in were dropped by the kernel; looking through it again`**
-  in the journal (Linux). More arrived at once than inotify could queue, or
+  in the journal on Linux, or **`FSEvents asked for …/in to be looked through
+  again`** on macOS. More arrived at once than could be queued, or
   the folder was stuck on one file while they did. Nothing is lost: the
   watcher swept `in/` again there and then. Often is a sign the folder is
   being fed faster than one file at a time can keep up with.

@@ -1180,9 +1180,20 @@ for a watch, and past that the kernel drops the rest. inotifywait reports the
 drop only if asked for `q_overflow`; otherwise it says nothing. Measured with
 the queue set to 8, on inotify-tools 3.22.6 and again on 4.23.9: thirty files
 written while inotifywait was stopped came out as eight names, and the old
-script left the other twenty-two in `in/` without a word. `watch-inotify.sh` asks for the event, says it was dropped, and sweeps
-`in/` again. `watch-fswatch.sh` does not do this yet: FSEvents can drop events
-too, but no drop could be caused here to measure what fswatch prints for one.
+script left the other twenty-two in `in/` without a word. `watch-inotify.sh`
+asks for the event, says it was dropped, and sweeps `in/` again.
+
+FSEvents drops events too, and says so differently: one event naming a
+directory to look through, rather than a file. fswatch 1.22.0 passes it on as
+`PlatformSpecific`, which the macOS watcher did not ask for, so the notice was
+filtered out and the files it was about waited for a restart.
+`watch-fswatch.sh` now asks for it, and looks through `in/` again whenever an
+event names the inbox itself — by the path the folder was given or by its real
+one, `/private/var` for a folder under `/var` — or anything outside it. That
+comes from reading fswatch's source, not from watching a drop, because no drop
+could be caused here. What was measured is the other side: an ordinary arrival
+names only the file, so the rescan does not fire for one, and the live tests
+fail if it does.
 
 **The press file appears whole or not at all.** It is written under a temporary
 name in the output directory and renamed into place, so a RIP hot folder
@@ -2415,7 +2426,7 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `--expect-size` — the finished size a folder of work is supposed to be |
 | ✅ | Exit codes a watcher can route on — the source, the job and the shelf told apart |
 | ✅ | A claim that is exclusive — a resend is not worked twice, and a restart sweeps up what the events missed |
-| ✅ | Events the kernel dropped — `q_overflow` heard, and the inbox looked through again (Linux) |
+| ✅ | Events the kernel dropped — `q_overflow` on Linux, a rescan FSEvents asks for on macOS, and the inbox looked through again |
 | ✅ | `signals` — a run stopped from outside takes its half-written file with it |
 | ✅ | A folder's policy — a stored job with no source, imposed on whatever arrives |
 | ✅ | `policy.conf` — what a watched folder is for, written in the folder and parsed, not sourced |
@@ -2430,7 +2441,6 @@ mine = custom("mine", sheet="SRA3", margins=Insets(
 | ✅ | `impose-hotfolder` — the watchers and both service templates shipped with the package |
 | ✅ | `py.typed` and mypy — the package type-checked in the gate, and its annotations shipped |
 | ✅ | Versions — a tag per version and a changelog that says what a folder will notice |
-| | FSEvents drops on macOS — what fswatch prints for one is unmeasured, so `watch-fswatch.sh` does not resweep yet |
 
 ## Several copies to a sheet
 
@@ -2588,10 +2598,12 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-992 tests today, no system libraries, about fourteen seconds. Twenty-six of
-them run the reference watchers in `impose/hotfolder/` and are more than half
-of that time, so they want a shell and `impose` on the PATH, and say so by
-skipping where either is missing; the rest are the library. The suite asserts
+993 tests today, no system libraries, about twenty-three seconds.
+Twenty-seven of them run the reference watchers in `impose/hotfolder/`, and
+they are three quarters of that time, because the macOS watcher waits four
+seconds for a file to stop growing. They want a shell and `impose` on the
+PATH, and say so by skipping where either is missing; the rest are the
+library. The suite asserts
 geometry and structure rather than pixels: an imposition is right or wrong by
 where the trims land on the sheet, and expectations are literals from ISO 216
 and ISO 217 rather than restatements of what the code computes.

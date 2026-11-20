@@ -19,7 +19,11 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
-Nothing yet.
+### Changed: the watchers
+
+- The macOS watcher looks through `in/` again when FSEvents says it dropped
+  events, as the Linux one does on an inotify overflow. It logs a line saying
+  so. Before, those files waited in `in/` for a restart.
 
 ## 0.2.0 — 2026-11-19
 

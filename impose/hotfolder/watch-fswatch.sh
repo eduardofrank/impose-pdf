@@ -651,6 +651,14 @@ sweep() {
         fi
         impose_claimed "$name" || true
     done
+    sweep_inbox
+}
+
+# Every file in the inbox, handled as if its event had just come. Run at each
+# start, and again whenever FSEvents asks for the inbox to be looked at
+# rather than naming a file in it: see the loop at the bottom.
+sweep_inbox() {
+    local path
     for path in "$in"/*; do
         # The pattern itself, when the inbox is empty.
         [ -e "$path" ] || [ -L "$path" ] || continue
@@ -662,7 +670,7 @@ sweep() {
             fi
             ;;
         esac
-        # Said once a start rather than once an event: an upload passing
+        # Said once a sweep rather than once an event: an upload passing
         # through under its temporary name is not worth a line, and something
         # that is still here at the next start is.
         printf '%s: left in in/, which takes an ordinary file whose name ends in .pdf and nothing else\n' \
@@ -689,12 +697,43 @@ sweep() {
 # for the next restart to sweep it up. `MovedTo` stays for a monitor that
 # does say it. A rename out of the folder is `Renamed` too, and costs a look
 # at a name that is no longer there.
-fswatch -0 --event Created --event MovedTo --event Renamed --event Updated "$in" | {
+#
+# `PlatformSpecific` is the fifth, and it is how a dropped event is heard.
+# When FSEvents loses events -- its own queue or the kernel's filled -- it
+# sends one event flagged MustScanSubDirs, with UserDropped or KernelDropped,
+# naming a directory to look through rather than a file. fswatch 1.22.0 maps
+# all three flags to `PlatformSpecific` (fsevents_monitor.cpp, read rather
+# than measured: no drop could be caused here to watch one arrive), so
+# without asking for it the notice is filtered out and the files it was
+# about wait for a restart, as they did on Linux before `q_overflow`.
+#
+# So a path is sorted, not just cut down to its last part. A file directly in
+# the inbox is handled. Something deeper is inside a directory somebody
+# dropped there, which is never artwork. Anything else -- the inbox itself,
+# with or without a trailing slash, or a directory above it -- is FSEvents
+# asking for a rescan, and gets one. FSEvents reports real paths, so a folder
+# under /var is heard as /private/var, and both spellings are matched; a path
+# in some third spelling is rescanned too, which costs a listing and loses
+# nothing.
+inbox=$(cd "$in" && pwd)
+inbox_real=$(cd "$in" && pwd -P)
+fswatch -0 --event Created --event MovedTo --event Renamed --event Updated \
+    --event PlatformSpecific "$in" | {
     sweep
     # `IFS=`, or `read` trims the path even with `-d`: see watch-inotify.sh.
     while IFS= read -r -d "" path; do
         owned || break
-        handle "$(basename "$path")" || true
+        case $path in
+        "$inbox" | "$inbox/" | "$inbox_real" | "$inbox_real/") ;;
+        "$inbox"/*/* | "$inbox_real"/*/*) continue ;;
+        "$inbox"/* | "$inbox_real"/*)
+            handle "${path##*/}" || true
+            continue
+            ;;
+        esac
+        printf '%s: FSEvents asked for %s to be looked through again, as it does after dropping events; doing so\n' \
+            "$0" "$in" >&2
+        sweep_inbox
     done
 }
 
