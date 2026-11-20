@@ -322,20 +322,24 @@ class TestTheEventSource(WatchedFolder):
 
     def test_a_rescan_fsevents_asks_for_sends_it_back_to_the_inbox(self):
         # FSEvents says it lost events by naming a directory to look through
-        # rather than a file, and it names it by its real path: under /var,
-        # which is where a temporary directory is on macOS, that is
-        # /private/var, with a trailing slash. The stub sends that spelling,
-        # since it is the one the watcher has to recognise.
+        # rather than a file, flagged so that fswatch calls it
+        # PlatformSpecific, and by its real path: under /var, which is where
+        # a temporary directory is on macOS, that is /private/var, with a
+        # trailing slash. Before it, the stub sends what a file leaving the
+        # inbox makes FSEvents say about the inbox -- measured in CI -- which
+        # must not be read as the same thing. So: one rescan, not two.
+        if sys.platform != "darwin":
+            self.skipTest("the macOS watcher waits for a file to settle with BSD stat")
         watcher = next(w for w in _WATCHERS if w.name == "watch-fswatch.sh")
-        if watcher not in self.watchers:
-            self.skipTest(f"no interpreter for {watcher.name}")
+        real = '"$(cd "$inbox" && pwd -P)"'
         finished = self.dropped(
             watcher,
             "fswatch",
-            "printf '%s\\0' \"$inbox/announced.pdf\"",
-            'printf \'%s/\\0\' "$(cd "$inbox" && pwd -P)"',
+            "printf '%s Created,IsFile\\0' \"$inbox/announced.pdf\"",
+            f"printf '%s Created,AttributeModified,IsDir\\0' {real}\n"
+            f"printf '%s/ PlatformSpecific\\0' {real}",
         )
-        self.assertIn("looked through again", finished.stderr)
+        self.assertEqual(finished.stderr.count("looked through again"), 1)
 
     def test_no_folder_given_is_a_refusal_to_start(self):
         for watcher in self.watchers:

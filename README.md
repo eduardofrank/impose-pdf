@@ -1187,13 +1187,14 @@ FSEvents drops events too, and says so differently: one event naming a
 directory to look through, rather than a file. fswatch 1.22.0 passes it on as
 `PlatformSpecific`, which the macOS watcher did not ask for, so the notice was
 filtered out and the files it was about waited for a restart.
-`watch-fswatch.sh` now asks for it, and looks through `in/` again whenever an
-event names the inbox itself — by the path the folder was given or by its real
-one, `/private/var` for a folder under `/var` — or anything outside it. That
-comes from reading fswatch's source, not from watching a drop, because no drop
-could be caused here. What was measured is the other side: an ordinary arrival
-names only the file, so the rescan does not fire for one, and the live tests
-fail if it does.
+`watch-fswatch.sh` now asks for it and reads each event's flags. An event
+flagged `PlatformSpecific` that names the inbox itself, or anything outside it,
+sends the watcher back through `in/`. The flag is what decides it, not the path.
+A file leaving the inbox also makes FSEvents name the inbox, as
+`Created,AttributeModified,IsDir` (measured in CI), and the first version of
+this change took that for a drop and rescanned for every file — which the live
+tests caught. What fswatch sends for a drop comes from reading its source, not
+from watching one, because no drop could be caused here.
 
 **The press file appears whole or not at all.** It is written under a temporary
 name in the output directory and renamed into place, so a RIP hot folder

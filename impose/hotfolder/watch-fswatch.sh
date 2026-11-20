@@ -707,33 +707,52 @@ sweep_inbox() {
 # without asking for it the notice is filtered out and the files it was
 # about wait for a restart, as they did on Linux before `q_overflow`.
 #
-# So a path is sorted, not just cut down to its last part. A file directly in
-# the inbox is handled. Something deeper is inside a directory somebody
-# dropped there, which is never artwork. Anything else -- the inbox itself,
-# with or without a trailing slash, or a directory above it -- is FSEvents
-# asking for a rescan, and gets one. FSEvents reports real paths, so a folder
-# under /var is heard as /private/var, and both spellings are matched; a path
-# in some third spelling is rescanned too, which costs a listing and loses
-# nothing.
+# So each event comes with its flags (`-x`, comma-separated, after the last
+# space), and its path is sorted rather than cut down to its last part. A file
+# directly in the inbox is handled. Something deeper is inside a directory
+# somebody dropped there, which is never artwork. Anything else -- the inbox
+# itself, with or without a trailing slash, or a directory above it -- is
+# looked through again if it carries `PlatformSpecific`, and left alone if it
+# does not. A path in a spelling of the inbox not matched here is treated as
+# every path was before: its last part is taken as a name. The flag is what matters: a file taken out of the inbox makes
+# FSEvents report the inbox too, as `Created,AttributeModified,IsDir`
+# (measured in CI), and a rescan for every file would be a journal line for
+# every file. FSEvents reports real paths, so a folder under /var is heard as
+# /private/var, and both spellings are matched.
 inbox=$(cd "$in" && pwd)
 inbox_real=$(cd "$in" && pwd -P)
-fswatch -0 --event Created --event MovedTo --event Renamed --event Updated \
+fswatch -0 -x --event-flag-separator=, \
+    --event Created --event MovedTo --event Renamed --event Updated \
     --event PlatformSpecific "$in" | {
     sweep
-    # `IFS=`, or `read` trims the path even with `-d`: see watch-inotify.sh.
-    while IFS= read -r -d "" path; do
+    # `IFS=`, or `read` trims the record even with `-d`: see watch-inotify.sh.
+    while IFS= read -r -d "" record; do
         owned || break
+        path=${record% *}
         case $path in
-        "$inbox" | "$inbox/" | "$inbox_real" | "$inbox_real/") ;;
         "$inbox"/*/* | "$inbox_real"/*/*) continue ;;
-        "$inbox"/* | "$inbox_real"/*)
+        "$inbox"/?* | "$inbox_real"/?*)
             handle "${path##*/}" || true
             continue
             ;;
         esac
-        printf '%s: FSEvents asked for %s to be looked through again, as it does after dropping events; doing so\n' \
-            "$0" "$in" >&2
-        sweep_inbox
+        case ,${record##* }, in
+        *,PlatformSpecific,*)
+            printf '%s: FSEvents asked for %s to be looked through again, as it does after dropping events; doing so\n' \
+                "$0" "$in" >&2
+            sweep_inbox
+            ;;
+        *)
+            # The inbox itself, which is nothing to do; or a spelling of
+            # its path neither `pwd` gave, which is what this loop did with
+            # every event before it sorted them: take the last part as a
+            # name, which costs a look if it is not one.
+            case $path in
+            "$inbox" | "$inbox/" | "$inbox_real" | "$inbox_real/") ;;
+            *) handle "${path##*/}" || true ;;
+            esac
+            ;;
+        esac
     done
 }
 
