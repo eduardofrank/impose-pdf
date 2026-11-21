@@ -24,6 +24,8 @@ import os
 import pathlib
 import shutil
 
+import pikepdf
+
 from . import DestinationError
 
 
@@ -110,10 +112,15 @@ def writing(destination):
 #: How each path of a run is named in a refusal, by the keyword it arrives as.
 _ROLES = {
     "source": "file being imposed",
+    "artwork": "cover artwork",
     "output": "press file",
     "proof": "proof",
     "record": "job file",
 }
+
+#: The roles a run reads rather than writes. Two of them naming one file is
+#: odd but harmless, since nothing is written over either.
+_INPUTS = frozenset({"source", "artwork"})
 
 
 def reserve(destination, *, what: str = "press file", overwrite: bool = False) -> None:
@@ -145,21 +152,21 @@ def check_distinct(**paths) -> None:
     Chiefly ``-o`` pointing at the input, which imposed the artwork over the
     top of itself and reported success -- the renderer builds a fresh
     document, so nothing underneath noticed that the file it had read was the
-    file it was writing.
+    file it was writing. A cover reads two files, the text block and its
+    artwork, and either one named as a destination is the same mistake.
     """
-    # Only things that name a place on disk. A source may be an open
-    # document and an output may be a buffer; neither can collide with a
-    # path, and neither is a path to compare.
+    # Only things that name a place on disk. An output may be a buffer, which
+    # cannot collide with a path and is not one to compare.
     named = [
         (role, pathlib.Path(value))
-        for role, value in paths.items()
+        for role, value in ((role, _where(value)) for role, value in paths.items())
         if isinstance(value, (str, os.PathLike))
     ]
     for index, (role, path) in enumerate(named):
         for other_role, other in named[index + 1 :]:
-            if not _same_file(path, other):
+            if {role, other_role} <= _INPUTS or not _same_file(path, other):
                 continue
-            if "source" in (role, other_role):
+            if _INPUTS & {role, other_role}:
                 raise DestinationError(
                     f"{path} is both the {_ROLES[role]} and the "
                     f"{_ROLES[other_role]}. Imposing it would write the "
@@ -170,6 +177,22 @@ def check_distinct(**paths) -> None:
                 f"{path} is named as both the {_ROLES[role]} and the "
                 f"{_ROLES[other_role]}. One of them would survive the run."
             )
+
+
+def _where(value):
+    """Where *value* lives, for a document that was handed over open.
+
+    A caller who opens the file first is the case pikepdf's own guard against
+    writing a file it read cannot see either, and it is not an exotic one:
+    reading the boxes before deciding what to do with a job is the obvious
+    way to drive this as a library. An open document knows its own filename,
+    so there is no reason to be blind to it.
+    """
+    if not isinstance(value, pikepdf.Pdf):
+        return value
+    name = value.filename
+    # A document built in memory reports a description rather than a path.
+    return name if name and pathlib.Path(name).exists() else None
 
 
 def _same_file(path: pathlib.Path, other: pathlib.Path) -> bool:

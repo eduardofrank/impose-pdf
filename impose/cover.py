@@ -31,6 +31,7 @@ from pikepdf import Array, Dictionary, Name
 
 from . import ImposeError
 from .boxes import read_boxes
+from .destination import check_distinct
 from .font import describe, load, reserve
 from .geometry import Rect, Size, approx
 from .plan import blanks_needed
@@ -221,6 +222,16 @@ def impose_cover(  # pylint: disable=too-many-arguments,too-many-locals
     # and so this module and job.py do not import each other at load time.
     from .job import impose_document, measure  # pylint: disable=C0415
 
+    # Here and not left to impose_document, which is handed the flat: a
+    # document built in memory, with no path to compare. Neither the text
+    # block nor the artwork reaches it as a file, so without this an output
+    # named after either is written over the file it was made from.
+    check_distinct(
+        source=source,
+        artwork=artwork,
+        output=output,
+        proof=options.get("proof"),
+    )
     measured = measure(source, trim_from=trim_from, expect_size=expect_size)
     cover = flat(
         measured.trim_size,

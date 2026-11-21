@@ -32,6 +32,15 @@ refusals, the options, and the watchers' buckets and log lines.
   change them the same way. A refusal that comes before the policy is read
   is still text.
 
+### Changed: covers
+
+- A cover whose `-o` or `--proof` names its `--artwork` file is refused at
+  exit 4, with or without `--overwrite`, as one naming the text block already
+  was. Called as a library, `impose_cover` refuses an output that names either
+  file. Before, nothing compared the artwork's path with the output, and the
+  library compared neither, so the sheets could be written over a file the
+  run was made from.
+
 ## 0.2.0 — 2026-11-19
 
 The fixes from an audit of the watched folder and the project. Several change

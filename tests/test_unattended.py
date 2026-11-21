@@ -25,8 +25,9 @@ from unittest import mock
 import pikepdf
 
 from impose import DestinationError
+from impose.cover import flat, impose_cover
 from impose.geometry import Size
-from impose.job import impose_document
+from impose.job import impose_document, measure
 from impose.signals import STOP_SIGNALS, stop, stopping_cleanly
 from impose.units import MM
 
@@ -84,6 +85,50 @@ class TestClobber(unittest.TestCase):
             status, _, _ = run("nup", str(source), "-o", str(source), "--overwrite")
             self.assertNotEqual(status, 0)
             self.assertEqual(source.read_bytes(), before)
+
+    @staticmethod
+    def cover_artwork(source):
+        """Artwork the size of the flat for *source* at a tenth of a mm."""
+        cover = flat(measure(source).trim_size, 8, 0.1 * MM)
+        artwork = source.with_name("artwork.pdf")
+        make_pdf(1, trim=Size(cover.flat.width, cover.flat.height)).save(artwork)
+        return artwork
+
+    def test_a_cover_naming_its_artwork_as_output_is_refused(self):
+        """A cover reads two files, and the artwork reached the run as part of
+        a flat built in memory, with no path for the check to compare."""
+        with workspace(pages=8) as source:
+            artwork = self.cover_artwork(source)
+            before = artwork.read_bytes()
+            cover = ("cover", str(source), "--paper-caliper", "0.1mm")
+            cover += ("--artwork", str(artwork))
+            # The same run to another name works, so the refusal below is
+            # for where it would write and not for the artwork.
+            status, _, err = run(*cover, "-o", str(source.with_name("c.pdf")))
+            self.assertEqual(status, 0, err)
+            status, _, err = run(*cover, "-o", str(artwork), "--overwrite")
+            self.assertEqual(status, 4, err)
+            self.assertEqual(artwork.read_bytes(), before)
+            self.assertIn("both the cover artwork and the press file", err)
+            self.assertIn("no undo", err)
+
+    def test_a_cover_naming_either_input_is_refused_by_the_library_too(self):
+        # overwrite=True, so nothing but this check stands in the way.
+        with workspace(pages=8) as source:
+            artwork = self.cover_artwork(source)
+            for named in (source, artwork):
+                with self.subTest(named.name):
+                    before = named.read_bytes()
+                    with self.assertRaises(DestinationError) as caught:
+                        impose_cover(
+                            str(source),
+                            str(named),
+                            paper_caliper=0.1 * MM,
+                            artwork=str(artwork),
+                            overwrite=True,
+                        )
+                    self.assertIn("no undo", str(caught.exception))
+                    self.assertEqual(named.read_bytes(), before)
 
     def test_an_existing_proof_is_refused_too(self):
         with workspace(pages=8) as source:

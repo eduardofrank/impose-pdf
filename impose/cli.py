@@ -1135,7 +1135,13 @@ def _dispatch(  # pylint: disable=too-many-return-statements
     # called directly and by `run`. Here is where --record's own
     # destination gets checked, because it is written first -- a job file
     # left behind by a run that was then refused is a job nobody made.
-    check_distinct(source=args.input, output=output, proof=proof, record=record)
+    check_distinct(
+        source=args.input,
+        artwork=getattr(args, "artwork", None),
+        output=output,
+        proof=proof,
+        record=record,
+    )
     reserve(record, what="job file", overwrite=args.overwrite)
     reserve(output, what="press file", overwrite=args.overwrite)
     reserve(proof, what="proof", overwrite=args.overwrite)
