@@ -2633,7 +2633,7 @@ bats tests/shell
 ```
 
 996 tests today, no system libraries, about twenty-four seconds.
-Twenty-seven of them run the reference watchers in `impose/hotfolder/`, and
+Thirty of them run the reference watchers in `impose/hotfolder/`, and
 they are three quarters of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the
 PATH, and say so by skipping where either is missing; the rest are the
