@@ -955,8 +955,41 @@ filenames from strangers and a tab in one is a second field to whatever reads
 the line. Measured on a file called `odd "name"<TAB>and a \ copy.pdf`: the
 line parses, and the name comes back out of it exactly as it went in.
 
-A `LOG_FORMAT` naming a format the script does not write is refused at
-startup, with the other policy refusals, rather than logged in the other one.
+What the watcher says on its own account follows the same key. That is
+everything that is not the record of a file it imposed: a refusal to start, a
+lock it cleared, a name it left in `in/`, a rescan, the event source ending.
+In `text` each is the sentence it always was, on stderr. In `json` each is an
+object on stderr too, so a log that keeps the two streams apart still does:
+
+```json
+{
+  "timestamp": "2026-11-21T12:08:48Z",
+  "folder": "./a4-nup",
+  "file": "notes.txt",
+  "message": "left in in/, which takes an ordinary file whose name ends in .pdf and nothing else"
+}
+```
+
+`file` is `null` when the sentence is about the folder rather than a file. A
+record of a file has `bucket` and `exit` and one of these has neither, which
+is how a reader tells them apart: `select(has("bucket"))` is the files. The
+line breaks a sentence is wrapped at for a terminal become spaces. A break in
+something the watcher is quoting, such as impose's reply to a policy it
+cannot run, is kept as `\n`.
+
+Before this, a `json` folder still wrote those sentences as prose into the
+same journal, and `jq` stops at the first line that is not JSON. Measured on a
+folder with one rejected file and one name left in `in/`: the morning check's
+`jq` exited 5 at the first sentence and never printed the rejection.
+
+The format is known only once the policy is read. So the refusals that come
+before that are text whatever the policy says: no folder given, a folder that
+cannot be laid out, and every complaint about the policy file itself (missing,
+writable by anybody, a line that is not `KEY=value`, a key nobody knows, both
+or neither of `SCHEMA` and `JOB`). The last of them is a `LOG_FORMAT` naming
+a format the script does not write, which is
+refused at startup, with the other policy refusals, rather than logged in the
+other format.
 
 **A limit on one run, if the folder wants one.** The seventh key is
 `TIMEOUT`, in whole seconds. A folder works one file at a time, so a run
@@ -2599,7 +2632,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-993 tests today, no system libraries, about twenty-three seconds.
+996 tests today, no system libraries, about twenty-four seconds.
 Twenty-seven of them run the reference watchers in `impose/hotfolder/`, and
 they are three quarters of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the

@@ -95,7 +95,8 @@ if [ ! -f "$policy" ]; then
 # default, text, is `book.pdf: done (0)`, written for whoever is reading the
 # journal. json is one object per file -- when it ran, which folder, which
 # file, which bucket, impose's exit status, how long impose took, and what it
-# said -- for when something other than a person is reading.
+# said -- for when something other than a person is reading. The watcher's
+# own sentences become objects too, with no bucket.
 # LOG_FORMAT=json
 
 # How long one file may take, in whole seconds, before its run is stopped and
@@ -187,6 +188,85 @@ json) log_json=yes ;;
     ;;
 esac
 
+# One string as a JSON string, quotes and all. A hot folder takes its
+# filenames from strangers and impose's sentence carries whatever QPDF said,
+# so a quote, a backslash or a tab in either would otherwise write a line
+# nothing downstream can parse.
+#
+# The value travels through the environment and not through `awk -v`, which
+# expands backslash escapes in what it is handed: a file called `a\nb.pdf`
+# would come out of -v with a real newline in the middle of it. ENVIRON is
+# the one way in that passes bytes through untouched.
+#
+# POSIX awk and nothing more, because which awk a folder gets is not up to
+# it: measured with one-true-awk 20200816, mawk 1.3.4 and gawk 5.4.1, the
+# same line out of all three. An Ubuntu service gets mawk.
+json_string() {
+    IMPOSE_JSON_RAW=$1 awk '
+    BEGIN {
+        # Every C0 control first, since JSON allows none of them raw in a
+        # string, then the five with a shorter spelling and the two that
+        # have to be escaped whatever they are.
+        for (i = 1; i < 32; i++) {
+            escaped[sprintf("%c", i)] = sprintf("\\u%04x", i)
+        }
+        escaped["\b"] = "\\b"
+        escaped["\t"] = "\\t"
+        escaped["\n"] = "\\n"
+        escaped["\f"] = "\\f"
+        escaped["\r"] = "\\r"
+        escaped["\""] = "\\\""
+        escaped["\\"] = "\\\\"
+        raw = ENVIRON["IMPOSE_JSON_RAW"]
+        out = ""
+        for (i = 1; i <= length(raw); i++) {
+            c = substr(raw, i, 1)
+            out = out ((c in escaped) ? escaped[c] : c)
+        }
+        printf "\"%s\"", out
+    }'
+}
+
+# What the watcher says on its own account rather than about a file it
+# imposed: a refusal to start, a lock it cleared, a name it will not take, a
+# rescan, the event source ending. The first argument is the file it is about,
+# or empty for the folder; the rest is printf's.
+#
+# In text it is the sentence it always was, after the file's name or this
+# script's. In json it is one object -- when, which folder, which file or
+# null, and the sentence -- so that a folder whose policy asks for json has a
+# log a program can read all of, not just the lines about files. A record of
+# a file has a bucket and an exit status and one of these has neither, which
+# is how a reader tells the two apart. Both stay on stderr, so a service that
+# keeps the two streams apart still does.
+#
+# The format's own line breaks are where a terminal wants the sentence
+# wrapped, so in json they become spaces. A break inside an argument -- what
+# mkdir or impose said -- is part of what was said, and stays.
+say() {
+    say_file=$1
+    say_format=$2
+    shift 2
+    if [ -n "$log_json" ]; then
+        say_format=$(printf '%s' "$say_format" | sed 's/\\n/ /g')
+    fi
+    # The format is this script's own, never a filename or anything sent.
+    # shellcheck disable=SC2059
+    say_text=$(printf "$say_format" "$@")
+    if [ -z "$log_json" ]; then
+        printf '%s: %s\n' "${say_file:-$0}" "$say_text" >&2
+        return 0
+    fi
+    if [ -n "$say_file" ]; then
+        say_file=$(json_string "$say_file")
+    else
+        say_file=null
+    fi
+    printf '{"timestamp":"%s","folder":%s,"file":%s,"message":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(json_string "$root")" \
+        "$say_file" "$(json_string "$say_text")" >&2
+}
+
 # A limit on one run, for the hang nobody has found yet. A folder works one
 # file at a time, so a run that never ends is the folder stopped, behind a
 # service that looks idle: measured with a pipe under a PDF's name, before
@@ -204,8 +284,8 @@ limiter=
 case $TIMEOUT in
 '') ;;
 *[!0-9]* | 0*)
-    printf '%s: %s: TIMEOUT=%s is not a whole number of seconds.\n' \
-        "$0" "$policy" "$TIMEOUT" >&2
+    say "" '%s: TIMEOUT=%s is not a whole number of seconds.' \
+        "$policy" "$TIMEOUT"
     exit 2
     ;;
 *)
@@ -216,10 +296,8 @@ case $TIMEOUT in
         fi
     done
     if [ -z "$limiter" ]; then
-        printf '%s: %s sets TIMEOUT, and there is no GNU timeout on the PATH this\n' \
-            "$0" "$policy" >&2
-        printf 'runs with to enforce it. Install coreutils -- gtimeout, from Homebrew,\n' >&2
-        printf 'is the same thing -- or take the line out.\n' >&2
+        say "" '%s sets TIMEOUT, and there is no GNU timeout on the PATH this\nruns with to enforce it. Install coreutils -- gtimeout, from Homebrew,\nis the same thing -- or take the line out.' \
+            "$policy"
         exit 2
     fi
     ;;
@@ -264,9 +342,8 @@ esac
 for written in "$out" "$proofs"; do
     case ${written:-/dev/null} in
     "$in" | "$in"/*)
-        printf '%s: %s writes to %s, which is the inbox or inside it. The\n' \
-            "$0" "$policy" "$written" >&2
-        printf 'folder would impose its own press files as artwork.\n' >&2
+        say "" '%s writes to %s, which is the inbox or inside it. The\nfolder would impose its own press files as artwork.' \
+            "$policy" "$written"
         exit 2
         ;;
     esac
@@ -275,17 +352,15 @@ done
 # And not the same directory as each other: the proof and the press file take
 # the arriving file's name, so one directory for both is one name for both.
 if [ -n "$proofs" ] && [ "$proofs" = "$out" ]; then
-    printf '%s: %s writes the proofs and the press files both to %s, where\n' \
-        "$0" "$policy" "$out" >&2
-    printf 'they would be one name. A proof wants a directory of its own --\n' >&2
-    printf 'and out of the way of whatever is watching for press files.\n' >&2
+    say "" '%s writes the proofs and the press files both to %s, where\nthey would be one name. A proof wants a directory of its own --\nand out of the way of whatever is watching for press files.' \
+        "$policy" "$out"
     exit 2
 fi
 
 # Made, not assumed: a proof directory exists only for a folder that asked
 # for proofs, and a press file is not written into a directory nobody made.
 if ! trouble=$(mkdir -p "$out" ${proofs:+"$proofs"} 2>&1); then
-    printf '%s: cannot make somewhere to write in %s:\n%s\n' "$0" "$root" "$trouble" >&2
+    say "" 'cannot make somewhere to write in %s:\n%s' "$root" "$trouble"
     exit 2
 fi
 
@@ -332,8 +407,8 @@ impose_it() {
 status=0
 trouble=$(impose_it "$root/.impose-policy-check.pdf" /dev/null "" 2>&1) || status=$?
 if [ "$status" != 3 ]; then
-    printf '%s: %s does not describe a run this impose can make (exit %s):\n%s\n' \
-        "$0" "$policy" "$status" "$trouble" >&2
+    say "" '%s does not describe a run this impose can make (exit %s):\n%s' \
+        "$policy" "$status" "$trouble"
     exit 2
 fi
 
@@ -343,9 +418,7 @@ fi
 # never watched at all. That is a machine nobody finished setting up, so it
 # is a refusal to start like the rest of them.
 if ! command -v inotifywait >/dev/null 2>&1; then
-    printf '%s: there is no inotifywait on the PATH this runs with, and it is\n' \
-        "$0" >&2
-    printf 'what says a file has arrived. Install inotify-tools.\n' >&2
+    say "" 'there is no inotifywait on the PATH this runs with, and it is\nwhat says a file has arrived. Install inotify-tools.'
     exit 2
 fi
 
@@ -359,12 +432,12 @@ lock="$root/.watcher.lock"
 if ! mkdir "$lock" 2>/dev/null; then
     held=$(cat "$lock/pid" 2>/dev/null || true)
     if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
-        printf '%s: %s is already being watched by pid %s.\n' "$0" "$root" "$held" >&2
+        say "" '%s is already being watched by pid %s.' "$root" "$held"
         exit 2
     fi
     # The holder is gone, so the lock is debris from a kill or a reboot.
-    printf '%s: clearing a lock left by pid %s, which is no longer running.\n' \
-        "$0" "${held:-unknown}" >&2
+    say "" 'clearing a lock left by pid %s, which is no longer running.' \
+        "${held:-unknown}"
 fi
 printf '%s\n' "$$" >"$lock/pid"
 
@@ -438,25 +511,21 @@ claim_written() {
         # read-only mount, a directory somebody chmodded -- is this folder's
         # own problem and wants the errno.
         if [ ! -d "$claim" ]; then
-            printf '%s: cannot claim %s as this folder'"'"'s %s:\n%s\n' \
-                "$0" "$directory" "$role" "$trouble" >&2
+            say "" 'cannot claim %s as this folder'"'"'s %s:\n%s' \
+                "$directory" "$role" "$trouble"
             exit 2
         fi
         held=$(cat "$claim/pid" 2>/dev/null || true)
         holder=$(cat "$claim/folder" 2>/dev/null || true)
         if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then
-            printf '%s: %s is already the %s of %s (pid %s).\n' \
-                "$0" "$directory" "$role" "${holder:-another folder}" "$held" >&2
-            printf 'One %s, one folder: two folders writing one directory\n' "$role" >&2
-            printf 'write one file for every name that arrives in both, and two runs\n' >&2
-            printf 'racing for that name both report success. Give this folder a\n' >&2
-            printf 'directory of its own -- under that one, if a RIP reads it.\n' >&2
+            say "" '%s is already the %s of %s (pid %s).\nOne %s, one folder: two folders writing one directory\nwrite one file for every name that arrives in both, and two runs\nracing for that name both report success. Give this folder a\ndirectory of its own -- under that one, if a RIP reads it.' \
+                "$directory" "$role" "${holder:-another folder}" "$held" "$role"
             exit 2
         fi
         # The holder is gone, so the claim is debris, exactly as the folder
         # lock's is.
-        printf '%s: clearing a claim on %s left by pid %s, which is no longer running.\n' \
-            "$0" "$directory" "${held:-unknown}" >&2
+        say "" 'clearing a claim on %s left by pid %s, which is no longer running.' \
+            "$directory" "${held:-unknown}"
     fi
     # Both, because the pid says whether the claim is live and the folder says
     # which policy to go and fix.
@@ -485,11 +554,8 @@ else
     # Say what actually went wrong before explaining what it was for. The
     # likely causes are a filesystem with no hard links and a work/ somebody
     # cannot write to, and they want different fixes.
-    printf '%s: cannot claim a file in %s:\n%s\n' "$0" "$root" "$trouble" >&2
-    printf 'A file is claimed by hard-linking its name from in/ into work/,\n' >&2
-    printf 'so linking has to work. Some SMB mounts and exFAT cannot link at\n' >&2
-    printf 'all. Put the folder on a filesystem that can, or replace the\n' >&2
-    printf 'claim with your own.\n' >&2
+    say "" 'cannot claim a file in %s:\n%s\nA file is claimed by hard-linking its name from in/ into work/,\nso linking has to work. Some SMB mounts and exFAT cannot link at\nall. Put the folder on a filesystem that can, or replace the\nclaim with your own.' \
+        "$root" "$trouble"
     exit 2
 fi
 
@@ -518,63 +584,13 @@ log_line() {
         return 0
     fi
 
-    # One object, one line, with every string escaped. A hot folder takes its
-    # filenames from strangers and impose's sentence carries whatever QPDF
-    # said, so a quote, a backslash or a tab in either would otherwise write
-    # a line nothing downstream can parse.
-    #
-    # The values travel through the environment and not through `awk -v`,
-    # which expands backslash escapes in what it is handed: a file called
-    # `a\nb.pdf` would come out of -v with a real newline in the middle of
-    # it. ENVIRON is the one way in that passes bytes through untouched.
-    #
-    # POSIX awk and nothing more, because which awk a folder gets is not up
-    # to it: measured with one-true-awk 20200816, mawk 1.3.4 and gawk 5.4.1,
-    # the same line out of all three. An Ubuntu service gets mawk.
-    IMPOSE_LOG_STAMP=$log_stamp \
-        IMPOSE_LOG_FOLDER=$root \
-        IMPOSE_LOG_FILE=$log_name \
-        IMPOSE_LOG_BUCKET=$log_bucket \
-        IMPOSE_LOG_EXIT=$log_status \
-        IMPOSE_LOG_DURATION=$log_duration \
-        IMPOSE_LOG_MESSAGE=$log_message \
-        awk '
-        function escape(raw,    out, i, c) {
-            out = ""
-            for (i = 1; i <= length(raw); i++) {
-                c = substr(raw, i, 1)
-                out = out ((c in escaped) ? escaped[c] : c)
-            }
-            return out
-        }
-        BEGIN {
-            # Every C0 control first, since JSON allows none of them raw in a
-            # string, then the five with a shorter spelling and the two that
-            # have to be escaped whatever they are.
-            for (i = 1; i < 32; i++) {
-                escaped[sprintf("%c", i)] = sprintf("\\u%04x", i)
-            }
-            escaped["\b"] = "\\b"
-            escaped["\t"] = "\\t"
-            escaped["\n"] = "\\n"
-            escaped["\f"] = "\\f"
-            escaped["\r"] = "\\r"
-            escaped["\""] = "\\\""
-            escaped["\\"] = "\\\\"
-
-            # The timestamp, the bucket and the status are written by this
-            # script and cannot need escaping. The other three are not.
-            printf "{\"timestamp\":\"%s\",\"folder\":\"%s\",\"file\":\"%s\"," \
-                "\"bucket\":\"%s\",\"exit\":%s,\"duration\":%s," \
-                "\"message\":\"%s\"}\n", \
-                ENVIRON["IMPOSE_LOG_STAMP"], \
-                escape(ENVIRON["IMPOSE_LOG_FOLDER"]), \
-                escape(ENVIRON["IMPOSE_LOG_FILE"]), \
-                ENVIRON["IMPOSE_LOG_BUCKET"], \
-                ENVIRON["IMPOSE_LOG_EXIT"], \
-                ENVIRON["IMPOSE_LOG_DURATION"], \
-                escape(ENVIRON["IMPOSE_LOG_MESSAGE"])
-        }'
+    # One object, one line. The timestamp, the bucket, the status and the
+    # duration are written by this script and cannot need escaping; the
+    # folder, the file and impose's sentence go through json_string.
+    printf '{"timestamp":"%s","folder":%s,"file":%s,"bucket":"%s","exit":%s,"duration":%s,"message":%s}\n' \
+        "$log_stamp" "$(json_string "$root")" "$(json_string "$log_name")" \
+        "$log_bucket" "$log_status" "$log_duration" \
+        "$(json_string "$log_message")"
 }
 
 # Impose a file already claimed into `work/`, and file it by what happened.
@@ -627,8 +643,8 @@ impose_claimed() {
     while ! ln "$work/$name" "$root/$bucket/$filed" 2>/dev/null; do
         if { [ ! -e "$root/$bucket/$filed" ] && [ ! -L "$root/$bucket/$filed" ]; } ||
             [ "$tries" -gt 99 ]; then
-            printf '%s: imposed with status %s, but cannot be filed into %s/ -- left in work/\n' \
-                "$name" "$status" "$bucket" >&2
+            say "$name" 'imposed with status %s, but cannot be filed into %s/ -- left in work/' \
+                "$status" "$bucket"
             return 1
         fi
         suffix=$(printf '%s' "$stamp" | tr -d ':-')
@@ -641,8 +657,8 @@ impose_claimed() {
     done
     rm -f "$work/$name" || true
     if [ "$filed" != "$name" ]; then
-        printf '%s: %s/ already holds a file of that name, so this one is filed as %s\n' \
-            "$name" "$bucket" "$filed" >&2
+        say "$name" '%s/ already holds a file of that name, so this one is filed as %s' \
+            "$bucket" "$filed"
     fi
 
     # What impose said, beside the file -- and nothing beside it when impose
@@ -676,8 +692,7 @@ ordinary() {
 # the link or the pipe and never what a link points at.
 discard() {
     rm -f "$work/$1"
-    printf '%s: not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.\n' \
-        "$1" >&2
+    say "$1" 'not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.'
 }
 
 # Claim one name out of the inbox, then impose it.
@@ -749,7 +764,7 @@ sweep() {
             discard "$name"
             continue
         }
-        printf '%s: left over from an earlier run; imposing it now\n' "$name" >&2
+        say "$name" 'left over from an earlier run; imposing it now'
         # The one leftover with a second story. impose moves a press file
         # into place whole and the watcher files the artwork afterwards, so
         # a run killed between the two leaves a finished press file and an
@@ -758,10 +773,8 @@ sweep() {
         # being in the way -- for a job that in fact succeeded. Nothing here
         # can tell that from a real conflict, so it says what to look at.
         if [ -e "$out/$name" ]; then
-            printf '%s: %s already holds a press file of that name. If the earlier run was stopped\n' \
-                "$name" "$out" >&2
-            printf 'after writing it, that press file is whole and this will be failed (4): check it,\n' >&2
-            printf 'and move the artwork from failed/ to done/ yourself.\n' >&2
+            say "$name" '%s already holds a press file of that name. If the earlier run was stopped\nafter writing it, that press file is whole and this will be failed (4): check it,\nand move the artwork from failed/ to done/ yourself.' \
+                "$out"
         fi
         impose_claimed "$name" || true
     done
@@ -786,8 +799,7 @@ sweep_inbox() {
         # Said once a sweep rather than once an event: an upload passing
         # through under its temporary name is not worth a line, and something
         # that is still here at the next start is.
-        printf '%s: left in in/, which takes an ordinary file whose name ends in .pdf and nothing else\n' \
-            "${path##*/}" >&2
+        say "${path##*/}" 'left in in/, which takes an ordinary file whose name ends in .pdf and nothing else'
     done
 }
 
@@ -822,8 +834,7 @@ inotifywait -m -q -e close_write -e moved_to -e q_overflow --format '%f' "$in" |
     while IFS= read -r name; do
         owned || break
         if [ -z "$name" ]; then
-            printf '%s: events for %s were dropped by the kernel; looking through it again\n' \
-                "$0" "$in" >&2
+            say "" 'events for %s were dropped by the kernel; looking through it again' "$in"
             sweep_inbox
             continue
         fi
@@ -842,10 +853,8 @@ inotifywait -m -q -e close_write -e moved_to -e q_overflow --format '%f' "$in" |
 # the inbox with nothing wrong anywhere a person would look. A status of 0 is
 # the one `Restart=on-failure` is told not to restart on.
 if owned; then
-    printf '%s: the event source ended, so nothing is watching %s.\n' \
-        "$0" "$root" >&2
+    say "" 'the event source ended, so nothing is watching %s.' "$root"
 else
-    printf '%s: %s is held by another watcher now, so this one is leaving.\n' \
-        "$0" "$root" >&2
+    say "" '%s is held by another watcher now, so this one is leaving.' "$root"
 fi
 exit 1

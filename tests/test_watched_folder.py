@@ -95,7 +95,7 @@ class WatchedFolder(unittest.TestCase):
     #: What the scripts call before they reach the check, and nothing else:
     #: a PATH built from these has no event source on it whatever the machine
     #: has installed, which `PATH=...:/usr/bin` could not promise on Linux.
-    TOOLS = ("mkdir", "find", "cat", "date", "rm", "ln", "mv", "awk", "sleep")
+    TOOLS = ("mkdir", "find", "cat", "date", "rm", "ln", "mv", "awk", "sed", "sleep")
 
     def bare_path(self):
         """A directory holding impose and the tools, and no event source."""
@@ -818,3 +818,88 @@ class TestJsonLog(WatchedFolder):
             with self.subTest(watcher.name):
                 _, finished = self.sweep(watcher, {"book.pdf": None})
                 self.assertEqual(finished.stdout, "book.pdf: done (0)\n")
+
+    def said(self, finished):
+        """What a json folder said on its own account, one object a line."""
+        lines = finished.stderr.splitlines()
+        self.assertTrue(lines, "a json folder that said nothing at all")
+        # Every line, not just the ones this test looks for: a single sentence
+        # left in prose is a line whatever reads this log cannot parse.
+        return [json.loads(line) for line in lines]
+
+    def test_what_the_watcher_says_itself_is_an_object_too(self):
+        # A leftover in work/, a name in in/ that is not artwork, and the end
+        # of the event source: one sentence about a file it imposed, one about
+        # a file it would not take, and one about the folder.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(
+                    f"said-{watcher.stem}", OPTIONS="--up 2x2", LOG_FORMAT="json"
+                )
+                (root / "work").mkdir()
+                make_pdf(2).save(root / "work" / "book.pdf")
+                (root / "in").mkdir()
+                (root / "in" / "notes.txt").write_text("not artwork\n")
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 1, finished.stderr)
+
+                said = self.said(finished)
+                for entry in said:
+                    # The record of a file has a bucket and an exit status;
+                    # these have neither, which is how a reader tells them
+                    # apart.
+                    self.assertEqual(
+                        sorted(entry), ["file", "folder", "message", "timestamp"]
+                    )
+                    self.assertEqual(entry["folder"], str(root))
+                    datetime.datetime.strptime(entry["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+                about = {entry["file"]: entry["message"] for entry in said}
+                self.assertIn("left over from an earlier run", about["book.pdf"])
+                self.assertIn("left in in/", about["notes.txt"])
+                self.assertIn(self.ENDED, about[None])
+                # Neither the file nor this script's path in front of the
+                # sentence: each has a field of its own now.
+                self.assertTrue(about[None].startswith("the event source"))
+
+                # And the record of the file it imposed is still on stdout.
+                self.assertEqual(json.loads(finished.stdout)["bucket"], "done")
+
+    def test_a_refusal_to_start_is_one_object_with_its_sentence_unwrapped(self):
+        # Wrapped across three lines for a terminal; in json the breaks are
+        # where a terminal wanted them and nothing else, so they go.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(f"wrap-{watcher.stem}", OUT="in", LOG_FORMAT="json")
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                (refusal,) = self.said(finished)
+                self.assertIsNone(refusal["file"])
+                self.assertIn(
+                    "which is the inbox or inside it. The folder would impose",
+                    refusal["message"],
+                )
+                self.assertNotIn("\n", refusal["message"])
+
+    def test_what_another_program_said_keeps_its_own_lines(self):
+        # The policy check quotes impose, and impose's lines are what it said,
+        # not a terminal's wrapping: they reach the object as \n, escaped.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.folder(
+                    f"quoted-{watcher.stem}",
+                    OPTIONS="--no-such-option",
+                    LOG_FORMAT="json",
+                )
+                finished = self.start(watcher, root)
+                self.assertEqual(finished.returncode, 2, finished.stderr)
+                (refusal,) = self.said(finished)
+                # The break this script wrapped at is a space; the one between
+                # argparse's usage line and its error is still there.
+                self.assertIn(
+                    "does not describe a run this impose can make (exit 2): usage: ",
+                    refusal["message"],
+                )
+                self.assertIn(
+                    "\nimpose: error: unrecognized arguments: --no-such-option",
+                    refusal["message"],
+                )

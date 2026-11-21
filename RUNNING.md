@@ -108,7 +108,8 @@ The default is a sentence a file — `book.pdf: done (0)` — and it is the righ
 thing for a folder somebody watches. A folder whose journal feeds a dashboard,
 a nightly count or an alert wants `LOG_FORMAT=json` in its policy instead:
 one object a file, on one line, carrying the folder, the file, the bucket,
-impose's exit status, how long impose took and what it said. It goes in the
+impose's exit status, how long impose took and what it said. The watcher's
+own sentences become objects too, so every line of the log parses. It goes in the
 policy and not in the ticket, because who reads this folder's log is a fact
 about the folder. The fields are in the README.
 
@@ -325,16 +326,25 @@ above are one command:
 
 ```bash
 journalctl -u impose-folder@a4-nup --since 06:00 -o cat |
-    jq -r 'select(.bucket != "done") | "\(.file): \(.bucket) (\(.exit))"'
+    jq -r 'select(has("bucket") and .bucket != "done") | "\(.file): \(.bucket) (\(.exit))"'
 
 journalctl -u impose-folder@a4-nup --since 06:00 -o cat |
-    jq -rs 'group_by(.bucket)[] | "\(.[0].bucket) \(length) files"'
+    jq -rs 'map(select(has("bucket"))) | group_by(.bucket)[] | "\(.[0].bucket) \(length) files"'
+```
+
+What the watcher said on its own account, which is the rest of what the third
+command shows, has one of its own:
+
+```bash
+journalctl -u impose-folder@a4-nup --since 06:00 -o cat |
+    jq -r 'select(has("bucket") | not) | "\(.file // "folder"): \(.message)"'
 ```
 
 `-o cat` is what leaves the line as the watcher wrote it, with systemd's own
-prefix off the front. Both of those jq programs were run against the lines a
-folder writes; the `journalctl` in front of them is the part this laptop
-cannot try.
+prefix off the front. `has("bucket")` is what tells a file's record from one
+of the watcher's own sentences, which are objects too and have no bucket. All
+three jq programs were run against the lines a folder writes; the `journalctl`
+in front of them is the part this laptop cannot try.
 
 ## Keeping it running
 

@@ -24,6 +24,13 @@ refusals, the options, and the watchers' buckets and log lines.
 - The macOS watcher looks through `in/` again when FSEvents says it dropped
   events, as the Linux one does on an inotify overflow. It logs a line saying
   so. Before, those files waited in `in/` for a restart.
+- With `LOG_FORMAT=json`, the watcher's own messages are JSON objects too,
+  still on stderr: `timestamp`, `folder`, `file` (or `null`) and `message`,
+  with no `bucket` or `exit`. Before, they were prose in the same log, and
+  `jq` stopped at the first one. RUNNING.md's morning-check `jq` commands now
+  pick the file records out with `has("bucket")`; if you copied the old ones,
+  change them the same way. A refusal that comes before the policy is read
+  is still text.
 
 ## 0.2.0 — 2026-11-19
 
