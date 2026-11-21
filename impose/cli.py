@@ -1048,6 +1048,7 @@ def _cover(args: argparse.Namespace, out) -> int:
         slug_size=args.slug_size,
         plan_only=args.dry_run,
         proof=proof,
+        overwrite=args.overwrite,
     )
     print(cover.describe(), file=out)
     if args.dry_run or not args.quiet:

@@ -112,6 +112,20 @@ class TestClobber(unittest.TestCase):
             self.assertIn("both the cover artwork and the press file", err)
             self.assertIn("no undo", err)
 
+    def test_asking_replaces_a_cover_too(self):
+        """The command took --overwrite and never passed it on, so a cover
+        could not be run again to the name it was first written to."""
+        with workspace(pages=8) as source:
+            output = source.with_name("cover.pdf")
+            output.write_bytes(b"yesterday's cover")
+            status, _, err = run(
+                "cover", str(source), "--paper-caliper", "0.1mm",
+                "-o", str(output), "--overwrite",
+            )  # fmt: skip
+            self.assertEqual(status, 0, err)
+            with pikepdf.open(output) as written:
+                self.assertEqual(len(written.pages), 1)
+
     def test_a_cover_naming_either_input_is_refused_by_the_library_too(self):
         # overwrite=True, so nothing but this check stands in the way.
         with workspace(pages=8) as source:

@@ -40,6 +40,9 @@ refusals, the options, and the watchers' buckets and log lines.
   file. Before, nothing compared the artwork's path with the output, and the
   library compared neither, so the sheets could be written over a file the
   run was made from.
+- `impose cover --overwrite` replaces an existing press file or proof, as it
+  does for every other schema. Before, it accepted the option, ignored it, and
+  refused at exit 4.
 
 ## 0.2.0 — 2026-11-19
 
