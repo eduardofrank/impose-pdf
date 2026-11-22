@@ -7,6 +7,10 @@ one at a time.
 Read [README.md](README.md) first, at least `## Design` and `## Development`.
 This file does not repeat it.
 
+Everyone taking part — in issues, pull requests and review — is expected to
+follow the [Code of Conduct](CODE_OF_CONDUCT.md), the Contributor Covenant
+2.1. It says where to report a problem.
+
 ## Setting up
 
 ```bash

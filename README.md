@@ -2621,7 +2621,8 @@ have reason to doubt.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the house style — how tests are written
 here, what a commit message is expected to say, and what a change is likely to
-be turned down for.
+be turned down for. Taking part means following the
+[Code of Conduct](CODE_OF_CONDUCT.md), the Contributor Covenant 2.1.
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
