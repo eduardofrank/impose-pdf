@@ -590,7 +590,7 @@ discard() {
 # in here rather than in the event loop so the sweep gets it too: a file
 # already in the inbox when this starts may still be arriving.
 handle() {
-    local name=$1
+    local name=$1 trouble
     # Which names are artwork, and why the rest are left where they are: see
     # watch-inotify.sh.
     case "$name" in
@@ -610,7 +610,21 @@ handle() {
     # `-P`, because this `ln` follows a symbolic link unless told not to, and
     # a link swapped in after the look above would otherwise be claimed as the
     # file it points at. Then looked at again where nobody else can write.
-    ln -P "$in/$name" "$work/$name" 2>/dev/null || return 0
+    if ! trouble=$(ln -P "$in/$name" "$work/$name" 2>&1); then
+        # A claim lost to an earlier claim of the same name is the folder
+        # working, and so is a file gone before it could be linked: the client
+        # renamed it, or a duplicate event came for a claim already made. Any
+        # other failure leaves the file in in/, and it used to be silent there.
+        # The case that is easy to meet: on Linux, fs.protected_hardlinks
+        # refuses the link to a user who neither owns the file nor can read and
+        # write it, which is an upload from another account with a 022 umask.
+        if [ -e "$in/$name" ] && [ ! -e "$work/$name" ] &&
+            [ ! -L "$work/$name" ]; then
+            say "$name" 'cannot be claimed, so it stays in in/:\n%s\nA file is claimed by hard-linking it into work/. On Linux a link to\nsomebody else'"'"'s file is refused unless this folder'"'"'s user can read\nand write it (fs.protected_hardlinks), so check who owns the upload.' \
+                "$trouble"
+        fi
+        return 0
+    fi
     rm -f "$in/$name"
     ordinary "$work/$name" || {
         discard "$name"

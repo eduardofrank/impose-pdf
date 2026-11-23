@@ -116,6 +116,9 @@ setup() {
 
 teardown() {
     stop_watcher 2>/dev/null || :
+    # A test may have shut work/ to make a claim fail, and bats cannot
+    # remove a directory it cannot write.
+    chmod u+w "$root/work" 2>/dev/null || :
 }
 
 # What this folder is for: 4-up on a sheet, and nothing a test has to think
@@ -414,6 +417,39 @@ filed() {
     [ -L "$root/in/link.pdf" ]
     [ ! -e "$root/done/link.pdf" ]
     [ ! -e "$root/out/link.pdf" ]
+}
+
+@test "a file the watcher cannot claim is named in the log, not left silently" {
+    # Root can write anywhere, so it cannot see this refusal.
+    [ "$(id -u)" -ne 0 ] || skip "running as root"
+    policy
+    start_watcher
+
+    # The same refusal a per-folder user meets on Linux when an upload is
+    # owned by another account it cannot write (fs.protected_hardlinks): the
+    # claim's `ln` fails. Shutting work/ is how a test can make it fail
+    # without a second user. Before, the file stayed in in/ and the log
+    # said nothing about it.
+    chmod a-w "$root/work"
+    drop stuck.pdf
+
+    local waited=0
+    until grep -Fq 'stuck.pdf: cannot be claimed' "$err"; do
+        if [ "$waited" -ge 600 ]; then
+            echo "no line about stuck.pdf in a minute. stderr:" >&2
+            cat "$err" >&2
+            return 1
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    [ -f "$root/in/stuck.pdf" ]
+
+    # And once it can be claimed, the next start picks it up.
+    chmod u+w "$root/work"
+    stop_watcher
+    start_watcher
+    [ "$(filed stuck.pdf)" = done ]
 }
 
 @test "a watcher stopped the way systemd stops it exits 143 and lets go" {

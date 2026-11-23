@@ -320,6 +320,12 @@ What each thing you find means:
   back, somebody copying by hand, another shop's tool — no claim covers it,
   and the last writer of a name wins. A directory impose writes press files
   into is impose's to write.
+- **`cannot be claimed, so it stays in in/`.** The watcher could not
+  hard-link the file into `work/`, and it has not touched it. The line after
+  says why. Most often the file belongs to another account that the folder's
+  user cannot write as, which is what an upload service with the wrong
+  umask produces. Fix the ownership or the umask, then restart the folder,
+  and the sweep picks the file up.
 
 For a folder that carries `LOG_FORMAT=json`, the second and third commands
 above are one command:
@@ -648,11 +654,12 @@ sudo chmod 2770 /srv/impose/a4-nup/in      # and write here, and nowhere else
 
 The watcher claims a file by hard-linking it out of `in/`. On Linux,
 `fs.protected_hardlinks` refuses that link to a user who neither owns the file
-nor can read and write it, and the claim then leaves the file in `in/`. So
-the uploader has to create files the folder's user can read and write: run the
-upload service with umask `007`, or have it upload as the folder's user. We
-have not measured this on a real FTP server. Upload one file and check that it
-gets imposed.
+nor can read and write it. The file then stays in `in/`, and the journal
+says `book.pdf: cannot be claimed, so it stays in in/` with the reason after
+it. So the uploader has to create files the folder's user can read and write:
+run the upload service with umask `007`, or have it upload as the folder's
+user. We have not measured this on a real FTP server. Upload one file and
+check that it gets imposed.
 
 **2. Two ceilings, in a drop-in, leaving the shipped template alone:**
 

@@ -21,6 +21,10 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ### Changed: the watchers
 
+- A PDF the watcher cannot claim gets a log line,
+  `book.pdf: cannot be claimed, so it stays in in/`, with the reason after it.
+  Before, it stayed in `in/` and nothing was logged. On Linux, this happens
+  when the upload belongs to an account the folder's user cannot write as.
 - The macOS watcher looks through `in/` again when FSEvents says it dropped
   events, as the Linux one does on an inotify overflow. It logs a line saying
   so. Before, those files waited in `in/` for a restart.

@@ -1629,7 +1629,7 @@ renamed into the folder is `Renamed` and nothing else. A rename is how a
 finished upload arrives from anything careful, so on macOS every such file
 waited for the next restart to sweep it up. It asks for `Renamed` now, and
 CI runs the whole live suite against this script on macOS on every push:
-`IMPOSE_WATCHER=fswatch bats tests/shell`, twelve tests, with the real
+`IMPOSE_WATCHER=fswatch bats tests/shell`, thirteen tests, with the real
 `fswatch`.
 
 launchd has no `RestartPreventExitStatus`, so a folder whose policy is wrong
@@ -2647,11 +2647,11 @@ The last two commands are the shell, and they are the only part of the gate
 that wants anything installed on the machine. shellcheck is the linter those
 two watchers never had, and it has to be as silent as pylint: they are what a
 shop copies as the starting point for a hot folder, so a defect in one of them
-is a defect in somebody's production folder. `bats tests/shell` is twelve tests
+is a defect in somebody's production folder. `bats tests/shell` is thirteen tests
 that start one of them on a temporary folder, drop a PDF in, and assert which
 bucket the file lands in and what status put it there — the service running,
-rather than the startup checks the Python tests cover. Eighteen to
-twenty-one seconds, measured over five runs, and it skips itself when there
+rather than the startup checks the Python tests cover. Twenty-one to
+twenty-five seconds, measured over five runs, and it skips itself when there
 is no `impose` to run.
 
 A third check on the same material runs in CI only, in the job those two
