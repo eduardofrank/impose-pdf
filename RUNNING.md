@@ -626,6 +626,83 @@ launchd has no `RestartPreventExitStatus`, so a folder whose policy is wrong
 restarts every `ThrottleInterval` and writes its sentence to the log each
 time. Loud rather than silent, which is the best available there.
 
+## A hardened inbox
+
+For a folder that takes files from outside the shop: FTP, WebDAV, SFTP, or a
+share a customer mounts. Do the seven steps above first, then these four.
+[A folder anybody can drop into](SECURITY.md#a-folder-anybody-can-drop-into)
+has the measurements behind each one.
+
+**1. A user of its own.** The shipped unit runs every folder as `impose`, and
+that user can read every other folder's inbox and policy. An exposed folder
+gets its own user, plus a group for whatever does the uploading:
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin impose-a4-nup
+sudo groupadd drop-a4-nup                  # then add the FTP/SFTP account to it
+sudo chown -R impose-a4-nup:impose-a4-nup /srv/impose/a4-nup
+sudo chown impose-a4-nup:drop-a4-nup /srv/impose/a4-nup /srv/impose/a4-nup/in
+sudo chmod 0710 /srv/impose/a4-nup         # the uploader can pass through, not look
+sudo chmod 2770 /srv/impose/a4-nup/in      # and write here, and nowhere else
+```
+
+The watcher claims a file by hard-linking it out of `in/`. On Linux,
+`fs.protected_hardlinks` refuses that link to a user who neither owns the file
+nor can read and write it, and the claim then leaves the file in `in/`. So
+the uploader has to create files the folder's user can read and write: run the
+upload service with umask `007`, or have it upload as the folder's user. We
+have not measured this on a real FTP server. Upload one file and check that it
+gets imposed.
+
+**2. Two ceilings, in a drop-in, leaving the shipped template alone:**
+
+```ini
+# /etc/systemd/system/impose-folder@a4-nup.service.d/exposed.conf
+[Service]
+User=impose-a4-nup
+Group=impose-a4-nup
+MemoryMax=2G
+TasksMax=32
+```
+
+`MemoryMax` comes from the largest job the folder is meant to take. A
+20000-page book peaked at 412 MB, and SECURITY.md has the table. A file over
+the ceiling is killed, exits `137` and goes to `failed/`, and the watcher keeps
+running. `TasksMax=32` is generous: a busy folder uses five tasks, and anything
+under about six stops it working. Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart impose-folder@a4-nup
+systemd-analyze verify impose-folder@a4-nup.service
+```
+
+**3. A `TIMEOUT` in the policy**, in seconds, again from the largest job. A
+folder works one file at a time, so a file that never finishes blocks the
+folder for everyone else. systemd has no limit on that; the policy is the
+only place one can go.
+
+**4. No `--damaged recover`.** In a policy it can only appear in `OPTIONS`. On
+an exposed folder, that line keeps the default, `refuse`, and there is no
+exception. A cut-off upload reads short. In the measured case, a 16-page book
+truncated in transit was imposed as 11 pages and logged as `done (0)`.
+`recover` is for files our own prepress sends, where somebody who knows the
+job checks the page count. A customer's file is never fixed by recovering it in
+the folder. Ask them to send it again, or recover it by hand and check it
+yourself.
+
+The audit:
+
+```bash
+grep -l -- '--damaged[= ]*recover' /srv/impose/*/policy.conf
+systemctl show -p User -p MemoryMax -p TasksMax impose-folder@a4-nup
+```
+
+The first command must not list any exposed folder. The second should print
+the folder's own user and two numbers, not `impose`, `infinity` and
+`infinity`. impose does not enforce any of this. The
+unit and the policy are ours, and these two commands are the only check.
+
 ## Where the reasoning is
 
 - [Running from a watched folder](README.md#running-from-a-watched-folder) —
