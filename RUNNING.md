@@ -472,6 +472,51 @@ press file with it; the artwork was still in `work/`; and the new watcher's
 first line was `big.pdf: left over from an earlier run; imposing it now`,
 followed by `done (0)`.
 
+**A stuck lock is one whose pid now belongs to something else.** Both locks
+are directories holding a `pid` file. `.impose-writer.lock` also holds a
+`folder` file naming the folder that took it. A watcher that finds a lock
+whose pid is not running clears it itself, with
+`clearing a lock left by pid 1882, which is no longer running.` You only have
+to step in when the pid has been reused. That's likely after a reboot, when
+pids start low again. The watcher then refuses with exit `2`, and the unit
+does not restart on `2`, so the folder stays down. The refusal is
+`/srv/impose/a4-nup is already being watched by pid 1882.` for
+`.watcher.lock`, or
+`/srv/rip/in/a4-nup is already the outbox of /srv/impose/a4-nup (pid 1882).`
+for `.impose-writer.lock`. Look at what that pid is:
+
+```bash
+cat /srv/impose/a4-nup/.watcher.lock/pid
+cat /srv/rip/in/a4-nup/.impose-writer.lock/pid /srv/rip/in/a4-nup/.impose-writer.lock/folder
+ps -p 1882 -o pid,user,lstart,args
+systemctl status 'impose-folder@*'
+```
+
+Use `ps`, not `kill -0`. `kill -0` can't see another user's process. The lock
+is stale when `ps` shows no process, or one that is not `impose-watch` on
+that folder. It is live when `ps` shows `impose-watch` running on the folder
+the lock belongs to. A live lock means two watchers or two folders really do
+want the same directory, so fix that and leave the lock alone. To clear a
+stale lock, in this order:
+
+1. **Stop the folder.** Run `systemctl stop impose-folder@a4-nup`, or
+   `launchctl bootout` on a Mac, so that no restart races you.
+2. **Remove the writer locks next.** Do this in `OUT`, then in `PROOF` if the
+   policy has one, and only where `folder` names *this* folder. A writer
+   lock naming another folder belongs to that folder: check its watcher
+   before you touch the lock. Command: `rm -r /srv/rip/in/a4-nup/.impose-writer.lock`.
+3. **Remove the folder lock last.** Command:
+   `rm -r /srv/impose/a4-nup/.watcher.lock`. While it is there, a second start
+   is still refused and nothing can sweep `work/` with the cleanup half done.
+   Remove nothing else: a file in `work/` is a claimed job, and the next
+   start imposes it.
+4. **Start the folder.** The journal should show the usual startup and none of
+   the refusal above.
+
+A writer-lock refusal leaves only that lock behind. The watcher releases
+`.watcher.lock` on its way out at exit `2`, measured, so in that case step 3
+has nothing to remove.
+
 ## Adding a folder
 
 Seven steps. Every transcript below was measured on a real folder, bar the
