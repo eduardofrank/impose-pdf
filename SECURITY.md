@@ -168,6 +168,12 @@ folder's own user. `DynamicUser=yes` hands out a per-instance user without the
 something outside the service has to keep being able to write into `in/`
 across one.
 
+The file the submitter writes has to be readable and writable by the folder's
+user as well. The watcher claims a file by hard-linking it, and on Linux
+`fs.protected_hardlinks` refuses that link otherwise. The file then stays in
+`in/` and the watcher logs `cannot be claimed`. RUNNING.md's [hardened
+inbox](RUNNING.md#a-hardened-inbox) has the commands for a layout that works.
+
 **A memory ceiling, picked from the largest job the folder is meant to take.**
 Both documents are open at once, so what it costs tracks the page count:
 
@@ -257,7 +263,7 @@ In a policy it can only arrive through `OPTIONS`, since `--damaged` is one of
 the three options a job file may not carry, so the audit is one line:
 
 ```bash
-grep -l damaged /srv/impose/*/policy.conf   # nothing, on an exposed folder
+grep -l -- '--damaged[= ]*recover' /srv/impose/*/policy.conf   # no exposed folder
 ```
 
 **None of this is impose's to enforce.** The unit and the policy are the

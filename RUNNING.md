@@ -2,7 +2,8 @@
 
 The operating procedure for the folders: what they are called, what goes in a
 policy and what is left alone, what a status means at seven in the morning,
-and how to add a folder.
+how to clear a stuck lock, how to add a folder, and what more a folder needs
+when it takes files from outside the shop.
 
 This page is what you do. [README.md](README.md) is why — [Running from a
 watched folder](README.md#running-from-a-watched-folder) has the measurements

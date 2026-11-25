@@ -822,8 +822,9 @@ has them: `impose-hotfolder`.
 
 [RUNNING.md](RUNNING.md) is the same ground from the other side: one shop's
 procedure for these folders — what they are called, what goes in a policy and
-what is left at its default, what a status means at seven in the morning, and
-the seven steps for adding a folder. Read that one to run a folder, and this
+what is left at its default, what a status means at seven in the morning, how
+to clear a stuck lock, the seven steps for adding a folder, and the four more
+a folder takes when it is open to people outside the shop. Read that one to run a folder, and this
 one to know why it refuses what it refuses.
 
 **One folder, one schema, one policy.** Not a constraint impose imposes — a
@@ -1420,6 +1421,14 @@ so linking has to work. Some SMB mounts and exFAT cannot link at
 all. Put the folder on a filesystem that can, or replace the
 claim with your own.
 ```
+
+The probe can pass and one file still fail to link. On Linux,
+`fs.protected_hardlinks` refuses a link to a file the watcher's user neither
+owns nor can read and write, which is an upload from another account with a
+`022` umask. That file stays in `in/`, and the watcher says so each time it
+looks at it: `book.pdf: cannot be claimed, so it stays in in/`, followed by
+`ln`'s own error. Losing the link to an earlier claim of the same name, or to
+a client that renamed the file away, is the folder working, and stays silent.
 
 The last is the machine rather than the folder: no `inotifywait`, or no
 `fswatch`, on the `PATH` the service runs with. A pipeline whose first
