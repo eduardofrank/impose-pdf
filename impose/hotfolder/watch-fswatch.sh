@@ -496,6 +496,9 @@ log_line() {
         return 0
     fi
 
+    # No status and no duration for a file filed without a run of its own.
+    case $status in '' | *[!0-9]*) status=null ;; esac
+    case $duration in '' | -) duration=null ;; esac
     printf '{"timestamp":"%s","folder":%s,"file":%s,"bucket":"%s","exit":%s,"duration":%s,"message":%s}\n' \
         "$stamp" "$(json_string "$root")" "$(json_string "$name")" \
         "$bucket" "$status" "$duration" "$(json_string "$message")"
@@ -504,7 +507,7 @@ log_line() {
 # Impose a file already claimed into `work/`, and file it by what happened.
 impose_claimed() {
     local name=$1 status=0 message bucket proof_file="" clocked stamp started
-    local duration filed tries suffix
+    local duration
     if [ -n "$proofs" ]; then
         proof_file="$proofs/$name"
     fi
@@ -515,8 +518,12 @@ impose_claimed() {
     clocked=$(date -u +"%Y-%m-%dT%H:%M:%SZ $clock")
     stamp=${clocked% *}
     started=${clocked#* }
+    # The tally of runs that started and did not come back: see
+    # watch-inotify.sh, and `sweep` below.
+    printf '%s\n' "$stamp" >>"$work/.$name.runs" 2>/dev/null || true
     message=$(impose_it "$work/$name" "$out/$name" "$proof_file" 2>&1) || status=$?
     duration=$(elapsed "$started" "$(date -u +"$clock")")
+    rm -f "$work/.$name.runs" || true
 
     # The status says which bucket; the sentence says why. Both go with the
     # file, because whoever opens that folder wants to know without digging
@@ -529,6 +536,13 @@ impose_claimed() {
     1 | 3) bucket="rejected" ;; # the file or the job: do not retry
     *) bucket="failed" ;;       # the environment: fix it and run it again
     esac
+    file_claimed "$name" "$bucket" "$status" "$stamp" "$duration" "$message"
+}
+
+# File a claimed name into its bucket and log it: see watch-inotify.sh.
+file_claimed() {
+    local name=$1 bucket=$2 status=$3 stamp=$4 duration=$5 message=$6
+    local filed tries suffix
 
     # Guarded, and this is not pedantry: `set -eu` makes an unguarded failure
     # here exit the whole script, so one file that cannot be filed -- a full
@@ -582,8 +596,25 @@ ordinary() {
 }
 
 discard() {
-    rm -f "$work/$1"
+    rm -f "$work/$1" "$work/.$1.runs"
     say "$1" 'not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.'
+}
+
+# How many runs of impose on a claimed file never came back, and what becomes
+# of a leftover with two: see watch-inotify.sh for the loop this ends.
+unfinished() {
+    if [ -f "$work/.$1.runs" ]; then
+        awk 'END { print NR }' "$work/.$1.runs"
+    else
+        echo 0
+    fi
+}
+
+abandon() {
+    rm -f "$work/.$1.runs" || true
+    say "$1" 'the watcher went down during each of the last two runs of impose on this file,\nso it goes to failed/ without a third.'
+    file_claimed "$1" "failed" "-" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "-" \
+        "The watcher went down while impose was running on this file, twice: once, and again on the restart that followed. It was not run a third time, because a file that takes the watcher down with it would do so at every restart and hold up every file behind it. Look in the journal for what stopped the watcher -- an out-of-memory kill is the likely one -- and send the file again once that is dealt with."
 }
 
 # Wait for the file to settle, claim the name, impose it. The settle wait sits
@@ -630,6 +661,7 @@ handle() {
         discard "$name"
         return 0
     }
+    rm -f "$work/.$name.runs" || true
     impose_claimed "$name"
 }
 
@@ -653,6 +685,11 @@ sweep() {
             discard "$name"
             continue
         }
+        # Run again once, not twice: see watch-inotify.sh.
+        if [ "$(unfinished "$name")" -ge 2 ]; then
+            abandon "$name" || true
+            continue
+        fi
         say "$name" 'left over from an earlier run; imposing it now'
         # A run killed after writing its press file and before filing the
         # artwork: see watch-inotify.sh.

@@ -473,6 +473,17 @@ press file with it; the artwork was still in `work/`; and the new watcher's
 first line was `big.pdf: left over from an earlier run; imposing it now`,
 followed by `done (0)`.
 
+That is once. A file whose run was going when the watcher went down, and
+whose second run went down with the restart after that, is not run a third
+time: it goes to `failed/` as `book.pdf: failed (-)`, with a sentence beside
+it, and the next file is imposed. The shipped unit already keeps the watcher
+up when the kernel kills impose alone for memory (`failed (137)`), so what
+reaches this is something that takes the whole service down with the file —
+systemd-oomd, which acts on a unit's whole cgroup, or the machine itself.
+Before this, such a file was run at every start, every five seconds for
+good, and nothing behind it was reached. The journal says what stopped the
+watcher; send the file again once that is dealt with.
+
 **A stuck lock is one whose pid now belongs to something else.** Both locks
 are directories holding a `pid` file. `.impose-writer.lock` also holds a
 `folder` file naming the folder that took it. A watcher that finds a lock

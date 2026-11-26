@@ -1448,6 +1448,13 @@ A file that is imposed but cannot then be filed — a full disk, a bucket
 somebody chmodded — stays in `work/` with a line on stderr, and the next start
 sweeps it up. One file nobody can file does not stop the watcher.
 
+Nor does a file that stops the watcher. Each run leaves a line in
+`work/.NAME.runs` while it is going, so a start can see how many runs of a
+leftover went down with the service. One is a restart in the middle of a job,
+and the file is run again. Two is the file, and it goes to `failed/` as
+`book.pdf: failed (-)` without a third run — otherwise it would take the
+service down at every restart and hold up every file behind it.
+
 **Stop the whole thing, not the script.** A watcher is two processes: the
 event source and the loop reading it, which is a pipeline. That has one
 consequence worth knowing before you write a stop command. A shell runs no
@@ -2642,9 +2649,9 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-999 tests today, no system libraries, about twenty-four seconds.
-Thirty of them run the reference watchers in `impose/hotfolder/`, and
-they are three quarters of that time, because the macOS watcher waits four
+1003 tests today, no system libraries, about twenty-five seconds.
+Thirty-four of them run the reference watchers in `impose/hotfolder/`, and
+they are four fifths of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the
 PATH, and say so by skipping where either is missing; the rest are the
 library. The suite asserts

@@ -19,6 +19,16 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
+### Changed: the watchers
+
+- A file whose run was going when the watcher went down twice running is
+  filed in `failed/` at the next start, as `book.pdf: failed (-)` with a
+  sentence beside it, instead of being run again. Before, a file that takes
+  the whole service down with it — systemd-oomd, say — was run at every
+  restart, and the files behind it were never reached. In JSON its `exit` and
+  `duration` are `null`. A restart in the middle of an ordinary job still
+  runs the file again, once.
+
 ## 0.3.0 — 2026-11-26
 
 Two changes a folder will see. The watcher's own messages are JSON when the

@@ -586,7 +586,11 @@ log_line() {
 
     # One object, one line. The timestamp, the bucket, the status and the
     # duration are written by this script and cannot need escaping; the
-    # folder, the file and impose's sentence go through json_string.
+    # folder, the file and impose's sentence go through json_string. A file
+    # filed without a run of its own has no status and no duration, and the
+    # `-` the text line shows for those is null here.
+    case $log_status in '' | *[!0-9]*) log_status=null ;; esac
+    case $log_duration in '' | -) log_duration=null ;; esac
     printf '{"timestamp":"%s","folder":%s,"file":%s,"bucket":"%s","exit":%s,"duration":%s,"message":%s}\n' \
         "$log_stamp" "$(json_string "$root")" "$(json_string "$log_name")" \
         "$log_bucket" "$log_status" "$log_duration" \
@@ -610,8 +614,13 @@ impose_claimed() {
     clocked=$(date -u +"%Y-%m-%dT%H:%M:%SZ $clock")
     stamp=${clocked% *}
     started=${clocked#* }
+    # A line in the tally for a run that has started, taken away again the
+    # moment it ends, whatever it ended with. What is left in it at the next
+    # start is runs the watcher went down with: see `sweep`.
+    printf '%s\n' "$stamp" >>"$work/.$name.runs" 2>/dev/null || true
     message=$(impose_it "$work/$name" "$out/$name" "$proof_file" 2>&1) || status=$?
     duration=$(elapsed "$started" "$(date -u +"$clock")")
+    rm -f "$work/.$name.runs" || true
 
     # The status says which bucket; the sentence says why. Both go with the
     # file, because whoever opens that folder wants to know without digging
@@ -624,6 +633,19 @@ impose_claimed() {
     1 | 3) bucket="rejected" ;; # the file or the job: do not retry
     *) bucket="failed" ;;       # the environment: fix it and run it again
     esac
+    file_claimed "$name" "$bucket" "$status" "$stamp" "$duration" "$message"
+}
+
+# File a claimed name into its bucket, with what impose said beside it, and
+# log it. Shared by a run that finished and by a leftover the sweep will not
+# run again, which has a bucket and a sentence but no status or duration.
+file_claimed() {
+    name=$1
+    bucket=$2
+    status=$3
+    stamp=$4
+    duration=$5
+    message=$6
 
     # Guarded, and this is not pedantry: `set -eu` makes an unguarded failure
     # here exit the whole script, so one file that cannot be filed -- a full
@@ -691,8 +713,39 @@ ordinary() {
 # upload does by accident, or it was put there by hand. Removing it removes
 # the link or the pipe and never what a link points at.
 discard() {
-    rm -f "$work/$1"
+    rm -f "$work/$1" "$work/.$1.runs"
     say "$1" 'not an ordinary file once claimed -- a link or a pipe under a PDF'"'"'s name. Removed, not imposed.'
+}
+
+# How many runs of impose on a claimed file started and never came back: the
+# lines left in its tally. awk rather than `wc -l`, whose count BSD pads with
+# spaces.
+unfinished() {
+    if [ -f "$work/.$1.runs" ]; then
+        awk 'END { print NR }' "$work/.$1.runs"
+    else
+        echo 0
+    fi
+}
+
+# File a leftover into failed/ without running it again. Two runs of impose
+# on it both ended with the watcher -- the second on the restart that came
+# after the first -- and a file that takes the whole service down with it
+# would otherwise do so at every start from now on, every five seconds under
+# the shipped unit, with every file behind it waiting in the inbox. Measured
+# before this, with a run that killed its own process group: five starts,
+# five runs of the same file, and the next file never reached.
+#
+# failed/ and not a bucket of its own. It is the environment's bucket -- fix
+# it and send the file again -- and the likely cause is a memory limit the
+# file is too big for; a file at fault in itself is the same file sent again
+# after looking. A sixth directory would be one more thing every folder's
+# monitoring has to be told about, for what the sentence beside it says.
+abandon() {
+    rm -f "$work/.$1.runs" || true
+    say "$1" 'the watcher went down during each of the last two runs of impose on this file,\nso it goes to failed/ without a third.'
+    file_claimed "$1" "failed" "-" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "-" \
+        "The watcher went down while impose was running on this file, twice: once, and again on the restart that followed. It was not run a third time, because a file that takes the watcher down with it would do so at every restart and hold up every file behind it. Look in the journal for what stopped the watcher -- an out-of-memory kill is the likely one -- and send the file again once that is dealt with."
 }
 
 # Claim one name out of the inbox, then impose it.
@@ -756,6 +809,9 @@ handle() {
         discard "$name"
         return 0
     }
+    # A new claim starts a new tally, whatever an earlier file of this name
+    # left behind.
+    rm -f "$work/.$name.runs" || true
     impose_claimed "$name"
 }
 
@@ -778,6 +834,12 @@ sweep() {
             discard "$name"
             continue
         }
+        # Once is a restart in the middle of a job, which RUNNING.md promises
+        # loses nothing, and the file is run again. Twice is the file.
+        if [ "$(unfinished "$name")" -ge 2 ]; then
+            abandon "$name" || true
+            continue
+        fi
         say "$name" 'left over from an earlier run; imposing it now'
         # The one leftover with a second story. impose moves a press file
         # into place whole and the watcher files the artwork afterwards, so

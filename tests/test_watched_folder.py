@@ -698,6 +698,98 @@ class TestStoppedBetweenWritingAndFiling(WatchedFolder):
                 self.assertNotIn("already holds a press file", finished.stderr)
 
 
+class TestAFileThatTakesTheWatcherDown(WatchedFolder):
+    """A leftover whose last two runs both ended with the watcher.
+
+    Each run of impose starts a line in `work/.NAME.runs` and takes it away
+    when the run comes back. What is left at a start is runs the watcher went
+    down with. One is a restart in the middle of a job, and the file is run
+    again; two is the file, and running it a third time is a restart every
+    five seconds for good with every file behind it waiting. Measured before
+    the tally, with a run that killed its own process group: five starts,
+    five runs of the same file, and the next file in the inbox never reached.
+    """
+
+    #: An impose that must not be run: the test fails loudly if it is.
+    NEVER = (
+        "#!/bin/sh\n"
+        'case "$*" in *.impose-policy-check.pdf*) exit 3 ;; esac\n'
+        "echo 'run a third time' >&2\n"
+        "exit 0\n"
+    )
+
+    def leftover(self, watcher, tag, runs, **policy):
+        """A folder with `book.pdf` claimed, and *runs* runs unfinished."""
+        root = self.folder(f"{tag}-{watcher.stem}", OPTIONS="--up 2x2", **policy)
+        (root / "work").mkdir()
+        make_pdf(2).save(root / "work" / "book.pdf")
+        if runs:
+            (root / "work" / ".book.pdf.runs").write_text(
+                "2026-11-26T05:00:00Z\n" * runs, encoding="utf-8"
+            )
+        return root
+
+    def test_two_unfinished_runs_go_to_failed_without_a_third(self):
+        (self.bin / "impose").unlink()
+        (self.bin / "impose").write_text(self.NEVER, encoding="utf-8")
+        (self.bin / "impose").chmod(0o755)
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.leftover(watcher, "twice", 2)
+                finished = self.start(watcher, root)
+
+                self.assertIn("book.pdf: failed (-)", finished.stdout)
+                self.assertNotIn("run a third time", finished.stdout)
+                self.assertIn(
+                    "went down during each of the last two runs", finished.stderr
+                )
+                self.assertTrue((root / "failed" / "book.pdf").exists())
+                self.assertIn(
+                    "It was not run a third time",
+                    (root / "failed" / "book.pdf.txt").read_text(encoding="utf-8"),
+                )
+                self.assertEqual(list((root / "work").iterdir()), [])
+
+    def test_one_unfinished_run_is_a_restart_and_is_run_again(self):
+        # RUNNING.md: restarting in the middle of a job loses nothing.
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.leftover(watcher, "once", 1)
+                finished = self.start(watcher, root)
+                self.assertIn(
+                    "book.pdf: left over from an earlier run", finished.stderr
+                )
+                self.assertIn("book.pdf: done (0)", finished.stdout)
+                self.assertEqual(list((root / "work").iterdir()), [])
+
+    def test_a_run_that_finishes_leaves_no_tally(self):
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                # Claimed already, rather than sent: the run and its tally are
+                # the same either way, and the macOS watcher would spend four
+                # seconds a file waiting for one in in/ to settle.
+                root = self.leftover(watcher, "clean", 0)
+                (root / "work" / "short.pdf").write_bytes(b"not a PDF at all")
+                finished = self.start(watcher, root)
+                # Refused or imposed, a run that came back is no longer counted.
+                self.assertIn("book.pdf: done (0)", finished.stdout)
+                self.assertIn("short.pdf: rejected (3)", finished.stdout)
+                self.assertEqual(list((root / "work").iterdir()), [])
+
+    def test_in_json_the_status_and_duration_it_never_had_are_null(self):
+        (self.bin / "impose").unlink()
+        (self.bin / "impose").write_text(self.NEVER, encoding="utf-8")
+        (self.bin / "impose").chmod(0o755)
+        for watcher in self.watchers:
+            with self.subTest(watcher.name):
+                root = self.leftover(watcher, "json", 2, LOG_FORMAT="json")
+                finished = self.start(watcher, root)
+                record = json.loads(finished.stdout.splitlines()[0])
+                self.assertEqual(record["bucket"], "failed")
+                self.assertIsNone(record["exit"])
+                self.assertIsNone(record["duration"])
+
+
 class TestJsonLog(WatchedFolder):
     """`LOG_FORMAT=json`: the same record, for a reader that is not a person.
 
