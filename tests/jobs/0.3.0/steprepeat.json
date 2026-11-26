@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "bleed": 5.669291338582678,
+  "colour_bar": false,
+  "cut": true,
+  "cut_name": "CutContour",
+  "fold": "auto",
+  "grind": 0.0,
+  "gutters": 11.338582677165356,
+  "lap": 0.0,
+  "lay": "center",
+  "marks": {
+    "colour": "black",
+    "offset": 5.669291338582678,
+    "length": 8.503937007874017,
+    "width": 0.25
+  },
+  "max_nested_sheets": 15,
+  "orientation": "auto",
+  "output": "steprepeat-out.pdf",
+  "page": "imageable",
+  "paper_caliper": 0.0,
+  "press": "indigo-5000",
+  "registration": false,
+  "schema": "steprepeat",
+  "slug": false,
+  "slug_size": 8.0,
+  "source": "card.pdf"
+}

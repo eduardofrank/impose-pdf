@@ -19,6 +19,13 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
+### Added: a promise about stored jobs
+
+- The README says what a job file can rely on across versions: within
+  `"version": 1` no key is renamed, removed or given another meaning, and a
+  later edition does not stop the earlier one being read. The suite now
+  imposes the job each schema's `--record` wrote at 0.3.0, on every run.
+
 ### Changed: the watchers
 
 - A file whose run was going when the watcher went down twice running is

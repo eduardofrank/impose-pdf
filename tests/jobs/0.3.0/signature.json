@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "bleed": 5.669291338582678,
+  "colour_bar": false,
+  "cut": false,
+  "cut_name": "CutContour",
+  "fold": "auto",
+  "grind": 0.0,
+  "lap": 0.0,
+  "lay": "center",
+  "marks": {
+    "colour": "registration",
+    "offset": 5.669291338582678,
+    "length": 8.503937007874017,
+    "width": 0.25
+  },
+  "max_nested_sheets": 15,
+  "orientation": "auto",
+  "output": "signature-out.pdf",
+  "page": "imageable",
+  "paper_caliper": 0.2834645669291339,
+  "press": "indigo-5000",
+  "registration": false,
+  "schema": "signature",
+  "section_pages": 8,
+  "slug": false,
+  "slug_size": 8.0,
+  "source": "book.pdf",
+  "style": "head-to-head"
+}

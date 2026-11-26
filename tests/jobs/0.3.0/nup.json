@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "bleed": 5.669291338582678,
+  "colour_bar": false,
+  "columns": 1,
+  "cut": false,
+  "cut_name": "CutContour",
+  "expect_size": "148mmx210mm",
+  "fold": "auto",
+  "grind": 0.0,
+  "lap": 0.0,
+  "lay": "center",
+  "marks": {
+    "colour": "registration",
+    "offset": 5.669291338582678,
+    "length": 8.503937007874017,
+    "width": 0.25
+  },
+  "max_nested_sheets": 15,
+  "orientation": "auto",
+  "output": "nup-out.pdf",
+  "page": "imageable",
+  "paper_caliper": 0.0,
+  "press": "indigo-5000",
+  "registration": false,
+  "rows": 2,
+  "schema": "nup",
+  "slug": false,
+  "slug_size": 8.0,
+  "source": "book.pdf"
+}

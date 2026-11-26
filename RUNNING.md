@@ -448,7 +448,10 @@ run without root.
 1.0 a version may change what a folder sees — 0.2.0 refuses at `3` some files
 0.1.0 imposed at `0`, and adds status `70` — so read each section between the
 two, and install a tag (`git checkout v0.3.0` in the checkout) rather than
-whatever `main` holds that day.
+whatever `main` holds that day. The tickets come through an upgrade as they
+are: a job file is read by every later version, and the README's [A stored job
+keeps working](README.md#a-stored-job-keeps-working) says what that covers and
+the one thing it does not.
 
 **Upgrading impose is two things, because the watcher is a copy.**
 `pip install -U` replaces the package in its environment. It does not replace

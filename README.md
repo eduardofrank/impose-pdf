@@ -753,6 +753,30 @@ that press with the gripper strip this shop measured and its own figures for
 the other three edges. `imageable` may be given instead of `margins`, and is
 centred in the sheet.
 
+### A stored job keeps working
+
+Every job file carries `"version": 1`. That is the edition of the file, not
+of impose, and it is a promise: within an edition a key is never renamed,
+removed, or given another meaning, so a job any version of impose wrote is
+one every later version reads and imposes the same way. A change that would
+break that is a new edition, and the impose that brings it still reads the
+old one. A file of an edition this impose does not read is refused by name,
+and a folder whose ticket it is refuses to start:
+
+```
+impose: nup.json is job version 2. This impose reads version 1.
+```
+
+What can change under a stored job is a refusal. A value an earlier version
+accepted and imposed wrongly is refused by the version that found out —
+0.2.0 refuses a mark colour of `"blak"`, which 0.1.0 drew as registration
+marks — and the changelog says so under that version.
+
+`tests/jobs/` holds what each version's `--record` wrote, one job per schema
+with every key it writes, and the suite imposes all of them on every run and
+checks they land on the sheets they did when recorded. A version adds its
+own and never edits an earlier one's.
+
 ### A job with no source is a folder's policy
 
 A stored job names its source, which is what makes it a job. A folder is the
@@ -2649,7 +2673,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-1003 tests today, no system libraries, about twenty-five seconds.
+1006 tests today, no system libraries, about twenty-five seconds.
 Thirty-four of them run the reference watchers in `impose/hotfolder/`, and
 they are four fifths of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the
