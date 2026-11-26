@@ -15,7 +15,7 @@ All geometry is in PDF coordinates, with the origin at the bottom-left of the
 sheet and y growing upward.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 class ImposeError(Exception):

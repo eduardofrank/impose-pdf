@@ -19,6 +19,13 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-26
+
+Two changes a folder will see. The watcher's own messages are JSON when the
+policy asks for JSON, so a `jq` command copied from RUNNING.md before this
+version needs the change described below. And a cover whose output names its
+artwork is now refused at exit 4.
+
 ### Changed: the watchers
 
 - A PDF the watcher cannot claim gets a log line,

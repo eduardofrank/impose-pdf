@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # The import package and the command are both `impose`; the distribution is
 # `impose-pdf` because `impose` on PyPI belongs to an unrelated imaging tool.
 name = "impose-pdf"
-version = "0.2.0"
+version = "0.3.0"
 description = "Imposition for commercial print: saddle stitch, perfect bound, signature, cover, n-up, step and repeat, cut and stack, gang."
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"

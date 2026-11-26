@@ -31,7 +31,8 @@ rather not be named.
 | version | supported |
 |---|---|
 | `main` | yes |
-| 0.2.0 | yes — the current version; a fix for it lands on `main` and in the next tag |
+| 0.3.0 | yes — the current version; a fix for it lands on `main` and in the next tag |
+| 0.2.0 | no — a cover can be written over the artwork it was made from; see [CHANGELOG.md](CHANGELOG.md) |
 | 0.1.0 | no — it imposes a page of no stated size as US Letter; see [CHANGELOG.md](CHANGELOG.md) |
 
 Versions are git tags, and nothing is published to PyPI. Fixes land on `main`

@@ -447,7 +447,7 @@ run without root.
 [CHANGELOG.md](CHANGELOG.md) has a section for every version after it. Before
 1.0 a version may change what a folder sees — 0.2.0 refuses at `3` some files
 0.1.0 imposed at `0`, and adds status `70` — so read each section between the
-two, and install a tag (`git checkout v0.2.0` in the checkout) rather than
+two, and install a tag (`git checkout v0.3.0` in the checkout) rather than
 whatever `main` holds that day.
 
 **Upgrading impose is two things, because the watcher is a copy.**

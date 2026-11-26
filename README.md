@@ -2269,7 +2269,7 @@ pip install impose-pdf
 
 **impose is not on PyPI yet.** Until it is, install [from
 source](#from-source) — same result, and it works today. The current version is
-0.2.0; `impose --version` says which one an install is, and
+0.3.0; `impose --version` says which one an install is, and
 [CHANGELOG.md](CHANGELOG.md) says what changed between two of them.
 
 The distribution is `impose-pdf` because `impose` on PyPI belongs to an
@@ -2326,7 +2326,7 @@ python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ```
 
 That is `main`. Each version is a git tag, `v` and the number, so a folder that
-should stay on a known version installs the tag instead — `git checkout v0.2.0`
+should stay on a known version installs the tag instead — `git checkout v0.3.0`
 before the `pip install`, and read the version's section of the changelog
 before moving a folder to it.
 
