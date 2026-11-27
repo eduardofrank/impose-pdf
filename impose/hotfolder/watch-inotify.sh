@@ -102,7 +102,7 @@ if [ ! -f "$policy" ]; then
 # How long one file may take, in whole seconds, before its run is stopped and
 # the file goes to failed/ at status 124. Unset is no limit. Pick it from the
 # largest job this folder is meant to take, not from a typical one: 20000
-# pages is about twenty seconds. Needs GNU timeout, which is coreutils.
+# pages is a few seconds. Needs GNU timeout, which is coreutils.
 # TIMEOUT=600
 FORM
     printf '%s: wrote %s. Say what this folder is for, then start it again.\n' \

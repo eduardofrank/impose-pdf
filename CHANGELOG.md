@@ -19,6 +19,13 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
+### Changed: speed
+
+- Imposing takes time in proportion to the page count, where it took time
+  in proportion to its square. 20000 pages at `--up 2x2` take 3.5 s on
+  Linux, from 20 s, and 4000 take 0.7 s, from 1.3 s; memory is unchanged.
+  A folder whose `TIMEOUT` was picked from the old figures has room to spare.
+
 ### Added: a promise about stored jobs
 
 - The README says what a job file can rely on across versions: within

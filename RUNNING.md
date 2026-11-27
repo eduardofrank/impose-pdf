@@ -250,7 +250,7 @@ anything:
   They go to `failed/`, which is right: nothing was wrong with the file.
 - **`124` is the folder's own `TIMEOUT`.** The run took longer than the
   policy allows and was stopped. Either the limit is too small for that
-  job — a 20000-page book is twenty seconds — or the file is one impose
+  job — a 20000-page book is a few seconds — or the file is one impose
   does not finish, which is worth sending to whoever maintains it. Raise
   the limit and `mv failed/book.pdf in/`, or don't.
 

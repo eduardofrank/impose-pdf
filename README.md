@@ -1028,7 +1028,7 @@ nothing in `out/`, and the folder on to the next file.
 
 Unset is no limit, which is the default because the right number is the
 largest job the folder is meant to take and only the shop knows it: 20000
-pages is about twenty seconds here. It is GNU `timeout` that enforces it —
+pages at `--up 2x2` is 3.5 seconds on Linux and about six on a Mac. It is GNU `timeout` that enforces it —
 `gtimeout`, from Homebrew's coreutils, on macOS — and a policy that sets a
 limit on a machine with nothing to enforce one is refused at startup, not
 run without it.
@@ -2673,7 +2673,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-1006 tests today, no system libraries, about twenty-five seconds.
+1007 tests today, no system libraries, about twenty-five seconds.
 Thirty-four of them run the reference watchers in `impose/hotfolder/`, and
 they are four fifths of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the

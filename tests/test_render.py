@@ -263,6 +263,44 @@ class TestSharedForm(unittest.TestCase):
         self.assertEqual(payloads, {first, second})
 
 
+class _Counted:
+    """A source that counts how often its page list is asked for."""
+
+    def __init__(self, pdf):
+        self.pdf = pdf
+        self.asked = 0
+
+    @property
+    def pages(self):
+        self.asked += 1
+        return self.pdf.pages
+
+    def __getattr__(self, name):
+        return getattr(self.pdf, name)
+
+
+class TestPagesAreListedOnce(unittest.TestCase):
+    """A source's page list is walked once, not indexed once per page.
+
+    `pdf.pages[index]` in pikepdf 10.12 costs time in proportion to the
+    document's length, so taking each page that way made imposing quadratic
+    in the page count: measured, 45 us a page at 2000 pages and 359 us at
+    16000, which was 5.7 s of a 10.8 s n-up. Timing that here would be a
+    flaky test; how many times the list is asked for is the same fact.
+    """
+
+    def test_twelve_pages_on_three_sheets_ask_for_the_list_once(self):
+        pdf = make_pdf(12)
+        counted = _Counted(pdf)
+        renderer = Renderer()
+        for first in (0, 4, 8):
+            cells = (first, first + 1, first + 2, first + 3)
+            renderer.add(_repeated(pdf, cells, columns=2, rows=2), counted)
+        self.assertEqual(counted.asked, 1)
+        forms, _ = _xobjects(renderer.pdf)
+        self.assertEqual(len(forms), 12)
+
+
 class TestMarkColour(unittest.TestCase):
     def test_registration_uses_separation_all(self):
         """A mark must appear on every plate, not only on black."""

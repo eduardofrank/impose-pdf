@@ -180,14 +180,14 @@ Both documents are open at once, so what it costs tracks the page count:
 
 | pages | peak RSS | wall clock |
 |---|---|---|
-| 100 | 43 MB | 0.1 s |
-| 1000 | 59 MB | 0.3 s |
-| 4000 | 114 MB | 1.3 s |
-| 20000 | 412 MB | 19 s |
+| 100 | 42 MB | 0.1 s |
+| 1000 | 59 MB | 0.2 s |
+| 4000 | 114 MB | 0.7 s |
+| 20000 | 416 MB | 3.5 s |
 
 Measured with `/usr/bin/time` on Ubuntu 26.10, Python 3.14.8, pikepdf 10.18.1
 over QPDF 12.4.2, imposing a synthetic book of text-only pages at `--up 2x2`.
-The same book on macOS 15.8 (pikepdf 10.12.0, QPDF 12.3.2) peaked at 352 MB
+The same book on macOS 15.8 (pikepdf 10.12.0, QPDF 12.3.2) peaked at 350 MB
 for the 20000-page case, some 15% lower, so take a ceiling with headroom
 rather than one platform's number. A source whose pages carry large images
 costs more again: page objects are copied whole, without being decoded.

@@ -296,6 +296,15 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         # the page, because add() is handed its source each time and page 0
         # of two documents is not the same page.
         self._forms: dict[tuple[int, int], pikepdf.Object] = {}
+        # Each source's pages, listed once. `source.pages[index]` is not a
+        # lookup: it costs time in proportion to the length of the document,
+        # so taking every page that way made a run quadratic. Measured, 45 us
+        # a page at 2000 pages and 359 us at 16000 on pikepdf 10.12, and 169
+        # and 678 us on 10.18.1, where it was 17 s of a 20 s run of 20000
+        # pages. Walking `source.pages` once is linear. The document is kept
+        # beside its list so that the id it is keyed by cannot be reused by
+        # another while this holds it.
+        self._pages: dict[int, tuple[pikepdf.Pdf, list[pikepdf.Page]]] = {}
         # The Cutting layer and its spot colour space, made on the first cut.
         self._cut: tuple[pikepdf.Object, pikepdf.Object] | None = None
         self._wedge: pikepdf.Object | None = None
@@ -395,8 +404,11 @@ class Renderer:  # pylint: disable=too-many-instance-attributes
         # first time a stream that cannot be decoded says so. QPDF's own
         # exception came straight out of here as a stack trace -- 17 of 676
         # mutations of a valid file -- and it is the file that is wrong.
+        listed = self._pages.get(id(source))
+        if listed is None:
+            listed = self._pages[id(source)] = (source, list(source.pages))
         try:
-            foreign = pikepdf.Page(source.pages[index])
+            foreign = listed[1][index]
             form = foreign.as_form_xobject()
             form.BBox = Array(list(foreign.mediabox))
             copied = self.pdf.copy_foreign(form)
