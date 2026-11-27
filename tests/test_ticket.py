@@ -18,6 +18,9 @@ from impose.units import MM
 from .support import make_office_pdf, make_pdf, truncated_pdf
 from .test_cli import run, workspace
 
+#: A finished page that a 16-page signature cannot fit the house press at.
+A5 = Size(148 * MM, 210 * MM)
+
 
 @contextlib.contextmanager
 def damaged_workspace(pages=16, fraction=0.4):
@@ -332,9 +335,12 @@ class TestStoredExpectSize(unittest.TestCase):
             self.assertEqual(stored["expect_size"], "105mmx148mm")
 
     def test_the_stored_job_applies_it_again(self):
-        with workspace(pages=8) as source:
+        # Recorded on a file the check passes, then run on one it does not.
+        # Recording on the wrong file is a refused run, and a refused run
+        # writes no job.
+        with workspace(pages=8, trim=Size(210 * MM, 297 * MM)) as source:
             job = source.with_name("job.json")
-            run(
+            status, _, err = run(
                 "nup",
                 str(source),
                 "--expect-size",
@@ -343,6 +349,8 @@ class TestStoredExpectSize(unittest.TestCase):
                 str(job),
                 "--dry-run",
             )
+            self.assertEqual(status, 0, err)
+            make_pdf(8).save(source)
             status, _, err = run("run", str(job), "--dry-run")
             self.assertNotEqual(status, 0)
             self.assertIn("expects 210 × 297 mm", err)
@@ -692,3 +700,70 @@ class TestACoverJob(unittest.TestCase):
             self.assertIn("213.2 × 148 mm", text)
             self.assertTrue(output.exists())
             self.assertTrue(proof.exists())
+
+
+class TestARefusedRunRecordsNothing(unittest.TestCase):
+    """`--record` writes the job once the run has gone through, not before.
+
+    A job file left by a run that was refused is a job nobody made, and a
+    folder handed it would refuse every file it is sent. Measured before:
+    a 16-page signature that does not fit the press, exit 1, and the job
+    file written all the same.
+    """
+
+    #: A section the house press cannot image, of A5 pages.
+    TOO_BIG = ("signature", "--section-pages", "16")
+
+    def test_a_refused_run_leaves_no_job_file(self):
+        for extra in ((), ("--dry-run",)):
+            with self.subTest(extra=extra), workspace(pages=16, trim=A5) as source:
+                job = source.with_name("job.json")
+                status, _, _ = run(
+                    self.TOO_BIG[0],
+                    str(source),
+                    *self.TOO_BIG[1:],
+                    "--record",
+                    str(job),
+                    *extra,
+                )
+                self.assertEqual(status, 1)
+                self.assertFalse(job.exists())
+
+    def test_a_refused_cover_leaves_no_job_file(self):
+        with workspace(pages=16, trim=A5) as source:
+            job = source.with_name("job.json")
+            # No --paper-caliper: the cover cannot be worked out.
+            status, _, err = run("cover", str(source), "--record", str(job))
+            self.assertEqual(status, 1, err)
+            self.assertIn("--paper-caliper", err)
+            self.assertFalse(job.exists())
+
+    def test_a_refused_run_leaves_the_job_already_there_alone(self):
+        # --overwrite is asked for, and the run it was asked for never
+        # happened, so the job that was there is still the one there.
+        with workspace(pages=16, trim=A5) as source:
+            job = source.with_name("job.json")
+            job.write_text('{"version": 1, "schema": "saddle"}\n', encoding="utf-8")
+            status, _, _ = run(
+                self.TOO_BIG[0],
+                str(source),
+                *self.TOO_BIG[1:],
+                "--record",
+                str(job),
+                "--overwrite",
+            )
+            self.assertEqual(status, 1)
+            self.assertEqual(
+                job.read_text(encoding="utf-8"), '{"version": 1, "schema": "saddle"}\n'
+            )
+
+    def test_a_run_that_goes_through_still_records(self):
+        with workspace(pages=16, trim=A5) as source:
+            job = source.with_name("job.json")
+            status, _, err = run(
+                "signature", str(source), "--section-pages", "4", "--record", str(job)
+            )
+            self.assertEqual(status, 0, err)
+            self.assertEqual(
+                json.loads(job.read_text(encoding="utf-8"))["schema"], "signature"
+            )

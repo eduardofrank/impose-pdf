@@ -960,15 +960,15 @@ def _options(args: argparse.Namespace) -> dict:
     }
 
 
-def _record(args: argparse.Namespace, output, proof) -> None:
-    """Store the job this command describes, and say what it leaves out.
+def _record(args: argparse.Namespace, job: dict) -> None:
+    """Store *job*, the one this command describes, and say what it leaves out.
 
     A job file is run again by a hot folder, on whatever arrives. An assumed
     finished size is a judgement about the file in front of somebody now, so it
     is not stored -- and not storing it silently would be its own surprise, the
     next run refusing a file this one imposed.
     """
-    dump(args.record, recorded(args, _options(args), output, proof))
+    dump(args.record, job)
     if args.trim_from != "trimbox":
         _left_out(
             f"--trim-from {args.trim_from}",
@@ -1133,9 +1133,9 @@ def _dispatch(  # pylint: disable=too-many-return-statements
     output = args.output or _default_output(args.input)
     record = getattr(args, "record", None)
     # impose_document checks these again. It has to: the library is also
-    # called directly and by `run`. Here is where --record's own
-    # destination gets checked, because it is written first -- a job file
-    # left behind by a run that was then refused is a job nobody made.
+    # called directly and by `run`. Here is where --record's own destination
+    # gets checked, before anything is imposed, so that a job file that could
+    # not be written is refused along with the run rather than after it.
     check_distinct(
         source=args.input,
         artwork=getattr(args, "artwork", None),
@@ -1146,13 +1146,28 @@ def _dispatch(  # pylint: disable=too-many-return-statements
     reserve(record, what="job file", overwrite=args.overwrite)
     reserve(output, what="press file", overwrite=args.overwrite)
     reserve(proof, what="proof", overwrite=args.overwrite)
-    if record is not None:
-        _record(args, output, proof)
+    # The job is worked out now, from the command as given, and written only
+    # once the run has gone through. A job file left behind by a run that was
+    # then refused is a job nobody made, and a folder handed it refuses every
+    # file it is sent: measured before this, `impose signature` asked for a
+    # 16-page section that does not fit the press, exit 1, and job.json there
+    # all the same. The cost is the other order of failure -- a press file
+    # written and then a job file that cannot be -- which the reserve above
+    # makes a full disk rather than a name already taken.
+    job = recorded(args, _options(args), output, proof) if record is not None else None
     if args.command == "cover":
-        return _cover(args, out)
-    if args.dry_run:
-        return _dry_run(args, out)
+        status = _cover(args, out)
+    elif args.dry_run:
+        status = _dry_run(args, out)
+    else:
+        status = _impose(args, out, output, proof)
+    if job is not None:
+        _record(args, job)
+    return status
 
+
+def _impose(args: argparse.Namespace, out, output, proof) -> int:
+    """Impose the document *args* names, and report it."""
     result = impose_document(
         args.input,
         output,

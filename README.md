@@ -2673,7 +2673,7 @@ shellcheck impose/hotfolder/*.sh tests/shell/*.sh
 bats tests/shell
 ```
 
-1007 tests today, no system libraries, about twenty-five seconds.
+1011 tests today, no system libraries, about twenty-five seconds.
 Thirty-four of them run the reference watchers in `impose/hotfolder/`, and
 they are four fifths of that time, because the macOS watcher waits four
 seconds for a file to stop growing. They want a shell and `impose` on the

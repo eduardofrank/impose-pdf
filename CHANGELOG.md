@@ -19,6 +19,14 @@ refusals, the options, and the watchers' buckets and log lines.
 
 ## Unreleased
 
+### Changed: recording a job
+
+- `--record` writes the job file once the run has gone through. Before, it
+  was written first, so a run that was then refused -- a section too big for
+  the press, a cover with no `--paper-caliper` -- left a job file behind, and
+  with `--overwrite` replaced the one that was there. A folder handed that
+  file would refuse everything it was sent.
+
 ### Changed: speed
 
 - Imposing takes time in proportion to the page count, where it took time
